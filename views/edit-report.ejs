@@ -1,0 +1,88 @@
+<section class="panel">
+  <div class="panel-header stacked-mobile">
+    <div>
+      <p class="eyebrow">Officer Review</p>
+      <h2>Edit <%= report.id %></h2>
+    </div>
+    <span class="status-badge status-<%= statusKey(report.status) %>"><%= report.status %></span>
+  </div>
+
+  <div class="notice-strip">
+    <i class="bi bi-info-circle"></i>
+    <span>Officers can review and edit this draft before saving it to the database.</span>
+  </div>
+
+  <%- include('partials/report-completion', { completion: report.completion }) %>
+
+  <form class="report-form" id="reportForm" data-completion-form action="/incidents/<%= report.id %>" method="POST">
+    <div class="form-row">
+      <label>
+        <span>Incident Location</span>
+        <input class="form-control" type="text" name="incidentLocation" value="<%= report.location %>" required>
+      </label>
+      <label>
+        <span>Incident Type</span>
+        <select class="form-select" name="incidentType" required>
+          <% incidentTypes.forEach((type) => { %>
+            <option <%= report.type === type ? 'selected' : '' %>><%= type %></option>
+          <% }) %>
+        </select>
+      </label>
+    </div>
+
+    <div class="form-row">
+      <label>
+        <span>Date and Time</span>
+        <input class="form-control" type="datetime-local" name="incidentDateTime" value="<%= report.dateInput %>" required>
+      </label>
+      <label>
+        <span>Response Status</span>
+        <select class="form-select" name="responseStatus" required>
+          <% statuses.forEach((status) => { %>
+            <option <%= report.status === status ? 'selected' : '' %>><%= status %></option>
+          <% }) %>
+        </select>
+      </label>
+    </div>
+
+    <label>
+      <span>Incident Summary</span>
+      <textarea class="form-control" name="incidentSummary" rows="4" required><%= report.summary %></textarea>
+    </label>
+
+    <label>
+      <span>Hazards</span>
+      <textarea class="form-control" name="hazards" rows="3"><%= report.hazards %></textarea>
+    </label>
+
+    <label>
+      <span>Injured or Trapped Persons</span>
+      <textarea class="form-control" name="injuredPersons" rows="3"><%= report.injured %></textarea>
+    </label>
+
+    <label>
+      <span>Missing Information</span>
+      <textarea class="form-control" name="missingInfo" rows="3"><%= report.missingInfo %></textarea>
+    </label>
+
+    <label>
+      <span>Officer Notes</span>
+      <textarea class="form-control" name="officerNotes" rows="3"><%= report.officerNotes %></textarea>
+    </label>
+
+    <div class="form-actions">
+      <button class="secondary-button" type="submit" name="saveMode" value="draft">
+        <i class="bi bi-save"></i>
+        Save Draft
+      </button>
+      <button class="primary-button" type="submit" name="saveMode" value="report">
+        <i class="bi bi-check2-circle"></i>
+        Save Report
+      </button>
+      <a class="ghost-button" href="/incidents/<%= report.id %>">
+        <i class="bi bi-arrow-left"></i>
+        Back to Details
+      </a>
+    </div>
+  </form>
+</section>

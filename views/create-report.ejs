@@ -1,0 +1,114 @@
+<section class="form-grid">
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Transcript Input</p>
+        <h2>Create AI-Assisted Draft</h2>
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label" for="transcriptInput">Transcript</label>
+      <textarea class="form-control" id="transcriptInput" name="transcript" form="reportForm" rows="8" placeholder="Paste an incident call transcript here..."></textarea>
+    </div>
+
+    <button class="primary-button w-100" type="button" id="generateDraftButton">
+      <i class="bi bi-magic"></i>
+      Generate AI Report
+    </button>
+    <p class="helper-text">Uses local Ollama through the Node.js backend. The draft stays editable and is not saved automatically.</p>
+    <div class="notice-strip notice-hidden" id="aiReportNotice">
+      <i class="bi bi-info-circle"></i>
+      <span></span>
+    </div>
+  </article>
+
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Editable Report Fields</p>
+        <h2>Incident Report Draft</h2>
+      </div>
+    </div>
+
+    <%- include('partials/report-completion', { completion }) %>
+
+    <form class="report-form" id="reportForm" data-completion-form action="/incidents" method="POST">
+      <div class="form-row">
+        <label>
+          <span>Incident Location</span>
+          <input class="form-control" id="incidentLocation" name="incidentLocation" type="text" required>
+        </label>
+        <label>
+          <span>Incident Type</span>
+          <select class="form-select" id="incidentType" name="incidentType" required>
+            <option value="">Select type</option>
+            <option>Residential Fire</option>
+            <option>Kitchen Fire</option>
+            <option>Road Traffic Accident</option>
+            <option>Lift Rescue</option>
+            <option>Gas Leak</option>
+            <option>Electrical Fire</option>
+            <option>Rubbish Chute Fire</option>
+            <option>Vehicle Fire</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="form-row">
+        <label>
+          <span>Date and Time</span>
+          <input class="form-control" id="incidentDateTime" name="incidentDateTime" type="datetime-local" required>
+        </label>
+        <label>
+          <span>Response Status</span>
+          <select class="form-select" id="responseStatus" name="responseStatus" required>
+            <% statuses.forEach((status) => { %>
+              <option><%= status %></option>
+            <% }) %>
+          </select>
+        </label>
+      </div>
+
+      <label>
+        <span>Incident Summary</span>
+        <textarea class="form-control" id="incidentSummary" name="incidentSummary" rows="4" required></textarea>
+      </label>
+
+      <label>
+        <span>Hazards</span>
+        <textarea class="form-control" id="hazards" name="hazards" rows="3"></textarea>
+      </label>
+
+      <label>
+        <span>Injured or Trapped Persons</span>
+        <textarea class="form-control" id="injuredPersons" name="injuredPersons" rows="3"></textarea>
+      </label>
+
+      <label>
+        <span>Missing Information</span>
+        <textarea class="form-control" id="missingInfo" name="missingInfo" rows="3"></textarea>
+      </label>
+
+      <label>
+        <span>Officer Notes</span>
+        <textarea class="form-control" id="officerNotes" name="officerNotes" rows="3"></textarea>
+      </label>
+
+      <div class="form-actions">
+        <button class="secondary-button" type="submit" name="saveMode" value="draft">
+          <i class="bi bi-save"></i>
+          Save Draft
+        </button>
+        <button class="primary-button" type="submit" name="saveMode" value="report">
+          <i class="bi bi-check2-circle"></i>
+          Save Report
+        </button>
+        <button class="ghost-button" type="reset">
+          <i class="bi bi-x-circle"></i>
+          Clear Form
+        </button>
+      </div>
+    </form>
+  </article>
+</section>

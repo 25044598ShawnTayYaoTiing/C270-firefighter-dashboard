@@ -1,0 +1,90 @@
+<section class="panel">
+  <div class="panel-header stacked-mobile">
+    <div>
+      <p class="eyebrow">Incident Data</p>
+      <h2>Incident Reports</h2>
+    </div>
+    <a class="primary-button" href="/create-report">
+      <i class="bi bi-plus-lg"></i>
+      Create Report
+    </a>
+  </div>
+
+  <form class="toolbar incident-search-toolbar" action="/incidents" method="GET">
+    <label>
+      <span>Status</span>
+      <select class="form-select" id="statusFilter" name="status">
+        <option value="All" <%= selectedStatus === 'All' ? 'selected' : '' %>>All</option>
+        <% statuses.forEach((status) => { %>
+          <option value="<%= status %>" <%= selectedStatus === status ? 'selected' : '' %>><%= status %></option>
+        <% }) %>
+      </select>
+    </label>
+
+    <label class="toolbar-search">
+      <span>Search</span>
+      <input class="form-control" id="incidentSearch" name="search" type="search" value="<%= searchTerm %>" placeholder="Search ID, type, location, notes, or transcript">
+    </label>
+
+    <button class="secondary-button" type="submit">
+      <i class="bi bi-search"></i>
+      Search
+    </button>
+  </form>
+
+  <div class="table-responsive">
+    <table class="table operations-table align-middle" id="incidentsTable">
+      <thead>
+        <tr>
+          <th>Incident ID</th>
+          <th>Incident Type</th>
+          <th>Location</th>
+          <th>Status</th>
+          <th>Created Date</th>
+          <th>Last Updated</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (reports.length === 0) { %>
+          <tr>
+            <td colspan="7">
+              <div class="table-empty-state">
+                <i class="bi bi-inbox"></i>
+                <span><%= emptyMessage %></span>
+              </div>
+            </td>
+          </tr>
+        <% } %>
+        <% reports.forEach((report) => { %>
+          <tr data-status="<%= report.status %>" data-search="<%= [report.id, report.type, report.location, report.status, report.summary, report.hazards, report.injured, report.missingInfo, report.officerNotes, report.transcript].join(' ').toLowerCase() %>">
+            <td><strong><%= report.id %></strong></td>
+            <td><%= report.type %></td>
+            <td><%= report.location %></td>
+            <td><span class="status-badge status-<%= statusKey(report.status) %>"><%= report.status %></span></td>
+            <td><%= report.createdDate %></td>
+            <td><%= report.lastUpdated %></td>
+            <td>
+              <div class="action-group">
+                <a href="/incidents/<%= report.id %>" class="icon-text-button">
+                  <i class="bi bi-eye"></i>
+                  View
+                </a>
+                <a href="/incidents/<%= report.id %>/edit" class="icon-text-button neutral">
+                  <i class="bi bi-pencil"></i>
+                  Edit
+                </a>
+                <form class="delete-report-form" action="/incidents/<%= report.id %>/delete" method="POST">
+                  <button class="icon-text-button danger js-delete-report" type="submit" data-report-id="<%= report.id %>">
+                    <i class="bi bi-trash"></i>
+                    Delete
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>

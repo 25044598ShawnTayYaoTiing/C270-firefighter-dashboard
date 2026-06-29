@@ -1,0 +1,19 @@
+const express = require('express');
+const pageController = require('../controllers/pageController');
+
+const router = express.Router();
+
+router.get('/', pageController.showDashboard);
+router.get('/dashboard', pageController.showDashboard);
+router.get('/analytics', pageController.showAnalytics);
+router.get('/transcription', pageController.showTranscription);
+router.get('/transcription/health', pageController.checkTranscriptionHealth);
+router.get('/system/status', pageController.checkSystemStatus);
+router.get('/pending-review', pageController.showPendingReview);
+router.get('/completed-reports', pageController.showCompletedReports);
+router.get('/escalated-incidents', pageController.showEscalatedIncidents);
+router.get('/team-members', pageController.showTeamMembers);
+router.get('/settings', pageController.showSettings);
+router.get('/api-keys', pageController.showApiKeys);
+
+module.exports = router;

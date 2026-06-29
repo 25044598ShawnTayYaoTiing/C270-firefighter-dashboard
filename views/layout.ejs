@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= pageTitle %> | <%= appName %></title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/dashboard">
+      <span class="brand-mark">FD</span>
+      <span class="brand-title">Firefighter Dashboard</span>
+    </a>
+
+    <nav class="sidebar-nav" aria-label="Main navigation">
+      <p class="nav-section">Main</p>
+      <a class="nav-link <%= activePage === 'dashboard' ? 'active' : '' %>" href="/dashboard">
+        <i class="bi bi-speedometer2"></i>
+        Dashboard
+      </a>
+      <a class="nav-link <%= activePage === 'create-report' ? 'active' : '' %>" href="/create-report">
+        <i class="bi bi-pencil-square"></i>
+        Create Report
+      </a>
+      <a class="nav-link <%= activePage === 'transcription' ? 'active' : '' %>" href="/transcription">
+        <i class="bi bi-mic"></i>
+        Real-Time Transcription
+      </a>
+      <a class="nav-link <%= activePage === 'incidents' ? 'active' : '' %>" href="/incidents">
+        <i class="bi bi-table"></i>
+        Incident Reports
+      </a>
+      <a class="nav-link <%= activePage === 'analytics' ? 'active' : '' %>" href="/analytics">
+        <i class="bi bi-bar-chart"></i>
+        Analytics
+      </a>
+
+      <p class="nav-section">Operations</p>
+      <a class="nav-link <%= activePage === 'pending-review' ? 'active' : '' %>" href="/pending-review">
+        <i class="bi bi-clipboard-check"></i>
+        Pending Review
+      </a>
+      <a class="nav-link <%= activePage === 'completed' ? 'active' : '' %>" href="/completed-reports">
+        <i class="bi bi-check2-circle"></i>
+        Completed Reports
+      </a>
+      <a class="nav-link <%= activePage === 'escalated' ? 'active' : '' %>" href="/escalated-incidents">
+        <i class="bi bi-exclamation-triangle"></i>
+        Escalated Incidents
+      </a>
+
+      <p class="nav-section">System</p>
+      <a class="nav-link <%= activePage === 'team-members' ? 'active' : '' %>" href="/team-members">
+        <i class="bi bi-people"></i>
+        Team Members
+      </a>
+      <a class="nav-link <%= activePage === 'settings' ? 'active' : '' %>" href="/settings">
+        <i class="bi bi-gear"></i>
+        Settings
+      </a>
+    </nav>
+  </aside>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <h1><%= pageTitle %></h1>
+      </div>
+
+      <div class="topbar-actions">
+        <form class="search-field" action="/incidents" method="GET" aria-label="Search incident reports">
+          <i class="bi bi-search"></i>
+          <input type="search" name="search" placeholder="Search reports, locations, or IDs">
+        </form>
+        <button class="icon-button" type="button" aria-label="Notifications">
+          <i class="bi bi-bell"></i>
+        </button>
+        <div class="operator">
+          <span class="operator-avatar">OP</span>
+          <span>Operator</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="page-content">
+      <%- include(view) %>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/js/dashboard.js"></script>
+  <script src="/js/incidentMap.js"></script>
+  <script src="/js/transcription.js"></script>
+  <script src="/js/createReport.js"></script>
+  <script src="/js/reportCompletion.js"></script>
+</body>
+</html>

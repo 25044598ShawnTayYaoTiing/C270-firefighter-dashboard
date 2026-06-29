@@ -1,0 +1,70 @@
+<section class="details-layout">
+  <article class="panel">
+    <div class="panel-header stacked-mobile">
+      <div>
+        <p class="eyebrow">Read-Only Incident Report</p>
+        <h2><%= report.id %></h2>
+      </div>
+      <span class="status-badge status-<%= statusKey(report.status) %>"><%= report.status %></span>
+    </div>
+
+    <%- include('partials/report-completion', { completion: report.completion }) %>
+
+    <div class="detail-grid">
+      <div>
+        <span>Incident Type</span>
+        <strong><%= report.type %></strong>
+      </div>
+      <div>
+        <span>Location</span>
+        <strong><%= report.location %></strong>
+      </div>
+      <div>
+        <span>Date/Time</span>
+        <strong><%= report.createdDate %></strong>
+      </div>
+      <div>
+        <span>Report Completion</span>
+        <strong><%= report.completion.percent %>%</strong>
+      </div>
+    </div>
+
+    <div class="readout">
+      <h3>Summary</h3>
+      <p><%= report.summary %></p>
+
+      <h3>Hazards</h3>
+      <p><%= report.hazards %></p>
+
+      <h3>Injured or Trapped Persons</h3>
+      <p><%= report.injured %></p>
+
+      <h3>Missing Information</h3>
+      <p><%= report.missingInfo %></p>
+
+      <h3>Officer Notes</h3>
+      <p><%= report.officerNotes %></p>
+    </div>
+
+    <div class="form-actions">
+      <a class="primary-button" href="/incidents/<%= report.id %>/edit">
+        <i class="bi bi-pencil"></i>
+        Edit Report
+      </a>
+      <a class="ghost-button" href="/incidents">
+        <i class="bi bi-arrow-left"></i>
+        Back to Reports
+      </a>
+    </div>
+  </article>
+
+  <aside class="panel transcript-panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Source Text</p>
+        <h2>Transcript</h2>
+      </div>
+    </div>
+    <p><%= report.transcript %></p>
+  </aside>
+</section>

@@ -1,0 +1,17 @@
+{
+  "name": "firefighter-smart-incident-dashboard",
+  "version": "1.0.0",
+  "description": "Frontend MVP dashboard for a firefighter incident reporting school prototype.",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node app.js",
+    "seed": "node scripts/seedIncidents.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "mysql2": "^3.22.5"
+  }
+}

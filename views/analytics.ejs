@@ -1,0 +1,103 @@
+<section class="analytics-grid">
+  <% metricCards.forEach((card) => { %>
+    <article class="panel metric-panel">
+      <p class="eyebrow"><%= card.eyebrow %></p>
+      <strong><%= card.value %></strong>
+      <span><%= card.label %></span>
+    </article>
+  <% }) %>
+</section>
+
+<section class="dashboard-grid">
+  <div class="main-column">
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Incident Count</p>
+          <h2>By Type</h2>
+        </div>
+      </div>
+      <div class="progress-list large">
+        <% typeBreakdown.forEach((type) => { %>
+          <div>
+            <div class="progress-label">
+              <span><%= type.label %></span>
+              <strong><%= type.count %> (<%= type.value %>%)</strong>
+            </div>
+            <div class="progress">
+              <div class="progress-bar" style="width: <%= type.value %>%"></div>
+            </div>
+          </div>
+        <% }) %>
+        <% if (typeBreakdown.length === 0) { %>
+          <div class="table-empty-state">
+            <i class="bi bi-inbox"></i>
+            <span>No incident type data available yet.</span>
+          </div>
+        <% } %>
+      </div>
+    </article>
+
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Recent Trend Summary</p>
+          <h2>Operational Notes</h2>
+        </div>
+      </div>
+      <div class="trend-summary">
+        <% trendNotes.forEach((note) => { %>
+          <div>
+            <i class="bi <%= note.icon %>"></i>
+            <p><%= note.text %></p>
+          </div>
+        <% }) %>
+      </div>
+    </article>
+  </div>
+
+  <aside class="side-column">
+    <article class="panel compact-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Incident Count</p>
+          <h2>By Status</h2>
+        </div>
+      </div>
+      <div class="status-stack">
+        <% statusCounts.forEach((status) => { %>
+          <div>
+            <span class="status-badge status-<%= statusKey(status.label) %>"><%= status.label %></span>
+            <strong><%= status.value %></strong>
+            <div class="progress">
+              <div class="progress-bar" style="width: <%= status.percent %>%"></div>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    </article>
+
+    <article class="panel compact-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Top Locations</p>
+          <h2>High-Frequency Areas</h2>
+        </div>
+      </div>
+      <div class="location-list">
+        <% locations.forEach((location) => { %>
+          <div>
+            <span><%= location.label %></span>
+            <strong><%= location.count %> reports</strong>
+          </div>
+        <% }) %>
+        <% if (locations.length === 0) { %>
+          <div>
+            <span>No locations yet</span>
+            <strong>0 reports</strong>
+          </div>
+        <% } %>
+      </div>
+    </article>
+  </aside>
+</section>

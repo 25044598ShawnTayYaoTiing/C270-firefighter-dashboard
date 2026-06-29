@@ -1,0 +1,86 @@
+<section class="transcription-layout">
+  <article class="panel">
+    <div class="panel-header stacked-mobile">
+      <div>
+        <p class="eyebrow">Operator Tool</p>
+        <h2>Live Call Transcript</h2>
+      </div>
+      <span class="status-badge status-draft" id="transcriptionState">Checking</span>
+    </div>
+
+    <div class="notice-strip" id="transcriptionNotice">
+      <i class="bi bi-info-circle"></i>
+      <span>Checking realtime transcription service.</span>
+    </div>
+
+    <div class="transcript-display" id="transcriptDisplay" aria-live="polite">
+      <p class="empty-transcript">No transcript yet.</p>
+    </div>
+
+    <label class="cleaned-transcript">
+      <span>Cleaned Transcript</span>
+      <textarea class="form-control" id="cleanedTranscriptInput" rows="8" placeholder="Cleaned transcript will appear here. You can edit it before sending it to Create Report."></textarea>
+    </label>
+
+    <div class="notice-strip notice-hidden" id="cleanupNotice">
+      <i class="bi bi-info-circle"></i>
+      <span></span>
+    </div>
+
+    <div class="form-actions transcription-actions">
+      <button class="primary-button" type="button" id="startTranscriptionButton">
+        <i class="bi bi-record-circle"></i>
+        Start Transcription
+      </button>
+      <button class="secondary-button" type="button" id="stopTranscriptionButton" disabled>
+        <i class="bi bi-stop-circle"></i>
+        Stop Transcription
+      </button>
+      <button class="ghost-button" type="button" id="clearTranscriptButton">
+        <i class="bi bi-x-circle"></i>
+        Clear Transcript
+      </button>
+      <button class="secondary-button" type="button" id="cleanTranscriptButton">
+        <i class="bi bi-stars"></i>
+        Clean Transcript
+      </button>
+      <button class="ghost-button" type="button" id="sendTranscriptButton">
+        <i class="bi bi-send"></i>
+        Send Raw Transcript to Create Report
+      </button>
+      <button class="primary-button" type="button" id="sendCleanTranscriptButton">
+        <i class="bi bi-send-check"></i>
+        Send Clean Transcript to Create Report
+      </button>
+    </div>
+  </article>
+
+  <aside class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Operations</p>
+        <h2>System Status</h2>
+      </div>
+    </div>
+
+    <div class="connection-list">
+      <div>
+        <span>RealtimeSTT Service</span>
+        <strong class="status-badge status-draft" id="realtimeServiceStatus">Checking</strong>
+      </div>
+      <div>
+        <span>AI Service</span>
+        <strong class="status-badge status-draft" id="aiServiceStatus">Checking</strong>
+      </div>
+      <div>
+        <span>Database</span>
+        <strong class="status-badge status-draft" id="databaseStatus">Checking</strong>
+      </div>
+    </div>
+
+    <label class="manual-transcript">
+      <span>Manual Transcript Input</span>
+      <textarea class="form-control" id="manualTranscriptInput" rows="10" placeholder="Paste transcript text here if the realtime transcription service is unavailable."></textarea>
+    </label>
+  </aside>
+</section>

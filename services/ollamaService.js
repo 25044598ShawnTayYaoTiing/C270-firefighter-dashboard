@@ -1,0 +1,165 @@
+require('dotenv').config();
+
+const OLLAMA_HOST = (process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:1.5b';
+
+async function requestWithTimeout(url, options = {}, timeoutMs = 1500) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function callOllama(messages) {
+  // The backend is the only place that talks to Ollama; browser code calls Express.
+  const response = await requestWithTimeout(`${OLLAMA_HOST}/api/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      stream: false,
+      messages,
+      options: {
+        temperature: 0.1
+      }
+    })
+  }, 30000);
+
+  if (!response.ok) {
+    throw new Error(`Ollama returned HTTP ${response.status}.`);
+  }
+
+  const data = await response.json();
+  const content = data && data.message && data.message.content;
+
+  if (!content) {
+    throw new Error('Ollama returned an empty response.');
+  }
+
+  return content.trim();
+}
+
+async function checkHealth() {
+  try {
+    const response = await requestWithTimeout(`${OLLAMA_HOST}/api/tags`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    return {
+      available: response.ok
+    };
+  } catch (error) {
+    return {
+      available: false
+    };
+  }
+}
+
+function stripMarkdownFence(value) {
+  return value
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/i, '')
+    .trim();
+}
+
+function parseJsonObject(value) {
+  const unfenced = stripMarkdownFence(value);
+  const start = unfenced.indexOf('{');
+  const end = unfenced.lastIndexOf('}');
+
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error('Ollama did not return a JSON object.');
+  }
+
+  return JSON.parse(unfenced.slice(start, end + 1));
+}
+
+function normalizeReport(report) {
+  const fields = [
+    'incident_type',
+    'location',
+    'incident_datetime',
+    'incident_summary',
+    'hazards',
+    'injured_or_trapped_persons',
+    'response_status',
+    'missing_information',
+    'officer_notes'
+  ];
+
+  return fields.reduce((normalized, field) => {
+    const value = report[field];
+    normalized[field] = typeof value === 'string' ? value.trim() : value ? String(value) : '';
+    return normalized;
+  }, {
+    response_status: 'Pending Review'
+  });
+}
+
+exports.cleanTranscript = async (transcript) => {
+  return callOllama([
+    {
+      role: 'system',
+      content: [
+        'You clean emergency call transcripts for firefighter incident reporting.',
+        'Correct spelling mistakes and improve punctuation/readability.',
+        'Keep the meaning exactly the same.',
+        'Do not invent any new location, injury, hazard, incident, time, urgency, or person details.',
+        'If a phrase is unclear, keep it and mark it as [unclear: original phrase].',
+        'Return only the cleaned transcript text.'
+      ].join(' ')
+    },
+    {
+      role: 'user',
+      content: `Clean this transcript:\n\n${transcript}`
+    }
+  ]);
+};
+
+exports.generateReport = async (transcript) => {
+  const response = await callOllama([
+    {
+      role: 'system',
+      content: [
+        'You generate concise firefighter incident report drafts from transcripts.',
+        'Use only details found in the transcript.',
+        'Do not invent missing details.',
+        'Put unclear or missing details into missing_information.',
+        'Default response_status to "Pending Review".',
+        'Return valid JSON only, with no markdown.',
+        'incident_datetime must be YYYY-MM-DDTHH:mm when known, otherwise an empty string.'
+      ].join(' ')
+    },
+    {
+      role: 'user',
+      content: [
+        'Create JSON with exactly these keys:',
+        'incident_type, location, incident_datetime, incident_summary, hazards, injured_or_trapped_persons, response_status, missing_information, officer_notes.',
+        '',
+        'Transcript:',
+        transcript
+      ].join('\n')
+    }
+  ]);
+
+  return normalizeReport(parseJsonObject(response));
+};
+
+exports.getConfig = () => ({
+  host: OLLAMA_HOST,
+  model: OLLAMA_MODEL
+});
+
+exports.checkHealth = checkHealth;
