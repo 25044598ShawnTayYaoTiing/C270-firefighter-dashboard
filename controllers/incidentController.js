@@ -45,7 +45,9 @@ function readIncidentForm(body) {
     injuredPersons: body.injuredPersons ? body.injuredPersons.trim() : '',
     missingInfo: body.missingInfo ? body.missingInfo.trim() : '',
     officerNotes: body.officerNotes ? body.officerNotes.trim() : '',
-    transcript: body.transcript ? body.transcript.trim() : ''
+    transcript: body.transcript ? body.transcript.trim() : '',
+    latitude: body.latitude || '',
+    longitude: body.longitude || ''
   };
 }
 
@@ -75,21 +77,30 @@ exports.createIncident = async (req, res, next) => {
 
 exports.showIncidents = async (req, res, next) => {
   try {
-    const selectedStatus = req.query.status || 'All';
+    const selectedStatusGroup = req.query.statusGroup || '';
+    const selectedStatus = selectedStatusGroup === 'completed'
+      ? 'Completed'
+      : req.query.status || 'All';
     const searchTerm = req.query.search ? req.query.search.trim() : '';
     const allReports = await getMappedIncidents();
     const incidents = await incidentModel.getAllIncidents({
-      status: selectedStatus,
+      status: selectedStatusGroup ? 'All' : selectedStatus,
+      statusGroup: selectedStatusGroup,
       search: searchTerm
     });
     const reports = incidents.map(mapIncident);
 
     renderPage(res, 'incidents', {
       pageTitle: selectedStatus === 'All' ? 'Incident Reports' : `${selectedStatus} Reports`,
-      activePage: selectedStatus === 'All' ? 'incidents' : statusKey(selectedStatus),
+      activePage: selectedStatusGroup === 'completed'
+        ? 'completed'
+        : selectedStatus === 'All'
+          ? 'incidents'
+          : statusKey(selectedStatus),
       reports,
       allReports,
       selectedStatus,
+      selectedStatusGroup,
       searchTerm,
       emptyMessage: searchTerm
         ? 'No matching incident reports found.'
@@ -104,10 +115,12 @@ exports.showIncidents = async (req, res, next) => {
 
 exports.getIncidentsApi = async (req, res, next) => {
   try {
-    const selectedStatus = req.query.status || 'All';
+    const selectedStatusGroup = req.query.statusGroup || '';
+    const selectedStatus = selectedStatusGroup ? 'All' : req.query.status || 'All';
     const searchTerm = req.query.search ? req.query.search.trim() : '';
     const incidents = await incidentModel.getAllIncidents({
       status: selectedStatus,
+      statusGroup: selectedStatusGroup,
       search: searchTerm
     });
 

@@ -290,7 +290,7 @@ exports.showPendingReview = (req, res) => {
 };
 
 exports.showCompletedReports = (req, res) => {
-  res.redirect('/incidents?status=Completed');
+  res.redirect('/incidents?statusGroup=completed');
 };
 
 exports.showEscalatedIncidents = (req, res) => {

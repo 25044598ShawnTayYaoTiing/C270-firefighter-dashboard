@@ -11,6 +11,9 @@
   </div>
 
   <form class="toolbar incident-search-toolbar" action="/incidents" method="GET">
+    <% if (selectedStatusGroup) { %>
+      <input type="hidden" name="statusGroup" value="<%= selectedStatusGroup %>">
+    <% } %>
     <label>
       <span>Status</span>
       <select class="form-select" id="statusFilter" name="status">

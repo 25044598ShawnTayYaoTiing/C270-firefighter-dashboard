@@ -627,6 +627,10 @@ a {
   margin-top: 16px;
 }
 
+.unmapped-list[hidden] {
+  display: none;
+}
+
 .unmapped-list a {
   display: flex;
   align-items: center;

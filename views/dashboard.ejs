@@ -74,23 +74,21 @@
       <div class="incident-map" id="incidentMap"></div>
       <script type="application/json" id="incidentMapData"><%- incidentMapJson %></script>
 
-      <% if (incidentMapData.unmapped.length > 0) { %>
-        <div class="unmapped-list">
-          <p class="eyebrow">Unmapped Incidents</p>
-          <% incidentMapData.unmapped.forEach((incident) => { %>
-            <a href="<%= incident.url %>">
-              <span>
-                <strong><%= incident.id %></strong>
-                <small><%= incident.type %> - <%= incident.location %></small>
-                <% if (incident.reason) { %>
-                  <small><%= incident.reason %></small>
-                <% } %>
-              </span>
-              <span class="status-badge status-<%= statusKey(incident.status) %>"><%= incident.status %></span>
-            </a>
-          <% }) %>
-        </div>
-      <% } %>
+      <% const unmappedIncidents = incidentMapData && Array.isArray(incidentMapData.unmapped) ? incidentMapData.unmapped : []; %>
+      <div class="unmapped-list" id="unmappedIncidentList" <%= unmappedIncidents.length > 0 ? '' : 'hidden' %>>
+        <p class="eyebrow">Unmapped Incidents</p>
+        <% unmappedIncidents.forEach((incident) => { %>
+          <a href="<%= incident.url || '#' %>" data-incident-id="<%= incident.id || incident.incident_id || 'Not specified' %>">
+            <span>
+              <strong><%= incident.id || incident.incident_id || 'Not specified' %></strong>
+              <small>Type: <%= incident.type || incident.incident_type || 'Not specified' %></small>
+              <small>Location: <%= incident.location || 'Not specified' %></small>
+              <small>Reason: <%= incident.reason || 'Missing coordinates or location not mapped.' %></small>
+            </span>
+            <span class="status-badge status-<%= statusKey(incident.status || incident.response_status) %>"><%= incident.status || incident.response_status || 'Not specified' %></span>
+          </a>
+        <% }) %>
+      </div>
     </article>
 
     <article class="panel">

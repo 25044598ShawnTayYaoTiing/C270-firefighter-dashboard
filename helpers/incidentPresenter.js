@@ -1,4 +1,13 @@
 const ollamaService = require('../services/ollamaService');
+const {
+  LOCATION_COORDINATES,
+  getAreaCoordinates,
+  getDatabaseCoordinates,
+  getIncidentMarkerColor,
+  resolveIncidentCoordinates,
+  shouldShowOnLiveMap,
+  toNullableNumber
+} = require('./locationResolver');
 
 const REQUIRED_FIELDS = [
   { key: 'location', label: 'Incident Location' },
@@ -10,28 +19,8 @@ const REQUIRED_FIELDS = [
   { key: 'injured', label: 'Injured or Trapped Persons' }
 ];
 
-const SINGAPORE_BOUNDS = {
-  minLat: 1.15,
-  maxLat: 1.50,
-  minLng: 103.55,
-  maxLng: 104.15
-};
-
 const AI_LOCATION_TIMEOUT_MS = 2000;
 const MAX_AI_LOCATION_LOOKUPS = 3;
-
-const LOCATION_COORDINATES = [
-  { match: 'jurong west', label: 'Jurong West', lat: 1.3404, lng: 103.7090 },
-  { match: 'bedok', label: 'Bedok', lat: 1.3236, lng: 103.9273 },
-  { match: 'tampines', label: 'Tampines', lat: 1.3496, lng: 103.9568 },
-  { match: 'woodlands', label: 'Woodlands', lat: 1.4360, lng: 103.7860 },
-  { match: 'yishun', label: 'Yishun', lat: 1.4294, lng: 103.8354 },
-  { match: 'ang mo kio', label: 'Ang Mo Kio', lat: 1.3691, lng: 103.8454 },
-  { match: 'toa payoh', label: 'Toa Payoh', lat: 1.3343, lng: 103.8563 },
-  { match: 'bukit batok', label: 'Bukit Batok', lat: 1.3496, lng: 103.7499 },
-  { match: 'hougang', label: 'Hougang', lat: 1.3612, lng: 103.8863 },
-  { match: 'clementi', label: 'Clementi', lat: 1.3162, lng: 103.7649 }
-];
 
 function hasValue(value) {
   return value !== null && value !== undefined && String(value).trim() !== '';
@@ -85,20 +74,6 @@ function calculateCompletion(values) {
   };
 }
 
-function toNullableNumber(value) {
-  if (!hasValue(value)) return null;
-
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
-
-function isSingaporeCoordinate(latitude, longitude) {
-  return latitude >= SINGAPORE_BOUNDS.minLat
-    && latitude <= SINGAPORE_BOUNDS.maxLat
-    && longitude >= SINGAPORE_BOUNDS.minLng
-    && longitude <= SINGAPORE_BOUNDS.maxLng;
-}
-
 function mapIncident(row) {
   const incidentId = row.incident_id || '';
   const incidentType = row.incident_type || 'Unspecified';
@@ -145,13 +120,6 @@ function getTranscriptText(report) {
     : report.transcript || '';
 }
 
-function findAreaMatch(value) {
-  const text = String(value || '').toLowerCase();
-  if (!text) return null;
-
-  return LOCATION_COORDINATES.find((area) => text.includes(area.match)) || null;
-}
-
 function getReportLocationText(report) {
   return [
     report.location,
@@ -164,40 +132,8 @@ function areaAppearsInReport(report, areaLabel) {
   const area = LOCATION_COORDINATES.find((item) => item.label === areaLabel);
 
   return area
-    ? getReportLocationText(report).includes(area.match)
+    ? area.matches.some((match) => getReportLocationText(report).includes(match))
     : false;
-}
-
-function getDatabaseCoordinates(report) {
-  const latitude = toNullableNumber(report.latitude);
-  const longitude = toNullableNumber(report.longitude);
-
-  if (latitude === null || longitude === null) return null;
-
-  if (!isSingaporeCoordinate(latitude, longitude)) {
-    return {
-      invalidReason: 'Stored coordinates are outside supported Singapore map bounds.'
-    };
-  }
-
-  return {
-    lat: latitude,
-    lng: longitude,
-    source: 'database'
-  };
-}
-
-function getAreaCoordinates(value, source) {
-  const match = findAreaMatch(value);
-
-  return match
-    ? {
-        lat: match.lat,
-        lng: match.lng,
-        area: match.label,
-        source
-      }
-    : null;
 }
 
 function getMapIncidentSnapshot(report) {
@@ -230,33 +166,20 @@ async function getAiLocation(report, aiBudget) {
 }
 
 async function resolveIncidentLocation(report, aiBudget) {
-  const databaseCoordinates = getDatabaseCoordinates(report);
+  const databaseCoordinates = getDatabaseCoordinates(report.latitude, report.longitude);
   const invalidDatabaseReason = databaseCoordinates && databaseCoordinates.invalidReason;
+  const directCoordinates = resolveIncidentCoordinates({
+    latitude: report.latitude,
+    longitude: report.longitude,
+    location: report.location,
+    summary: report.summary,
+    transcript: getTranscriptText(report)
+  });
 
-  if (databaseCoordinates && !invalidDatabaseReason) {
+  if (directCoordinates) {
     return {
       mapped: true,
-      coordinates: databaseCoordinates,
-      cleanedLocation: report.location,
-      aiLocation: null
-    };
-  }
-
-  const locationCoordinates = getAreaCoordinates(report.location, 'location-keyword');
-  if (locationCoordinates) {
-    return {
-      mapped: true,
-      coordinates: locationCoordinates,
-      cleanedLocation: report.location,
-      aiLocation: null
-    };
-  }
-
-  const transcriptCoordinates = getAreaCoordinates(getTranscriptText(report), 'transcript-keyword');
-  if (transcriptCoordinates) {
-    return {
-      mapped: true,
-      coordinates: transcriptCoordinates,
+      coordinates: directCoordinates,
       cleanedLocation: report.location,
       aiLocation: null
     };
@@ -282,7 +205,7 @@ async function resolveIncidentLocation(report, aiBudget) {
     mapped: false,
     reason: invalidDatabaseReason
       || (aiLocation && aiLocation.missing_location_details)
-      || 'Location needs manual verification before it can be mapped.',
+      || 'Missing coordinates or location not mapped.',
     cleanedLocation: aiLocation && aiLocation.cleaned_location
       ? aiLocation.cleaned_location
       : report.location,
@@ -293,14 +216,15 @@ async function resolveIncidentLocation(report, aiBudget) {
 async function buildMapData(reports) {
   const markers = [];
   const unmapped = [];
-  const incidents = reports.map(getMapIncidentSnapshot);
+  const liveReports = reports.filter((report) => shouldShowOnLiveMap(report.status || report.response_status));
+  const incidents = liveReports.map(getMapIncidentSnapshot);
   const aiHealth = await ollamaService.checkHealth().catch(() => ({ available: false }));
   const aiBudget = {
     enabled: aiHealth.available,
     remaining: MAX_AI_LOCATION_LOOKUPS
   };
 
-  for (const report of reports) {
+  for (const report of liveReports) {
     const incident = getMapIncidentSnapshot(report);
     const resolution = await resolveIncidentLocation(report, aiBudget);
     const common = {
@@ -311,7 +235,8 @@ async function buildMapData(reports) {
       url: `/incidents/${report.id}`,
       cleanedLocation: resolution.cleanedLocation || report.location || '',
       aiConfidence: resolution.aiLocation ? resolution.aiLocation.confidence : '',
-      locationSource: resolution.coordinates ? resolution.coordinates.source : ''
+      locationSource: resolution.coordinates ? resolution.coordinates.source : '',
+      markerColor: getIncidentMarkerColor(report.status)
     };
 
     if (!resolution.mapped) {
