@@ -1,8 +1,10 @@
 const db = require('../config/db');
 const {
-  resolveIncidentCoordinates,
   toNullableNumber
 } = require('../helpers/locationResolver');
+const {
+  resolveIncidentCoordinates
+} = require('../helpers/geocodingService');
 
 let coordinateColumnsPromise;
 
@@ -38,7 +40,7 @@ function hasCoordinateInput(incident) {
     && toNullableNumber(incident.longitude) !== null;
 }
 
-function resolveFormCoordinates(incident, existingIncident = null) {
+async function resolveFormCoordinates(incident, existingIncident = null) {
   const locationChanged = existingIncident
     ? normalizeText(existingIncident.location) !== normalizeText(incident.incidentLocation)
     : false;
@@ -47,7 +49,7 @@ function resolveFormCoordinates(incident, existingIncident = null) {
     && !hasCoordinateInput(incident);
 
   return {
-    coordinates: resolveIncidentCoordinates({
+    coordinates: await resolveIncidentCoordinates({
       latitude: shouldPreferExistingCoordinates ? existingIncident.latitude : incident.latitude,
       longitude: shouldPreferExistingCoordinates ? existingIncident.longitude : incident.longitude,
       location: incident.incidentLocation,
@@ -155,7 +157,7 @@ exports.createIncident = async (incident) => {
   ];
 
   if (hasCoordinates) {
-    const { coordinates } = resolveFormCoordinates(incident);
+    const { coordinates } = await resolveFormCoordinates(incident);
 
     columns.push('latitude', 'longitude');
     values.push(
@@ -202,7 +204,7 @@ exports.updateIncident = async (incidentId, incident) => {
 
   if (hasCoordinates) {
     const existingIncident = await exports.getIncidentByIncidentId(incidentId);
-    const { coordinates, locationChanged } = resolveFormCoordinates(incident, existingIncident);
+    const { coordinates, locationChanged } = await resolveFormCoordinates(incident, existingIncident);
 
     if (coordinates || locationChanged) {
       setColumns.push('latitude = ?', 'longitude = ?');

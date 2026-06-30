@@ -50,12 +50,12 @@ document.addEventListener('DOMContentLoaded', () => {
   markerGroup.clearLayers();
 
   markers
-    .filter((incident) => shouldShowOnLiveMap(incident.response_status || incident.status))
+    .filter(shouldShowOnLiveMap)
     .forEach((incident) => {
-      const latitude = Number(incident.latitude !== undefined ? incident.latitude : incident.lat);
-      const longitude = Number(incident.longitude !== undefined ? incident.longitude : incident.lng);
+      const latitude = Number(incident.latitude);
+      const longitude = Number(incident.longitude);
 
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !isSingaporeCoordinate(latitude, longitude)) {
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
         invalidMarkers.push({
           ...incident,
           reason: 'Missing coordinates or location not mapped.'
@@ -76,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
   invalidMarkers
-    .filter((incident) => shouldShowOnLiveMap(incident.response_status || incident.status))
+    .filter((incident) => !isCompletedLikeStatus(incident.response_status || incident.status))
     .forEach(appendUnmappedIncident);
 
   if (markerGroup.getLayers().length === 0) {
@@ -113,8 +113,8 @@ function showEmptyMapState(mapElement, incidentCount) {
   const emptyState = document.createElement('div');
   emptyState.className = 'map-empty-state';
   emptyState.textContent = incidentCount > 0
-    ? 'Active incident locations need verification before they can be mapped.'
-    : 'No active incident locations yet.';
+    ? 'No active incidents with mapped locations.'
+    : 'No active incidents with mapped locations.';
   mapElement.appendChild(emptyState);
 }
 
@@ -174,15 +174,24 @@ function getReportUrl(incident) {
   return incidentId ? `/incidents/${encodeURIComponent(incidentId)}` : '#';
 }
 
-function shouldShowOnLiveMap(status) {
+function isCompletedLikeStatus(status) {
   const value = String(status || '').toLowerCase();
 
-  return !(
+  return (
     value.includes('completed')
     || value.includes('reviewed')
     || value.includes('closed')
     || value.includes('resolved')
   );
+}
+
+function shouldShowOnLiveMap(incident) {
+  const latitude = Number(incident && incident.latitude);
+  const longitude = Number(incident && incident.longitude);
+
+  return !isCompletedLikeStatus(incident && incident.response_status)
+    && Number.isFinite(latitude)
+    && Number.isFinite(longitude);
 }
 
 function getIncidentMarkerColor(status) {
@@ -215,13 +224,6 @@ function getIncidentMarkerColor(status) {
   }
 
   return '#0d6efd';
-}
-
-function isSingaporeCoordinate(latitude, longitude) {
-  return latitude >= 1.15
-    && latitude <= 1.50
-    && longitude >= 103.55
-    && longitude <= 104.15;
 }
 
 function statusKey(status) {

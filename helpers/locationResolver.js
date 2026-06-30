@@ -6,6 +6,9 @@ const SINGAPORE_BOUNDS = {
 };
 
 const LOCATION_COORDINATES = [
+  { matches: ['beach station'], label: 'Sentosa Beach Station', lat: 1.2514, lng: 103.8179 },
+  { matches: ['siloso beach walk', 'siloso beach'], label: 'Siloso Beach', lat: 1.2565, lng: 103.8121 },
+  { matches: ['sentosa'], label: 'Sentosa', lat: 1.2494, lng: 103.8303 },
   { matches: ['jurong west'], label: 'Jurong West', lat: 1.3404, lng: 103.7090 },
   { matches: ['bedok'], label: 'Bedok', lat: 1.3236, lng: 103.9273 },
   { matches: ['tampines'], label: 'Tampines', lat: 1.3496, lng: 103.9568 },
@@ -49,7 +52,11 @@ function isSingaporeCoordinate(latitude, longitude) {
 }
 
 function normalizeText(value) {
-  return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[#,/\\-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function findAreaMatch(value) {
@@ -80,12 +87,6 @@ function getDatabaseCoordinates(latitudeValue, longitudeValue) {
 
   if (latitude === null || longitude === null) return null;
 
-  if (!isSingaporeCoordinate(latitude, longitude)) {
-    return {
-      invalidReason: 'Stored coordinates are outside supported Singapore map bounds.'
-    };
-  }
-
   return {
     lat: latitude,
     lng: longitude,
@@ -106,15 +107,28 @@ function resolveIncidentCoordinates(incident) {
     || null;
 }
 
-function shouldShowOnLiveMap(status) {
+function isCompletedLikeStatus(status) {
   const value = String(status || '').toLowerCase();
 
-  return !(
+  return (
     value.includes('completed')
     || value.includes('reviewed')
     || value.includes('closed')
     || value.includes('resolved')
   );
+}
+
+function hasValidCoordinates(incident) {
+  const latitude = Number(incident && incident.latitude);
+  const longitude = Number(incident && incident.longitude);
+
+  return Number.isFinite(latitude)
+    && Number.isFinite(longitude);
+}
+
+function shouldShowOnLiveMap(incident) {
+  return !isCompletedLikeStatus(incident && incident.response_status)
+    && hasValidCoordinates(incident);
 }
 
 function getIncidentMarkerColor(status) {
@@ -155,6 +169,8 @@ module.exports = {
   getAreaCoordinates,
   getDatabaseCoordinates,
   getIncidentMarkerColor,
+  hasValidCoordinates,
+  isCompletedLikeStatus,
   isSingaporeCoordinate,
   resolveIncidentCoordinates,
   shouldShowOnLiveMap,

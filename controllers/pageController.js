@@ -179,6 +179,45 @@ async function getReports() {
   return incidents.map(mapIncident);
 }
 
+function getMapPayloadSummary(incidentMapData) {
+  const markers = Array.isArray(incidentMapData.markers) ? incidentMapData.markers : [];
+  const unmapped = Array.isArray(incidentMapData.unmapped) ? incidentMapData.unmapped : [];
+  const incidents = Array.isArray(incidentMapData.incidents) ? incidentMapData.incidents : [];
+
+  return {
+    totalIncidents: incidents.length,
+    liveMappedIncidents: markers.length,
+    unmappedIncidents: unmapped.length,
+    completedHidden: incidentMapData.completedHidden || 0,
+    mapped: markers.map((incident) => ({
+      incident_id: incident.incident_id,
+      location: incident.location,
+      response_status: incident.response_status,
+      latitude: incident.latitude,
+      longitude: incident.longitude
+    })),
+    unmapped: unmapped.map((incident) => ({
+      incident_id: incident.incident_id,
+      location: incident.location,
+      response_status: incident.response_status,
+      latitude: incident.latitude,
+      longitude: incident.longitude,
+      reason: incident.reason
+    }))
+  };
+}
+
+function logMapPayloadDebug(incidentMapData) {
+  if (String(process.env.GEOCODING_DEBUG || '').toLowerCase() !== 'true') return;
+
+  const summary = getMapPayloadSummary(incidentMapData);
+  console.log('[MapPayload] total incidents:', summary.totalIncidents);
+  console.log('[MapPayload] live mapped incidents:', summary.liveMappedIncidents);
+  console.log('[MapPayload] unmapped incidents:', summary.unmappedIncidents);
+  console.log('[MapPayload] completed hidden:', summary.completedHidden);
+  console.log('[MapPayload] sample mapped incident:', summary.mapped[0] || null);
+}
+
 exports.showDashboard = async (req, res, next) => {
   try {
     const reports = await getReports();
@@ -190,6 +229,7 @@ exports.showDashboard = async (req, res, next) => {
     const typeBreakdown = buildBreakdown(reports, 'type', 5);
     const locations = buildBreakdown(reports, 'location', 4);
     const incidentMapData = await buildMapData(reports);
+    logMapPayloadDebug(incidentMapData);
 
     const summaryCards = [
       { label: 'Total Incident Reports', value: totalReports, subtext: 'Current incident log', icon: 'bi-file-earmark-text', accent: 'red' },
@@ -213,6 +253,23 @@ exports.showDashboard = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+exports.showDevMapPayload = async (req, res, next) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({
+      error: 'Not found'
+    });
+  }
+
+  try {
+    const reports = await getReports();
+    const incidentMapData = await buildMapData(reports);
+
+    return res.json(getMapPayloadSummary(incidentMapData));
+  } catch (error) {
+    return next(error);
   }
 };
 

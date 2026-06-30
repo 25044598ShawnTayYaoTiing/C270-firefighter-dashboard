@@ -6,6 +6,7 @@ const router = express.Router();
 router.get('/', pageController.showDashboard);
 router.get('/dashboard', pageController.showDashboard);
 router.get('/analytics', pageController.showAnalytics);
+router.get('/dev/map-payload', pageController.showDevMapPayload);
 router.get('/transcription', pageController.showTranscription);
 router.get('/transcription/health', pageController.checkTranscriptionHealth);
 router.get('/system/status', pageController.checkSystemStatus);

@@ -1,10 +1,8 @@
-const ollamaService = require('../services/ollamaService');
 const {
-  LOCATION_COORDINATES,
-  getAreaCoordinates,
   getDatabaseCoordinates,
   getIncidentMarkerColor,
-  resolveIncidentCoordinates,
+  hasValidCoordinates,
+  isCompletedLikeStatus,
   shouldShowOnLiveMap,
   toNullableNumber
 } = require('./locationResolver');
@@ -18,9 +16,6 @@ const REQUIRED_FIELDS = [
   { key: 'hazards', label: 'Hazards' },
   { key: 'injured', label: 'Injured or Trapped Persons' }
 ];
-
-const AI_LOCATION_TIMEOUT_MS = 2000;
-const MAX_AI_LOCATION_LOOKUPS = 3;
 
 function hasValue(value) {
   return value !== null && value !== undefined && String(value).trim() !== '';
@@ -90,6 +85,8 @@ function mapIncident(row) {
 
   return {
     id: incidentId,
+    database_id: row.id || null,
+    databaseId: row.id || null,
     incident_id: incidentId,
     type: incidentType,
     incident_type: incidentType,
@@ -103,6 +100,7 @@ function mapIncident(row) {
     dateInput: toDateInput(row.incident_datetime),
     responseTime: 'Not recorded',
     summary: row.incident_summary || '',
+    incident_summary: row.incident_summary || '',
     hazards: row.hazards || 'None.',
     injured: row.injured_or_trapped_persons || 'No injured or trapped persons reported.',
     missingInfo: row.missing_information || 'None.',
@@ -120,147 +118,75 @@ function getTranscriptText(report) {
     : report.transcript || '';
 }
 
-function getReportLocationText(report) {
-  return [
-    report.location,
-    report.summary,
-    getTranscriptText(report)
-  ].filter(Boolean).join(' ').toLowerCase();
-}
-
-function areaAppearsInReport(report, areaLabel) {
-  const area = LOCATION_COORDINATES.find((item) => item.label === areaLabel);
-
-  return area
-    ? area.matches.some((match) => getReportLocationText(report).includes(match))
-    : false;
-}
-
 function getMapIncidentSnapshot(report) {
   return {
     id: report.id,
+    database_id: report.database_id || report.databaseId || null,
     incident_id: report.incident_id || report.id,
     incident_type: report.incident_type || report.type,
     location: report.location || '',
     response_status: report.response_status || report.status,
+    incident_summary: report.incident_summary || report.summary || '',
     transcript: getTranscriptText(report),
     latitude: toNullableNumber(report.latitude),
     longitude: toNullableNumber(report.longitude)
   };
 }
 
-async function getAiLocation(report, aiBudget) {
-  if (!aiBudget.enabled || aiBudget.remaining <= 0) return null;
+function getUnmappedReason(report) {
+  const coordinates = getDatabaseCoordinates(report.latitude, report.longitude);
 
-  aiBudget.remaining -= 1;
+  if (coordinates && coordinates.invalidReason) return coordinates.invalidReason;
 
-  try {
-    return await ollamaService.extractIncidentLocation({
-      location: report.location,
-      summary: report.summary,
-      transcript: getTranscriptText(report)
-    }, AI_LOCATION_TIMEOUT_MS);
-  } catch (error) {
-    return null;
-  }
-}
-
-async function resolveIncidentLocation(report, aiBudget) {
-  const databaseCoordinates = getDatabaseCoordinates(report.latitude, report.longitude);
-  const invalidDatabaseReason = databaseCoordinates && databaseCoordinates.invalidReason;
-  const directCoordinates = resolveIncidentCoordinates({
-    latitude: report.latitude,
-    longitude: report.longitude,
-    location: report.location,
-    summary: report.summary,
-    transcript: getTranscriptText(report)
-  });
-
-  if (directCoordinates) {
-    return {
-      mapped: true,
-      coordinates: directCoordinates,
-      cleanedLocation: report.location,
-      aiLocation: null
-    };
-  }
-
-  const aiLocation = await getAiLocation(report, aiBudget);
-
-  if (aiLocation) {
-    const aiCoordinates = getAreaCoordinates(aiLocation.detected_area, 'ai-detected-area')
-      || getAreaCoordinates(aiLocation.cleaned_location, 'ai-cleaned-location');
-
-    if (aiCoordinates && areaAppearsInReport(report, aiCoordinates.area)) {
-      return {
-        mapped: true,
-        coordinates: aiCoordinates,
-        cleanedLocation: aiLocation.cleaned_location || report.location,
-        aiLocation
-      };
-    }
-  }
-
-  return {
-    mapped: false,
-    reason: invalidDatabaseReason
-      || (aiLocation && aiLocation.missing_location_details)
-      || 'Missing coordinates or location not mapped.',
-    cleanedLocation: aiLocation && aiLocation.cleaned_location
-      ? aiLocation.cleaned_location
-      : report.location,
-    aiLocation
-  };
+  return 'Missing coordinates or location not mapped.';
 }
 
 async function buildMapData(reports) {
   const markers = [];
   const unmapped = [];
-  const liveReports = reports.filter((report) => shouldShowOnLiveMap(report.status || report.response_status));
-  const incidents = liveReports.map(getMapIncidentSnapshot);
-  const aiHealth = await ollamaService.checkHealth().catch(() => ({ available: false }));
-  const aiBudget = {
-    enabled: aiHealth.available,
-    remaining: MAX_AI_LOCATION_LOOKUPS
-  };
+  const incidents = reports.map(getMapIncidentSnapshot);
+  let completedHidden = 0;
 
-  for (const report of liveReports) {
+  for (const report of reports) {
     const incident = getMapIncidentSnapshot(report);
-    const resolution = await resolveIncidentLocation(report, aiBudget);
     const common = {
       ...incident,
       id: report.id,
       type: report.type,
       status: report.status,
       url: `/incidents/${report.id}`,
-      cleanedLocation: resolution.cleanedLocation || report.location || '',
-      aiConfidence: resolution.aiLocation ? resolution.aiLocation.confidence : '',
-      locationSource: resolution.coordinates ? resolution.coordinates.source : '',
+      cleanedLocation: report.location || '',
+      locationSource: hasValidCoordinates(incident) ? 'database' : '',
       markerColor: getIncidentMarkerColor(report.status)
     };
 
-    if (!resolution.mapped) {
+    if (isCompletedLikeStatus(common.response_status)) {
+      completedHidden += 1;
+      continue;
+    }
+
+    if (!shouldShowOnLiveMap(common)) {
       unmapped.push({
         ...common,
-        reason: resolution.reason
+        reason: getUnmappedReason(common)
       });
       continue;
     }
 
     markers.push({
       ...common,
-      lat: resolution.coordinates.lat,
-      lng: resolution.coordinates.lng,
-      mappedArea: resolution.coordinates.area || '',
-      latitude: resolution.coordinates.lat,
-      longitude: resolution.coordinates.lng
+      lat: common.latitude,
+      lng: common.longitude,
+      latitude: common.latitude,
+      longitude: common.longitude
     });
   }
 
   return {
     incidents,
     markers,
-    unmapped
+    unmapped,
+    completedHidden
   };
 }
 
@@ -274,5 +200,6 @@ module.exports = {
   mapIncident,
   buildMapData,
   safeJson,
+  shouldShowOnLiveMap,
   statusKey: (status) => String(status || '').toLowerCase().replace(/\s+/g, '-')
 };
