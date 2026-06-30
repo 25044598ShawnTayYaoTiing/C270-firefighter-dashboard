@@ -1,5 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
   const TRANSCRIPT_STORAGE_KEY = 'firefighter.transcriptDraft';
+  const TRANSCRIPT_DEBUG = false;
   const serviceWsUrl = 'ws://localhost:8010/ws/transcribe';
 
   const startButton = document.getElementById('startTranscriptionButton');
@@ -28,10 +29,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let sourceNode = null;
   let silentGain = null;
   let isStreaming = false;
+  let isConnecting = false;
+  let isCleaning = false;
   let liveTranscript = '';
   let fullTranscript = '';
-
-  checkSystemStatus();
+  let lastCommittedTranscript = '';
 
   startButton.addEventListener('click', startTranscription);
   stopButton.addEventListener('click', stopTranscription);
@@ -39,6 +41,11 @@ document.addEventListener('DOMContentLoaded', () => {
   cleanButton.addEventListener('click', cleanTranscript);
   sendButton.addEventListener('click', sendTranscriptToCreateReport);
   sendCleanButton.addEventListener('click', sendCleanTranscriptToCreateReport);
+  manualTranscriptInput.addEventListener('input', updateTranscriptDisplays);
+  cleanedTranscriptInput.addEventListener('input', updateTranscriptDisplays);
+
+  updateTranscriptDisplays();
+  checkSystemStatus();
 
   async function checkSystemStatus() {
     try {
@@ -63,7 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function startTranscription() {
-    if (isStreaming) return;
+    if (isStreaming || isConnecting) return;
 
     if (!window.WebSocket || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setNotice('warning', 'This browser cannot stream microphone audio. Manual transcript entry is available.');
@@ -71,7 +78,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
-      startButton.disabled = true;
+      isConnecting = true;
+      updateTranscriptDisplays();
       setNotice('checking', 'Connecting to call transcription service.');
       socket = await connectSocket();
       mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -85,13 +93,13 @@ document.addEventListener('DOMContentLoaded', () => {
       startAudioStreaming();
       socket.send(JSON.stringify({ type: 'start' }));
       isStreaming = true;
-      stopButton.disabled = false;
       setNotice('ready', 'Transcription stream is active.');
     } catch (error) {
-      stopTranscription();
+      stopTranscription({ commitLive: false });
       setNotice('warning', 'Call transcription service is currently unavailable. You can still paste a transcript manually.');
     } finally {
-      startButton.disabled = false;
+      isConnecting = false;
+      updateTranscriptDisplays();
     }
   }
 
@@ -112,7 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       nextSocket.addEventListener('message', handleSocketMessage);
       nextSocket.addEventListener('close', () => {
-        if (isStreaming) {
+        if (isStreaming || isConnecting) {
           stopTranscription();
           setNotice('warning', 'Call transcription service is currently unavailable. You can still paste a transcript manually.');
         }
@@ -144,14 +152,20 @@ document.addEventListener('DOMContentLoaded', () => {
     silentGain.connect(audioContext.destination);
   }
 
-  function stopTranscription() {
+  function stopTranscription(options = {}) {
+    const shouldCommitLive = options.commitLive !== false;
+
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: 'stop' }));
     }
 
+    if (shouldCommitLive) {
+      commitLiveTranscript();
+      debugLog('stop transcription commit', fullTranscript);
+    }
+
     isStreaming = false;
-    stopButton.disabled = true;
-    startButton.disabled = false;
+    isConnecting = false;
 
     if (processor) processor.disconnect();
     if (sourceNode) sourceNode.disconnect();
@@ -166,6 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
     audioContext = null;
     mediaStream = null;
     socket = null;
+    updateTranscriptDisplays();
   }
 
   function handleSocketMessage(event) {
@@ -194,25 +209,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (message.type === 'clear') {
       liveTranscript = '';
-      renderTranscript();
+      updateTranscriptDisplays();
       return;
     }
 
-    const text = extractTranscriptText(message);
+    const text = normalizeTranscriptText(extractTranscriptText(message));
     if (!text) return;
 
     if (isFinalTranscriptMessage(message)) {
-      fullTranscript = appendTranscriptSegment(fullTranscript, text);
+      appendToFullTranscript(text);
       liveTranscript = '';
-      renderTranscript();
+      updateTranscriptDisplays();
       return;
     }
 
-    if (isLiveTranscriptMessage(message)) {
-      liveTranscript = normalizeTranscriptText(text);
+    if (isLiveTranscriptMessage(message) || text) {
+      updateLiveTranscript(text);
     }
-
-    renderTranscript();
   }
 
   function extractTranscriptText(message) {
@@ -221,45 +234,164 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function isFinalTranscriptMessage(message) {
     return message.type === 'final'
+      || message.type === 'final_transcript'
       || message.isFinal === true
       || message.is_final === true
       || (message.segment && message.segment.is_final === true);
   }
 
   function isLiveTranscriptMessage(message) {
-    return message.type === 'realtime' || message.type === 'partial';
+    return message.type === 'realtime'
+      || message.type === 'partial'
+      || message.type === 'live'
+      || message.type === 'transcript';
   }
 
-  function renderTranscript() {
+  function updateLiveTranscript(text) {
+    const nextTranscript = normalizeTranscriptText(text);
+    if (!nextTranscript) return;
+
+    liveTranscript = nextTranscript;
+    debugLog('live transcript update', liveTranscript);
+    updateTranscriptDisplays();
+  }
+
+  function appendToFullTranscript(text) {
+    const normalizedSegment = normalizeTranscriptText(text);
+    const existingSegments = getFullTranscriptSegments();
+    const lastSegment = existingSegments[existingSegments.length - 1] || '';
+
+    if (isDuplicateOrPrefix(normalizedSegment, lastSegment || lastCommittedTranscript)) return false;
+
+    if (shouldReplaceLastSegment(normalizedSegment, lastSegment)) {
+      existingSegments[existingSegments.length - 1] = normalizedSegment;
+      setFullTranscriptSegments(existingSegments);
+      lastCommittedTranscript = normalizedSegment;
+      debugLog('final transcript replace', normalizedSegment);
+      return true;
+    }
+
+    existingSegments.push(normalizedSegment);
+    setFullTranscriptSegments(existingSegments);
+    lastCommittedTranscript = normalizedSegment;
+    debugLog('final transcript append', normalizedSegment);
+    return true;
+  }
+
+  function isDuplicateOrPrefix(newText, oldText) {
+    const normalizedNewText = normalizeTranscriptText(newText);
+    const normalizedOldText = normalizeTranscriptText(oldText);
+    const fullText = normalizeTranscriptText(fullTranscript);
+
+    if (!normalizedNewText) return true;
+    if (normalizedOldText && normalizedNewText === normalizedOldText) return true;
+    if (fullText && transcriptEndsWith(fullText, normalizedNewText)) return true;
+
+    return Boolean(
+      normalizedOldText
+      && normalizedOldText.toLowerCase().startsWith(normalizedNewText.toLowerCase())
+    );
+  }
+
+  function shouldReplaceLastSegment(newText, lastSegment) {
+    const normalizedNewText = normalizeTranscriptText(newText);
+    const normalizedLastSegment = normalizeTranscriptText(lastSegment);
+
+    return Boolean(
+      normalizedLastSegment
+      && normalizedNewText.length > normalizedLastSegment.length
+      && (
+        normalizedNewText.toLowerCase().startsWith(normalizedLastSegment.toLowerCase())
+        || isLikelyRevisionOfLastSegment(normalizedNewText, normalizedLastSegment)
+      )
+    );
+  }
+
+  function isLikelyRevisionOfLastSegment(newText, lastSegment) {
+    const newWords = getTranscriptWords(newText);
+    const lastWords = getTranscriptWords(lastSegment);
+
+    if (newWords.length < 4 || lastWords.length < 4 || newWords[0] !== lastWords[0]) return false;
+
+    const newWordSet = new Set(newWords);
+    const sharedWords = lastWords.filter((word) => newWordSet.has(word)).length;
+    const sharedRatio = sharedWords / lastWords.length;
+
+    return sharedRatio >= 0.6;
+  }
+
+  function getTranscriptWords(text) {
+    return normalizeTranscriptText(text)
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean);
+  }
+
+  function transcriptEndsWith(fullText, text) {
+    return normalizeTranscriptText(fullText).toLowerCase().endsWith(normalizeTranscriptText(text).toLowerCase());
+  }
+
+  function getFullTranscriptSegments() {
+    return fullTranscript
+      .split('\n')
+      .map((segment) => normalizeTranscriptText(segment))
+      .filter(Boolean);
+  }
+
+  function setFullTranscriptSegments(segments) {
+    fullTranscript = segments
+      .map((segment) => normalizeTranscriptText(segment))
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  function commitLiveTranscript(options = {}) {
+    const shouldClearLive = options.clearLive !== false;
+    const normalizedLiveTranscript = normalizeTranscriptText(liveTranscript);
+
+    if (normalizedLiveTranscript) {
+      appendToFullTranscript(normalizedLiveTranscript);
+    }
+
+    if (shouldClearLive) {
+      liveTranscript = '';
+    }
+
+    updateTranscriptDisplays();
+    return normalizeTranscriptText(fullTranscript);
+  }
+
+  function updateTranscriptDisplays() {
     renderTranscriptText(fullTranscriptDisplay, fullTranscript, 'No completed transcript yet.');
-    renderTranscriptText(liveTranscriptDisplay, liveTranscript, 'No live speech.');
+    renderTranscriptText(liveTranscriptDisplay, liveTranscript, 'Waiting for speech input...');
+
+    const hasRawTranscript = hasTranscriptForRawActions();
+    const hasCleanTranscript = hasTranscriptForCleanSend();
+
+    startButton.disabled = isConnecting || isStreaming;
+    stopButton.disabled = !isConnecting && !isStreaming;
+    cleanButton.disabled = isCleaning || !hasRawTranscript;
+    sendButton.disabled = !hasRawTranscript;
+    sendCleanButton.disabled = !hasCleanTranscript;
   }
 
   function clearTranscript(sendCommand = true) {
     liveTranscript = '';
     fullTranscript = '';
+    lastCommittedTranscript = '';
     manualTranscriptInput.value = '';
     cleanedTranscriptInput.value = '';
     hideCleanupNotice();
-    renderTranscript();
+    updateTranscriptDisplays();
 
     if (sendCommand && socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: 'clear' }));
     }
   }
 
-  function appendTranscriptSegment(currentTranscript, nextSegment) {
-    const normalizedSegment = normalizeTranscriptText(nextSegment);
-
-    if (!normalizedSegment) return currentTranscript;
-
-    return currentTranscript
-      ? `${currentTranscript}\n${normalizedSegment}`
-      : normalizedSegment;
-  }
-
   function normalizeTranscriptText(text) {
-    return String(text).replace(/\s+/g, ' ').trim();
+    return String(text || '').replace(/\s+/g, ' ').trim();
   }
 
   function renderTranscriptText(element, text, emptyMessage) {
@@ -267,7 +399,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     element.textContent = '';
 
-    if (!text.trim()) {
+    if (!normalizeTranscriptText(text)) {
       const emptyState = document.createElement('p');
       emptyState.className = 'empty-transcript';
       emptyState.textContent = emptyMessage;
@@ -279,14 +411,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function cleanTranscript() {
-    const transcript = getSourceTranscript();
+    const transcript = getTranscriptForCleaning();
 
     if (!transcript) {
-      showCleanupNotice('warning', 'Add a raw or manual transcript before cleaning.');
+      showCleanupNotice('warning', 'Add transcript text before cleaning.');
       return;
     }
 
-    cleanButton.disabled = true;
+    isCleaning = true;
+    updateTranscriptDisplays();
     showCleanupNotice('checking', 'Cleaning transcript for review.');
 
     try {
@@ -310,36 +443,88 @@ document.addEventListener('DOMContentLoaded', () => {
       cleanedTranscriptInput.value = transcript;
       showCleanupNotice('warning', 'Cleanup request failed. You can edit the transcript manually.');
     } finally {
-      cleanButton.disabled = false;
+      isCleaning = false;
+      updateTranscriptDisplays();
     }
   }
 
   function sendTranscriptToCreateReport() {
-    const transcript = getSourceTranscript();
+    const transcriptData = getTranscriptForSending();
 
-    if (!transcript) {
+    if (!transcriptData.text) {
       setNotice('warning', 'Add transcript text before sending it to Create Report.');
       return;
     }
 
-    localStorage.setItem(TRANSCRIPT_STORAGE_KEY, transcript);
+    debugLog('send raw transcript source', transcriptData.source);
+    localStorage.setItem(TRANSCRIPT_STORAGE_KEY, transcriptData.text);
     window.location.href = '/create-report?transcript=sent';
   }
 
   function sendCleanTranscriptToCreateReport() {
-    const transcript = cleanedTranscriptInput.value.trim();
+    const transcriptData = getCleanTranscriptForSending();
 
-    if (!transcript) {
-      showCleanupNotice('warning', 'Clean or manually enter a cleaned transcript before sending.');
+    if (!transcriptData.text) {
+      showCleanupNotice('warning', 'Add transcript text before sending it to Create Report.');
       return;
     }
 
-    localStorage.setItem(TRANSCRIPT_STORAGE_KEY, transcript);
+    localStorage.setItem(TRANSCRIPT_STORAGE_KEY, transcriptData.text);
     window.location.href = '/create-report?transcript=sent';
   }
 
-  function getSourceTranscript() {
-    return (manualTranscriptInput.value || fullTranscript).trim();
+  function getTranscriptForSending() {
+    commitLiveTranscript();
+
+    const full = normalizeTranscriptText(fullTranscript);
+    const live = normalizeTranscriptText(liveTranscript);
+    const manual = normalizeTranscriptText(manualTranscriptInput.value);
+
+    if (full) return { text: full, source: 'fullTranscript' };
+    if (live) return { text: live, source: 'liveTranscript' };
+    if (manual) return { text: manual, source: 'manualTranscriptInput' };
+
+    return { text: '', source: '' };
+  }
+
+  function getTranscriptForCleaning() {
+    commitLiveTranscript();
+
+    const full = normalizeTranscriptText(fullTranscript);
+    const manual = normalizeTranscriptText(manualTranscriptInput.value);
+
+    return full || manual;
+  }
+
+  function getCleanTranscriptForSending() {
+    commitLiveTranscript();
+
+    const cleaned = normalizeTranscriptText(cleanedTranscriptInput.value);
+    const full = normalizeTranscriptText(fullTranscript);
+    const manual = normalizeTranscriptText(manualTranscriptInput.value);
+
+    if (cleaned) return { text: cleaned, source: 'cleanedTranscriptInput' };
+    if (full) return { text: full, source: 'fullTranscript' };
+    if (manual) return { text: manual, source: 'manualTranscriptInput' };
+
+    return { text: '', source: '' };
+  }
+
+  function hasTranscriptForRawActions() {
+    return Boolean(
+      normalizeTranscriptText(fullTranscript)
+      || normalizeTranscriptText(liveTranscript)
+      || normalizeTranscriptText(manualTranscriptInput.value)
+    );
+  }
+
+  function hasTranscriptForCleanSend() {
+    return Boolean(
+      normalizeTranscriptText(cleanedTranscriptInput.value)
+      || normalizeTranscriptText(fullTranscript)
+      || normalizeTranscriptText(liveTranscript)
+      || normalizeTranscriptText(manualTranscriptInput.value)
+    );
   }
 
   function setNotice(state, message) {
@@ -382,6 +567,12 @@ document.addEventListener('DOMContentLoaded', () => {
   function hideCleanupNotice() {
     cleanupNotice.className = 'notice-strip notice-hidden';
     cleanupNotice.querySelector('span').textContent = '';
+  }
+
+  function debugLog(label, value) {
+    if (TRANSCRIPT_DEBUG) {
+      console.log(`[Transcript] ${label}:`, value);
+    }
   }
 });
 

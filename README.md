@@ -10,7 +10,7 @@ Node.js, Express, EJS, Bootstrap, MySQL, and plain JavaScript dashboard for fire
    npm install
    ```
 
-2. Confirm `.env` contains the MySQL settings:
+2. Confirm `.env` contains the MySQL, Ollama, and optional OneMap settings:
 
    ```env
    DB_HOST=localhost
@@ -18,9 +18,17 @@ Node.js, Express, EJS, Bootstrap, MySQL, and plain JavaScript dashboard for fire
    DB_PASSWORD=your_password
    DB_NAME=firefighter_dashboard
    DB_PORT=3306
+
    OLLAMA_HOST=http://localhost:11434
    OLLAMA_MODEL=qwen2.5:1.5b
+
+   ONEMAP_EMAIL=
+   ONEMAP_PASSWORD=
+   ONEMAP_BASE_URL=https://www.onemap.gov.sg
+   GEOCODING_DEBUG=false
    ```
+
+   OneMap credentials are optional. If `ONEMAP_EMAIL` or `ONEMAP_PASSWORD` is blank, report creation/editing and coordinate backfill use the local Singapore fallback resolver.
 
 3. Start the dashboard:
 
@@ -73,9 +81,43 @@ The database does not currently store response time, so the dashboard uses `Repo
 6. Edit a report status, then refresh Pending, Completed, or Escalated pages.
 7. Delete a report, then refresh Dashboard and Analytics to confirm totals decrease.
 
-## Incident Map, Completion, And Search
+## Incident Map, Geocoding, Completion, And Search
 
-The Dashboard includes an Incident Map built with Leaflet.js and OpenStreetMap tiles. It does not require a paid API key. Reports use `latitude` and `longitude` if those columns exist in MySQL. If they do not exist, the app falls back to built-in coordinates for common Singapore areas such as Jurong West, Bedok, Tampines, Woodlands, Yishun, Ang Mo Kio, and Toa Payoh. Reports with unknown locations are shown in an Unmapped Incidents list below the map.
+The Dashboard includes a Live Incident Map built with Leaflet.js and OpenStreetMap tiles. The map uses current MySQL incident rows every time the dashboard loads. It does not use hardcoded sample markers.
+
+Live map rules:
+
+- Incidents appear on the live map only when they have finite `latitude` and `longitude` values.
+- Completed-like statuses are hidden from the live map when `response_status` contains `completed`, `reviewed`, `closed`, or `resolved`.
+- Pending or awaiting incidents are orange.
+- Escalated, urgent, critical, or requires-urgent-review incidents are red.
+- Active, ongoing, dispatched, or in-progress incidents are blue.
+- Live incidents without usable coordinates appear under Unmapped Incidents.
+
+Report creation and edit flows resolve coordinates before saving when the `latitude` and `longitude` columns exist. Coordinate resolution order is:
+
+1. Existing valid latitude and longitude.
+2. OneMap Search API, when `ONEMAP_EMAIL` and `ONEMAP_PASSWORD` are configured.
+3. Local Singapore fallback matching from location, transcript, or summary.
+4. `null` if no match is found.
+
+The local fallback includes common Singapore areas such as Jurong West, Bedok, Tampines, Woodlands, Yishun, Ang Mo Kio, Toa Payoh, Bukit Batok, Sengkang, Sentosa, Siloso Beach, Beach Station, and Orchard.
+
+To backfill old reports that are missing coordinates:
+
+```powershell
+node scripts/backfillIncidentCoordinates.js
+```
+
+The script finds rows where `latitude IS NULL OR longitude IS NULL`, resolves coordinates from location, summary, and transcript, updates MySQL when possible, and prints updated or skipped records.
+
+For backend-only map payload debugging in non-production:
+
+```text
+GET /dev/map-payload
+```
+
+When `GEOCODING_DEBUG=true`, dashboard rendering also logs map payload counts to the Node.js console. No OneMap credentials or tokens are exposed to the browser.
 
 Report completion appears on Create Report, Edit Report, and Report Details. Completion is based on seven required fields:
 
@@ -114,10 +156,11 @@ GET /api/incidents?status=Completed&search=vehicle
 To test:
 
 1. Open `http://localhost:3000/dashboard` and confirm map markers appear.
-2. Search from the topbar or Incident Reports page.
-3. Combine search with the status dropdown.
-4. Open Create Report and clear required fields to see completion drop.
-5. Open an existing report detail page to see saved completion.
+2. Open `http://localhost:3000/dev/map-payload` during development to confirm mapped, unmapped, and completed-hidden counts.
+3. Search from the topbar or Incident Reports page.
+4. Combine search with the status dropdown.
+5. Open Create Report and clear required fields to see completion drop.
+6. Open an existing report detail page to see saved completion.
 
 ## Run RealtimeSTT Separately
 
@@ -167,17 +210,22 @@ RealtimeSTT is a separate Python service. Do not install it as a Node.js package
    http://localhost:8010
    ```
 
-## Real-Time Transcription Flow
+## Live Call Intake Transcript Flow
 
 1. Start RealtimeSTT on `http://localhost:8010`.
 2. Start this dashboard on `http://localhost:3000`.
-3. Open `Real-Time Transcription` from the dashboard sidebar.
+3. Open `Live Call Intake` from the dashboard sidebar.
 4. Click `Start Transcription` and allow microphone access.
 5. The page streams browser microphone audio to `ws://localhost:8010/ws/transcribe`.
-6. Final and realtime transcript messages appear in the transcript display.
-7. If RealtimeSTT is not running, paste text into the manual transcript fallback textarea.
-8. Click `Send Transcript to Create Report`.
-9. The transcript is stored in `localStorage`, then loaded into the Create Report transcript field.
+6. Live Transcript shows the latest realtime or partial speech segment.
+7. Full Transcript stores finalized or explicitly committed speech segments. Partial updates are not appended line-by-line.
+8. Stop Transcription commits the latest Live Transcript once and keeps Full Transcript.
+9. Send Raw Transcript commits the current Live Transcript, then sends Full Transcript to Create Report.
+10. Clean Transcript uses Full Transcript when available, with manual input as fallback.
+11. Send Clean Transcript prefers the cleaned transcript, then Full Transcript, then manual input.
+12. Clear Transcript is the only action that resets live, full, and cleaned transcript state.
+13. If RealtimeSTT is not running, paste text into the manual transcript fallback textarea.
+14. Sent transcripts are stored in `localStorage`, then loaded into the Create Report transcript field.
 
 ## Run Ollama Locally
 
@@ -210,11 +258,11 @@ The dashboard calls Ollama from the Node.js backend. The browser never calls Oll
 ## AI Cleanup And Report Flow
 
 1. Open the dashboard at `http://localhost:3000`.
-2. Open `Real-Time Transcription`.
+2. Open `Live Call Intake`.
 3. Record or paste a raw transcript.
 4. Click `Clean Transcript`.
 5. Review and edit the cleaned transcript.
-6. Click `Send Clean Transcript to Create Report`.
+6. Click `Send Clean Transcript`.
 7. Click `Generate AI Report`.
 8. Review and edit all report fields.
 9. Save the report with the existing MySQL-backed Save Draft or Save Report buttons.
@@ -240,4 +288,5 @@ Both endpoints call Ollama at `OLLAMA_HOST` using `OLLAMA_MODEL`. If Ollama is u
 - MySQL CRUD remains handled by the existing dashboard backend.
 - RealtimeSTT remains a separate local Python/FastAPI service.
 - The dashboard does not fail when RealtimeSTT is unavailable.
-- Ollama is local only; no cloud AI APIs are used.
+- Ollama is local only and is called from the Node.js backend, not browser JavaScript.
+- OneMap geocoding is called from backend code only. OneMap email, password, and access tokens are never sent to EJS or frontend JavaScript.
