@@ -14,7 +14,7 @@ const statuses = ['Draft', 'Pending Review', 'Completed', 'Escalated'];
 function renderPage(res, view, options) {
   res.render('layout', {
     view,
-    appName: 'Firefighter Smart Incident Dashboard',
+    appName: 'Firefighter Incident Command',
     pageTitle: 'Dashboard',
     activePage: 'dashboard',
     statuses,
@@ -50,7 +50,7 @@ function requestTranscriptionHealth() {
     });
 
     request.on('timeout', () => {
-      request.destroy(new Error('RealtimeSTT health check timed out.'));
+      request.destroy(new Error('Transcription health check timed out.'));
     });
 
     request.on('error', (error) => {
@@ -145,7 +145,7 @@ function buildActivityItems(reports) {
     })
     .slice(0, 5)
     .map((report) => ({
-      label: `${report.id} ${report.status.toLowerCase()} - ${report.type}`,
+      label: `${report.id} - ${report.type} (${report.status})`,
       time: report.lastUpdated
     }));
 }
@@ -189,12 +189,12 @@ exports.showDashboard = async (req, res, next) => {
     const reportsThisWeek = getReportsThisWeek(reports);
     const typeBreakdown = buildBreakdown(reports, 'type', 5);
     const locations = buildBreakdown(reports, 'location', 4);
-    const incidentMapData = buildMapData(reports);
+    const incidentMapData = await buildMapData(reports);
 
     const summaryCards = [
-      { label: 'Total Incident Reports', value: totalReports, subtext: 'All incident records', icon: 'bi-file-earmark-text', accent: 'red' },
+      { label: 'Total Incident Reports', value: totalReports, subtext: 'Current incident log', icon: 'bi-file-earmark-text', accent: 'red' },
       { label: 'Pending Review', value: pendingCount, subtext: 'Awaiting officer review', icon: 'bi-hourglass-split', accent: 'orange' },
-      { label: 'Completed Reports', value: completedCount, subtext: 'Reviewed reports', icon: 'bi-check2-circle', accent: 'green' },
+      { label: 'Completed Reports', value: completedCount, subtext: 'Closed by officer review', icon: 'bi-check2-circle', accent: 'green' },
       { label: 'Reports This Week', value: reportsThisWeek, subtext: 'Created this week', icon: 'bi-calendar-week', accent: 'blue' },
       { label: 'Escalated Incidents', value: escalatedCount, subtext: 'Requires urgent review', icon: 'bi-exclamation-triangle', accent: 'red' }
     ];
@@ -255,7 +255,7 @@ exports.showAnalytics = async (req, res, next) => {
 
 exports.showTranscription = (req, res) => {
   renderPage(res, 'transcription', {
-    pageTitle: 'Real-Time Transcription',
+    pageTitle: 'Live Call Intake',
     activePage: 'transcription'
   });
 };
@@ -306,13 +306,13 @@ function showPlaceholder(res, pageTitle, activePage, message) {
 }
 
 exports.showTeamMembers = (req, res) => {
-  showPlaceholder(res, 'Team Members', 'team-members', 'Team member management is planned for a future enhancement.');
+  showPlaceholder(res, 'Team Members', 'team-members', 'Personnel management is not enabled in this deployment.');
 };
 
 exports.showSettings = (req, res) => {
-  showPlaceholder(res, 'Settings', 'settings', 'Operational settings will be added in a future enhancement.');
+  showPlaceholder(res, 'Settings', 'settings', 'Operational settings are managed by the deployment environment.');
 };
 
 exports.showApiKeys = (req, res) => {
-  showPlaceholder(res, 'API Keys', 'api-keys', 'API key management is not required for this local AI setup.');
+  showPlaceholder(res, 'API Keys', 'api-keys', 'Credential management is not enabled in this deployment.');
 };

@@ -1,7 +1,7 @@
 <section class="report-completion" data-report-completion>
   <div class="completion-heading">
     <strong>Report Completion: <span data-completion-percent><%= completion ? completion.percent : 0 %>%</span></strong>
-    <span data-completion-message><%= completion ? completion.message : 'Review required before submission.' %></span>
+    <span data-completion-message><%= completion ? completion.message : 'Critical details still missing.' %></span>
   </div>
   <div class="progress completion-progress">
     <div class="progress-bar" data-completion-bar style="width: <%= completion ? completion.percent : 0 %>%"></div>

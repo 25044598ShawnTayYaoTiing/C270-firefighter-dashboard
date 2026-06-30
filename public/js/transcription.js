@@ -10,7 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const cleanButton = document.getElementById('cleanTranscriptButton');
   const sendButton = document.getElementById('sendTranscriptButton');
   const sendCleanButton = document.getElementById('sendCleanTranscriptButton');
-  const transcriptDisplay = document.getElementById('transcriptDisplay');
+  const fullTranscriptDisplay = document.getElementById('fullTranscriptDisplay');
+  const liveTranscriptDisplay = document.getElementById('liveTranscriptDisplay');
   const manualTranscriptInput = document.getElementById('manualTranscriptInput');
   const cleanedTranscriptInput = document.getElementById('cleanedTranscriptInput');
   const cleanupNotice = document.getElementById('cleanupNotice');
@@ -27,8 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let sourceNode = null;
   let silentGain = null;
   let isStreaming = false;
-  const finalSegments = new Map();
-  const realtimeSegments = new Map();
+  let liveTranscript = '';
+  let fullTranscript = '';
 
   checkSystemStatus();
 
@@ -49,15 +50,15 @@ document.addEventListener('DOMContentLoaded', () => {
       setStatusBadge(databaseStatus, status.database && status.database.connected, 'Connected', 'Error');
 
       if (status.realtimeStt && status.realtimeStt.available) {
-        setNotice('ready', 'Realtime transcription service is online.');
+        setNotice('ready', 'Call transcription service is online.');
       } else {
-        setNotice('warning', 'Realtime transcription service is currently unavailable. You can still paste a transcript manually.');
+        setNotice('warning', 'Call transcription service is currently unavailable. You can still paste a transcript manually.');
       }
     } catch (error) {
       setStatusBadge(realtimeServiceStatus, false, 'Online', 'Offline');
       setStatusBadge(aiServiceStatus, false, 'Online', 'Offline');
       setStatusBadge(databaseStatus, false, 'Connected', 'Error');
-      setNotice('warning', 'Realtime transcription service is currently unavailable. You can still paste a transcript manually.');
+      setNotice('warning', 'Call transcription service is currently unavailable. You can still paste a transcript manually.');
     }
   }
 
@@ -65,13 +66,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isStreaming) return;
 
     if (!window.WebSocket || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setNotice('warning', 'This browser cannot stream microphone audio. Manual transcript fallback is available.');
+      setNotice('warning', 'This browser cannot stream microphone audio. Manual transcript entry is available.');
       return;
     }
 
     try {
       startButton.disabled = true;
-      setNotice('checking', 'Connecting to realtime transcription service.');
+      setNotice('checking', 'Connecting to call transcription service.');
       socket = await connectSocket();
       mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -88,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
       setNotice('ready', 'Transcription stream is active.');
     } catch (error) {
       stopTranscription();
-      setNotice('warning', 'Realtime transcription service is currently unavailable. You can still paste a transcript manually.');
+      setNotice('warning', 'Call transcription service is currently unavailable. You can still paste a transcript manually.');
     } finally {
       startButton.disabled = false;
     }
@@ -99,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const nextSocket = new WebSocket(serviceWsUrl);
       const timeout = window.setTimeout(() => {
         nextSocket.close();
-        reject(new Error('Realtime transcription connection timed out.'));
+        reject(new Error('Call transcription connection timed out.'));
       }, 4000);
 
       nextSocket.binaryType = 'arraybuffer';
@@ -113,13 +114,13 @@ document.addEventListener('DOMContentLoaded', () => {
       nextSocket.addEventListener('close', () => {
         if (isStreaming) {
           stopTranscription();
-          setNotice('warning', 'Realtime transcription service is currently unavailable. You can still paste a transcript manually.');
+          setNotice('warning', 'Call transcription service is currently unavailable. You can still paste a transcript manually.');
         }
       });
 
       nextSocket.addEventListener('error', () => {
         window.clearTimeout(timeout);
-        reject(new Error('Realtime transcription service is currently unavailable.'));
+        reject(new Error('Call transcription service is currently unavailable.'));
       });
     });
   }
@@ -177,35 +178,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (message.type === 'ready' || message.type === 'hello') {
-      setNotice('ready', 'Realtime transcription service is online.');
+      setNotice('ready', 'Call transcription service is online.');
       return;
     }
 
     if (message.type === 'warning') {
-      setNotice('warning', message.message || 'Realtime transcription service reported a warning.');
+      setNotice('warning', message.message || 'Call transcription service reported a warning.');
       return;
     }
 
     if (message.type === 'error') {
-      setNotice('warning', message.message || 'Realtime transcription service reported an error.');
+      setNotice('warning', message.message || 'Call transcription service reported an error.');
       return;
     }
 
     if (message.type === 'clear') {
-      clearTranscript(false);
+      liveTranscript = '';
+      renderTranscript();
       return;
     }
 
     const text = extractTranscriptText(message);
     if (!text) return;
 
-    const segmentId = getSegmentId(message);
+    if (isFinalTranscriptMessage(message)) {
+      fullTranscript = appendTranscriptSegment(fullTranscript, text);
+      liveTranscript = '';
+      renderTranscript();
+      return;
+    }
 
-    if (message.type === 'final') {
-      finalSegments.set(segmentId, text);
-      realtimeSegments.delete(segmentId);
-    } else if (message.type === 'realtime') {
-      realtimeSegments.set(segmentId, text);
+    if (isLiveTranscriptMessage(message)) {
+      liveTranscript = normalizeTranscriptText(text);
     }
 
     renderTranscript();
@@ -215,26 +219,25 @@ document.addEventListener('DOMContentLoaded', () => {
     return message.text || message.transcript || (message.segment && message.segment.text) || '';
   }
 
-  function getSegmentId(message) {
-    return message.segmentId || message.segment_id || (message.segment && message.segment.id) || 'current';
+  function isFinalTranscriptMessage(message) {
+    return message.type === 'final'
+      || message.isFinal === true
+      || message.is_final === true
+      || (message.segment && message.segment.is_final === true);
+  }
+
+  function isLiveTranscriptMessage(message) {
+    return message.type === 'realtime' || message.type === 'partial';
   }
 
   function renderTranscript() {
-    const finalText = Array.from(finalSegments.values()).join(' ').trim();
-    const realtimeText = Array.from(realtimeSegments.values()).join(' ').trim();
-    const combinedText = [finalText, realtimeText].filter(Boolean).join(' ').trim();
-
-    if (!combinedText) {
-      transcriptDisplay.innerHTML = '<p class="empty-transcript">No transcript yet.</p>';
-      return;
-    }
-
-    transcriptDisplay.textContent = combinedText;
+    renderTranscriptText(fullTranscriptDisplay, fullTranscript, 'No completed transcript yet.');
+    renderTranscriptText(liveTranscriptDisplay, liveTranscript, 'No live speech.');
   }
 
   function clearTranscript(sendCommand = true) {
-    finalSegments.clear();
-    realtimeSegments.clear();
+    liveTranscript = '';
+    fullTranscript = '';
     manualTranscriptInput.value = '';
     cleanedTranscriptInput.value = '';
     hideCleanupNotice();
@@ -243,6 +246,36 @@ document.addEventListener('DOMContentLoaded', () => {
     if (sendCommand && socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: 'clear' }));
     }
+  }
+
+  function appendTranscriptSegment(currentTranscript, nextSegment) {
+    const normalizedSegment = normalizeTranscriptText(nextSegment);
+
+    if (!normalizedSegment) return currentTranscript;
+
+    return currentTranscript
+      ? `${currentTranscript}\n${normalizedSegment}`
+      : normalizedSegment;
+  }
+
+  function normalizeTranscriptText(text) {
+    return String(text).replace(/\s+/g, ' ').trim();
+  }
+
+  function renderTranscriptText(element, text, emptyMessage) {
+    if (!element) return;
+
+    element.textContent = '';
+
+    if (!text.trim()) {
+      const emptyState = document.createElement('p');
+      emptyState.className = 'empty-transcript';
+      emptyState.textContent = emptyMessage;
+      element.appendChild(emptyState);
+      return;
+    }
+
+    element.textContent = text;
   }
 
   async function cleanTranscript() {
@@ -306,12 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function getSourceTranscript() {
-    return (manualTranscriptInput.value || getDisplayedTranscript()).trim();
-  }
-
-  function getDisplayedTranscript() {
-    const emptyState = transcriptDisplay.querySelector('.empty-transcript');
-    return emptyState ? '' : transcriptDisplay.textContent;
+    return (manualTranscriptInput.value || fullTranscript).trim();
   }
 
   function setNotice(state, message) {

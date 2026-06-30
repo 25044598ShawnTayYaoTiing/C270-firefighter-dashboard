@@ -211,9 +211,16 @@ a {
 .summary-grid,
 .analytics-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(150px, 1fr));
   gap: 16px;
   margin-bottom: 20px;
+}
+
+.summary-grid {
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+}
+
+.analytics-grid {
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
 }
 
 .summary-card,
@@ -605,6 +612,7 @@ a {
 }
 
 .incident-map {
+  position: relative;
   width: 100%;
   min-height: 360px;
   border: 1px solid var(--border);
@@ -648,6 +656,8 @@ a {
 }
 
 .transcript-display {
+  display: grid;
+  gap: 16px;
   min-height: 300px;
   padding: 16px;
   border: 1px solid var(--border);
@@ -656,6 +666,45 @@ a {
   color: #273241;
   line-height: 1.65;
   white-space: pre-wrap;
+}
+
+.map-empty-state {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  z-index: 500;
+  max-width: calc(100% - 32px);
+  transform: translateX(-50%);
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #384354;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow);
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.transcript-section {
+  display: grid;
+  gap: 8px;
+}
+
+.transcript-section + .transcript-section {
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.transcript-section span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.transcript-text {
+  min-height: 48px;
 }
 
 .empty-transcript {

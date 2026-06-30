@@ -10,11 +10,22 @@
 
     <div class="notice-strip" id="transcriptionNotice">
       <i class="bi bi-info-circle"></i>
-      <span>Checking realtime transcription service.</span>
+      <span>Checking call transcription service.</span>
     </div>
 
     <div class="transcript-display" id="transcriptDisplay" aria-live="polite">
-      <p class="empty-transcript">No transcript yet.</p>
+      <div class="transcript-section">
+        <span>Full Transcript</span>
+        <div class="transcript-text" id="fullTranscriptDisplay">
+          <p class="empty-transcript">No completed transcript yet.</p>
+        </div>
+      </div>
+      <div class="transcript-section">
+        <span>Live Transcript</span>
+        <div class="transcript-text" id="liveTranscriptDisplay">
+          <p class="empty-transcript">No live speech.</p>
+        </div>
+      </div>
     </div>
 
     <label class="cleaned-transcript">
@@ -46,11 +57,11 @@
       </button>
       <button class="ghost-button" type="button" id="sendTranscriptButton">
         <i class="bi bi-send"></i>
-        Send Raw Transcript to Create Report
+        Send Raw Transcript
       </button>
       <button class="primary-button" type="button" id="sendCleanTranscriptButton">
         <i class="bi bi-send-check"></i>
-        Send Clean Transcript to Create Report
+        Send Clean Transcript
       </button>
     </div>
   </article>
@@ -65,11 +76,11 @@
 
     <div class="connection-list">
       <div>
-        <span>RealtimeSTT Service</span>
+        <span>Call Transcription Service</span>
         <strong class="status-badge status-draft" id="realtimeServiceStatus">Checking</strong>
       </div>
       <div>
-        <span>AI Service</span>
+        <span>Report Drafting Service</span>
         <strong class="status-badge status-draft" id="aiServiceStatus">Checking</strong>
       </div>
       <div>
@@ -80,7 +91,7 @@
 
     <label class="manual-transcript">
       <span>Manual Transcript Input</span>
-      <textarea class="form-control" id="manualTranscriptInput" rows="10" placeholder="Paste transcript text here if the realtime transcription service is unavailable."></textarea>
+      <textarea class="form-control" id="manualTranscriptInput" rows="10" placeholder="Paste transcript text here if the call transcription service is unavailable."></textarea>
     </label>
   </aside>
 </section>

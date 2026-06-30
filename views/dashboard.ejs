@@ -82,6 +82,9 @@
               <span>
                 <strong><%= incident.id %></strong>
                 <small><%= incident.type %> - <%= incident.location %></small>
+                <% if (incident.reason) { %>
+                  <small><%= incident.reason %></small>
+                <% } %>
               </span>
               <span class="status-badge status-<%= statusKey(incident.status) %>"><%= incident.status %></span>
             </a>

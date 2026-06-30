@@ -5,6 +5,8 @@ const incidents = [
     incident_id: 'INC-1001',
     incident_type: 'Residential Fire',
     location: 'Jurong West Street 42',
+    latitude: 1.3404,
+    longitude: 103.7090,
     incident_datetime: '2026-06-25 09:20:00',
     response_status: 'Pending Review',
     incident_summary: 'Smoke was reported from a seventh-floor residential unit. Firefighters contained a bedroom fire before it spread to nearby rooms.',
@@ -18,6 +20,8 @@ const incidents = [
     incident_id: 'INC-1002',
     incident_type: 'Kitchen Fire',
     location: 'Bedok North Avenue 3',
+    latitude: 1.3236,
+    longitude: 103.9273,
     incident_datetime: '2026-06-24 18:45:00',
     response_status: 'Completed',
     incident_summary: 'A cooking fire was extinguished in a residential kitchen. The fire was limited to the stove area.',
@@ -31,6 +35,8 @@ const incidents = [
     incident_id: 'INC-1003',
     incident_type: 'Road Traffic Accident',
     location: 'Tampines Avenue 10',
+    latitude: 1.3496,
+    longitude: 103.9568,
     incident_datetime: '2026-06-23 07:30:00',
     response_status: 'Escalated',
     incident_summary: 'Two vehicles were involved in a collision near a junction. One driver required assistance exiting the vehicle.',
@@ -44,6 +50,8 @@ const incidents = [
     incident_id: 'INC-1004',
     incident_type: 'Lift Rescue',
     location: 'Woodlands Drive 16',
+    latitude: 1.4360,
+    longitude: 103.7860,
     incident_datetime: '2026-06-22 21:10:00',
     response_status: 'Draft',
     incident_summary: 'Residents were trapped in a stalled lift between floors. Occupants were guided to remain calm while technician support was arranged.',
@@ -57,6 +65,8 @@ const incidents = [
     incident_id: 'INC-1005',
     incident_type: 'Gas Leak',
     location: 'Yishun Ring Road',
+    latitude: 1.4294,
+    longitude: 103.8354,
     incident_datetime: '2026-06-21 12:05:00',
     response_status: 'Pending Review',
     incident_summary: 'A gas smell was reported near a coffeeshop service area. Surrounding units were checked and the area was ventilated.',
@@ -70,6 +80,8 @@ const incidents = [
     incident_id: 'INC-1006',
     incident_type: 'Electrical Fire',
     location: 'Ang Mo Kio Avenue 5',
+    latitude: 1.3691,
+    longitude: 103.8454,
     incident_datetime: '2026-06-20 15:35:00',
     response_status: 'Completed',
     incident_summary: 'An electrical distribution box emitted sparks and smoke near a void deck. Power isolation was requested before inspection.',
@@ -83,6 +95,8 @@ const incidents = [
     incident_id: 'INC-1007',
     incident_type: 'Rubbish Chute Fire',
     location: 'Toa Payoh Lorong 6',
+    latitude: 1.3343,
+    longitude: 103.8563,
     incident_datetime: '2026-06-19 22:15:00',
     response_status: 'Completed',
     incident_summary: 'A small fire inside a rubbish chute was extinguished. Smoke entered the lift lobby on several floors.',
@@ -109,6 +123,8 @@ const incidents = [
     incident_id: 'INC-1009',
     incident_type: 'Residential Fire',
     location: 'Bukit Batok Street 31',
+    latitude: 1.3496,
+    longitude: 103.7499,
     incident_datetime: '2026-06-17 06:40:00',
     response_status: 'Pending Review',
     incident_summary: 'Smoke was reported from a living room window. Fire damage was limited to furniture near the window.',
@@ -133,37 +149,48 @@ const incidents = [
   }
 ];
 
+async function hasColumn(columnName) {
+  const [rows] = await db.query('SHOW COLUMNS FROM incidents LIKE ?', [columnName]);
+  return rows.length > 0;
+}
+
 async function seed() {
+  const hasLatitude = await hasColumn('latitude');
+  const hasLongitude = await hasColumn('longitude');
+  const hasCoordinates = hasLatitude && hasLongitude;
+  const columns = [
+    'incident_id',
+    'incident_type',
+    'location',
+    'incident_datetime',
+    'incident_summary',
+    'hazards',
+    'injured_or_trapped_persons',
+    'response_status',
+    'missing_information',
+    'officer_notes',
+    'transcript'
+  ];
+  const updateColumns = columns.filter((column) => column !== 'incident_id');
+
+  if (hasCoordinates) {
+    columns.push('latitude', 'longitude');
+    updateColumns.push('latitude', 'longitude');
+  }
+
+  const placeholders = columns.map(() => '?').join(', ');
+  const updates = updateColumns
+    .map((column) => `${column} = VALUES(${column})`)
+    .join(',\n      ');
   const sql = `
-    INSERT INTO incidents (
-      incident_id,
-      incident_type,
-      location,
-      incident_datetime,
-      incident_summary,
-      hazards,
-      injured_or_trapped_persons,
-      response_status,
-      missing_information,
-      officer_notes,
-      transcript
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO incidents (${columns.join(', ')})
+    VALUES (${placeholders})
     ON DUPLICATE KEY UPDATE
-      incident_type = VALUES(incident_type),
-      location = VALUES(location),
-      incident_datetime = VALUES(incident_datetime),
-      incident_summary = VALUES(incident_summary),
-      hazards = VALUES(hazards),
-      injured_or_trapped_persons = VALUES(injured_or_trapped_persons),
-      response_status = VALUES(response_status),
-      missing_information = VALUES(missing_information),
-      officer_notes = VALUES(officer_notes),
-      transcript = VALUES(transcript)
+      ${updates}
   `;
 
   for (const incident of incidents) {
-    await db.query(sql, [
+    const values = [
       incident.incident_id,
       incident.incident_type,
       incident.location,
@@ -175,10 +202,19 @@ async function seed() {
       incident.missing_information,
       incident.officer_notes,
       incident.transcript
-    ]);
+    ];
+
+    if (hasCoordinates) {
+      values.push(incident.latitude || null, incident.longitude || null);
+    }
+
+    await db.query(sql, values);
   }
 
   console.log(`Seeded ${incidents.length} incident reports.`);
+  if (!hasCoordinates) {
+    console.log('Latitude/longitude columns were not found, so seed coordinates were skipped.');
+  }
   await db.end();
 }
 

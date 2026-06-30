@@ -13,7 +13,7 @@
   <aside class="sidebar">
     <a class="brand" href="/dashboard">
       <span class="brand-mark">FD</span>
-      <span class="brand-title">Firefighter Dashboard</span>
+      <span class="brand-title">Incident Command</span>
     </a>
 
     <nav class="sidebar-nav" aria-label="Main navigation">
@@ -28,7 +28,7 @@
       </a>
       <a class="nav-link <%= activePage === 'transcription' ? 'active' : '' %>" href="/transcription">
         <i class="bi bi-mic"></i>
-        Real-Time Transcription
+        Live Call Intake
       </a>
       <a class="nav-link <%= activePage === 'incidents' ? 'active' : '' %>" href="/incidents">
         <i class="bi bi-table"></i>
@@ -74,14 +74,14 @@
       <div class="topbar-actions">
         <form class="search-field" action="/incidents" method="GET" aria-label="Search incident reports">
           <i class="bi bi-search"></i>
-          <input type="search" name="search" placeholder="Search reports, locations, or IDs">
+          <input type="search" name="search" placeholder="Search incidents, locations, or IDs">
         </form>
-        <button class="icon-button" type="button" aria-label="Notifications">
-          <i class="bi bi-bell"></i>
-        </button>
+        <a class="icon-button" href="/escalated-incidents" aria-label="Escalated incidents" title="Escalated incidents">
+          <i class="bi bi-exclamation-triangle"></i>
+        </a>
         <div class="operator">
           <span class="operator-avatar">OP</span>
-          <span>Operator</span>
+          <span>Duty Officer</span>
         </div>
       </div>
     </header>

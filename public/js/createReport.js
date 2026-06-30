@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     generateButton.disabled = true;
-    showNotice('checking', 'Generating report with local Ollama.');
+    showNotice('checking', 'Generating report draft.');
 
     try {
       const response = await fetch('/api/reports/generate', {
@@ -50,13 +50,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (data.success) {
-        showNotice('ready', 'AI report draft generated. Review and edit before saving.');
+        showNotice('ready', 'Report draft generated. Review and edit before saving.');
       } else {
-        showNotice('warning', data.error || 'AI generation failed. A fallback draft was loaded for manual editing.');
+        showNotice('warning', data.error || 'Report drafting service is unavailable. A manual draft was loaded for editing.');
       }
     } catch (error) {
       fillReportForm(buildClientFallbackReport(transcript));
-      showNotice('warning', 'AI generation request failed. A fallback draft was loaded for manual editing.');
+      showNotice('warning', 'Report drafting service is unavailable. A manual draft was loaded for editing.');
     } finally {
       generateButton.disabled = false;
     }
@@ -101,8 +101,8 @@ document.addEventListener('DOMContentLoaded', () => {
       hazards: 'Not identified in transcript.',
       injured_or_trapped_persons: 'Not identified in transcript.',
       response_status: 'Pending Review',
-      missing_information: 'AI report generation was unavailable. Officer should complete missing incident details from the transcript.',
-      officer_notes: 'Fallback draft created in the browser. Review and edit before saving.'
+      missing_information: 'Report drafting service was unavailable. Officer should complete missing incident details from the transcript.',
+      officer_notes: 'Manual review required before saving.'
     };
   }
 

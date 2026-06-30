@@ -20,7 +20,7 @@ const incidentTypes = [
 function renderPage(res, view, options) {
   res.render('layout', {
     view,
-    appName: 'Firefighter Smart Incident Dashboard',
+    appName: 'Firefighter Incident Command',
     pageTitle: 'Dashboard',
     activePage: 'dashboard',
     statuses,

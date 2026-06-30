@@ -22,10 +22,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const filledCount = fields.length - missing.length;
     const percent = Math.round((filledCount / fields.length) * 100);
     const message = percent === 100
-      ? 'Report appears complete.'
+      ? 'Required fields complete.'
       : percent < 70
-        ? 'Review required before submission.'
-        : 'Report is almost complete.';
+        ? 'Critical details still missing.'
+        : 'Only a few details remain.';
 
     widget.querySelector('[data-completion-percent]').textContent = `${percent}%`;
     widget.querySelector('[data-completion-message]').textContent = message;

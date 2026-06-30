@@ -18,8 +18,8 @@ function fallbackReport(transcript) {
     hazards: 'Not identified in transcript.',
     injured_or_trapped_persons: 'Not identified in transcript.',
     response_status: 'Pending Review',
-    missing_information: 'AI report generation was unavailable. Officer should confirm incident type, location, date/time, hazards, injuries, and other scene details.',
-    officer_notes: 'Fallback draft created locally. Review and edit before saving.'
+    missing_information: 'Report drafting service was unavailable. Officer should confirm incident type, location, date/time, hazards, injuries, and other scene details.',
+    officer_notes: 'Manual review required before saving.'
   };
 }
 
@@ -43,7 +43,7 @@ exports.cleanTranscript = async (req, res) => {
   } catch (error) {
     return res.json({
       success: false,
-      error: `Transcript cleanup failed: ${error.message}`,
+      error: 'Transcript cleanup service is unavailable. Review the transcript manually.',
       cleanedTranscript: transcript
     });
   }
@@ -70,7 +70,7 @@ exports.generateReport = async (req, res) => {
     return res.json({
       success: false,
       fallback: true,
-      error: `AI report generation failed: ${error.message}`,
+      error: 'Report drafting service is unavailable. A manual draft was prepared for review.',
       report: fallbackReport(transcript)
     });
   }
