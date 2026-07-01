@@ -42,6 +42,49 @@ Node.js, Express, EJS, Bootstrap, MySQL, and plain JavaScript dashboard for fire
    http://localhost:3000
    ```
 
+## Running the Full Local Demo
+
+Use this flow when you want the dashboard and RealtimeSTT running together for a prototype demo. Ollama usually runs automatically in the background on Windows, so the script checks whether it is reachable instead of starting it.
+
+1. Start MySQL first. The demo script checks whether MySQL is reachable, but it does not start MySQL for you.
+2. Install Node.js dependencies if needed:
+
+   ```powershell
+   npm install
+   ```
+
+3. Create `.env` in the project root with your local MySQL, Ollama, and optional OneMap settings. Do not commit `.env`.
+4. Run the demo launcher:
+
+   ```powershell
+   npm run demo
+   ```
+
+The launcher opens separate PowerShell windows for:
+
+- Dashboard: the Node.js / Express app at `http://localhost:3000`
+- RealtimeSTT: the Python FastAPI transcription service at `http://127.0.0.1:8010`
+
+The launcher also opens the dashboard in your browser and checks the Ollama API at `http://localhost:11434/api/tags`. If Ollama is not reachable, AI cleanup and report generation may not work until Ollama is running.
+
+The launcher prints:
+
+```text
+Dashboard:   http://localhost:3000
+RealtimeSTT: http://127.0.0.1:8010
+Ollama API:  http://localhost:11434/api/tags
+```
+
+By default, the script expects RealtimeSTT at:
+
+```text
+C:\Users\goati\Downloads\RealtimeSTT
+```
+
+If your RealtimeSTT folder is somewhere else, edit `$RealtimeSttPath` near the top of `scripts/start-demo.ps1`, then run `npm run demo` again. The script checks that the RealtimeSTT folder, `.venv-fastapi`, and `example_fastapi_server\server.py` exist before starting the service.
+
+To stop the demo, close the separate PowerShell windows for the dashboard and RealtimeSTT.
+
 ## Seed Incident Reports
 
 The dashboard and analytics read from the MySQL `incidents` table. To load realistic school-prototype data:

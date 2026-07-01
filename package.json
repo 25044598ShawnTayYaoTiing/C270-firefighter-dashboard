@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node app.js",
     "dev": "node app.js",
+    "demo": "powershell -ExecutionPolicy Bypass -File scripts/start-demo.ps1",
     "seed": "node scripts/seedIncidents.js"
   },
   "dependencies": {
