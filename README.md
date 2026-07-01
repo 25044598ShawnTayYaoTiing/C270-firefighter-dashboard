@@ -20,23 +20,9 @@ This prototype reduces manual effort by supporting transcript intake, AI-assiste
 - Fire and rescue supervisors
 - Operations team members
 
-## Screenshots
-
-![Live Call Intake](docs/images/live%20call%20intake.png)
-
-![Create Incident Report](docs/images/create%20report.png)
-
-![Incident Reports](docs/images/incident%20report.png)
-
-![Incident Details](docs/images/incident%20details.png)
-
-![Live Incident Map](docs/images/incident%20map.png)
-
-![Analytics](docs/images/analytics.png)
-
 ## System Architecture
 
-![System Architecture](docs/images/system-architecutre.png)
+![System Architecture](docs/images/system-architecture.png)
 
 The application uses a modular monolith structure. The Node.js / Express backend renders EJS pages, handles report routes, calls local AI services, and reads/writes incident records in MySQL.
 
@@ -56,7 +42,7 @@ Supporting services:
 
 ## Main Prototype Workflow
 
-![Main Prototype Workflow](docs/images/main%20workflow.png)
+![Main Prototype Workflow](docs/images/main-workflow.png)
 
 ```text
 Emergency Call Information
@@ -83,6 +69,8 @@ The dashboard summarises current incident reporting activity using cards for:
 Dashboard values are recalculated from MySQL whenever the page reloads. The database does not currently store response time, so the dashboard uses reports created this week instead of an average response-time metric.
 
 ### Live Call Intake
+
+![Live Call Intake](docs/images/live-call-intake.png)
 
 The Live Call Intake page supports a RealtimeSTT speech-to-text proof-of-concept and a manual transcript fallback. It includes:
 
@@ -115,6 +103,12 @@ AI drafts must be reviewed by SCDF personnel before saving. If Ollama is unavail
 
 ### Incident Report CRUD
 
+![Create Incident Report](docs/images/create-report.png)
+
+![Incident Reports](docs/images/incident-reports.png)
+
+![Incident Details](docs/images/incident-details.png)
+
 The dashboard keeps MySQL-backed incident report management:
 
 - Create report
@@ -127,6 +121,8 @@ The dashboard keeps MySQL-backed incident report management:
 Report completion appears on Create Report, Edit Report, and Report Details. Completion is based on incident location, incident type, date and time, summary, response status, hazards, and injured or trapped persons. The progress bar is advisory only and does not block the existing MySQL save flow.
 
 ### Live Incident Map
+
+![Live Incident Map](docs/images/incident-map.png)
 
 The Dashboard includes a Live Incident Map built with Leaflet and OpenStreetMap. It uses current MySQL incident rows and does not rely on hardcoded sample markers.
 
@@ -161,6 +157,8 @@ GET /dev/map-payload
 When `GEOCODING_DEBUG=true`, dashboard rendering logs map payload counts to the Node.js console. OneMap email, password, and access tokens are never sent to EJS or frontend JavaScript.
 
 ### Analytics
+
+![Analytics](docs/images/analytics.png)
 
 Analytics values are recalculated from MySQL and show:
 
