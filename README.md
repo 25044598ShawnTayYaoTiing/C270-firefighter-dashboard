@@ -22,23 +22,21 @@ This prototype reduces manual effort by supporting transcript intake, AI-assiste
 
 ## Screenshots
 
-![Dashboard Overview](docs/images/dashboard.png)
+![Live Call Intake](docs/images/live%20call%20intake.png)
 
-![Live Call Intake](docs/images/live-call-intake.png)
+![Create Incident Report](docs/images/create%20report.png)
 
-![Create Incident Report](docs/images/create-report.png)
+![Incident Reports](docs/images/incident%20report.png)
 
-![Incident Reports](docs/images/incident-reports.png)
+![Incident Details](docs/images/incident%20details.png)
 
-![Incident Details](docs/images/incident-details.png)
-
-![Live Incident Map](docs/images/incident-map.png)
+![Live Incident Map](docs/images/incident%20map.png)
 
 ![Analytics](docs/images/analytics.png)
 
 ## System Architecture
 
-![System Architecture](docs/images/system-architecture.png)
+![System Architecture](docs/images/system-architecutre.png)
 
 The application uses a modular monolith structure. The Node.js / Express backend renders EJS pages, handles report routes, calls local AI services, and reads/writes incident records in MySQL.
 
@@ -58,7 +56,7 @@ Supporting services:
 
 ## Main Prototype Workflow
 
-![Main Prototype Workflow](docs/images/main-workflow.png)
+![Main Prototype Workflow](docs/images/main%20workflow.png)
 
 ```text
 Emergency Call Information
@@ -213,8 +211,6 @@ GET /api/incidents?status=Completed&search=vehicle
 | Version Control | GitHub |
 
 ## Database Design
-
-![Database Design](docs/images/database-design.png)
 
 Database name: `firefighter_dashboard`
 
