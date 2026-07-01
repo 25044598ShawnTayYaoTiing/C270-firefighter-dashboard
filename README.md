@@ -649,39 +649,3 @@ Manual transcript input still works when RealtimeSTT is unavailable.
 
 Confirm there is text in Live Transcript, Full Transcript, Clean Transcript Text, or the manual transcript field before sending. Sent transcripts are stored in `localStorage`, then loaded into the Create Report transcript field.
 
-### README Images Do Not Load
-
-Check the image files and paths:
-
-- Images must be inside `docs/images/`.
-- README paths must match the file names exactly.
-- Avoid spaces in image names.
-- Use hyphens instead, for example `live-call-intake.png`.
-- Check capitalization because GitHub paths are case-sensitive.
-
-## Project Status
-
-This is a midpoint prototype.
-
-Completed:
-
-- Dashboard overview
-- Incident report CRUD
-- MySQL storage
-- AI-assisted report drafting
-- Transcript cleanup
-- Live Call Intake proof-of-concept
-- Incident map
-- Analytics summary
-- Search and filtering
-- GitHub version control
-
-## Future Improvements
-
-- Improve transcript accuracy
-- Improve report validation
-- Improve location mapping
-- Add Docker containerisation
-- Set up CI/CD pipeline
-- Add testing and validation
-- Prepare deployment workflow
