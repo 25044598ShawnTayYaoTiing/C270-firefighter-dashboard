@@ -235,37 +235,42 @@ Main table: `incidents`
 
 ## Getting Started
 
+Follow these steps when setting up the project from zero on Windows.
+
 ### Prerequisites
 
 - Node.js and npm
 - MySQL running locally or reachable from this machine
 - Ollama installed for AI cleanup and report drafting
-- RealtimeSTT installed separately for live speech-to-text
-- PowerShell on Windows for the demo launcher
+- PowerShell on Windows
+- RealtimeSTT only if live speech-to-text is needed
 
-### Install Dependencies
+### 1. Open the Project Folder
+
+```powershell
+cd C:\Users\goati\Downloads\firefighter-dashboard-prototype-fixed
+```
+
+### 2. Install Dependencies
 
 ```powershell
 npm install
 ```
 
-### Configure Environment Variables
+### 3. Set Up MySQL
 
-Create `.env` in the project root using the example in the next section. The `.env` file contains local configuration and must not be committed.
+Open MySQL, then create and select the project database:
 
-### Start the Dashboard
-
-```powershell
-npm start
+```sql
+CREATE DATABASE IF NOT EXISTS firefighter_dashboard;
+USE firefighter_dashboard;
 ```
 
-Open:
+The `incidents` table must exist before the dashboard can save and load reports. Refer to the Database Design section for the expected table fields.
 
-```text
-http://localhost:3000
-```
+### 4. Create `.env`
 
-## Environment Variables
+Create `.env` in the project root:
 
 ```env
 DB_HOST=localhost
@@ -283,7 +288,74 @@ ONEMAP_BASE_URL=https://www.onemap.gov.sg
 GEOCODING_DEBUG=false
 ```
 
-OneMap credentials are optional. If `ONEMAP_EMAIL` or `ONEMAP_PASSWORD` is blank, report creation, report editing, and coordinate backfill use the local Singapore fallback resolver. Do not commit `.env` or expose private credentials.
+Replace `your_password` with your local MySQL password. OneMap credentials are optional; if they are blank, report creation, report editing, and coordinate backfill use the local Singapore fallback resolver. Do not commit `.env` or expose private credentials.
+
+### 5. Start Ollama
+
+```powershell
+ollama pull qwen2.5:1.5b
+ollama list
+```
+
+Ollama should be available at:
+
+```text
+http://localhost:11434/api/tags
+```
+
+### 6. Start the Dashboard Only
+
+```powershell
+npm start
+```
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+RealtimeSTT is not required if you are using manual transcript input.
+
+### 7. Seed Sample Reports
+
+```powershell
+npm run seed
+```
+
+### 8. Run RealtimeSTT Only If Live Speech-to-Text Is Needed
+
+```powershell
+cd C:\Users\goati\Downloads\RealtimeSTT
+.\.venv-fastapi\Scripts\Activate.ps1
+python example_fastapi_server\server.py --host 127.0.0.1 --port 8010 --engine faster_whisper --model medium.en --realtime-model tiny.en --language en
+```
+
+### 9. Run the Full Demo
+
+```powershell
+npm run demo
+```
+
+The demo launcher opens the dashboard and RealtimeSTT in separate PowerShell windows, opens the dashboard in your browser, and checks Ollama. It does not start MySQL or Ollama.
+
+## Environment Variables
+
+The dashboard reads local configuration from `.env`. Keep this file in the project root, keep it private, and never commit it.
+
+| Variable | Purpose |
+|---|---|
+| `DB_HOST` | MySQL host, usually `localhost` |
+| `DB_USER` | MySQL username |
+| `DB_PASSWORD` | Local MySQL password |
+| `DB_NAME` | Database name, `firefighter_dashboard` |
+| `DB_PORT` | MySQL port, usually `3306` |
+| `OLLAMA_HOST` | Ollama server URL |
+| `OLLAMA_MODEL` | Local model used for cleanup and draft generation |
+| `ONEMAP_EMAIL` | Optional OneMap email |
+| `ONEMAP_PASSWORD` | Optional OneMap password |
+| `ONEMAP_BASE_URL` | OneMap API base URL |
+| `GEOCODING_DEBUG` | Enables backend map payload logging when `true` |
 
 ## Run the Full Local Demo
 
@@ -316,6 +388,27 @@ C:\Users\goati\Downloads\RealtimeSTT
 If your RealtimeSTT folder is somewhere else, edit `$RealtimeSttPath` near the top of `scripts/start-demo.ps1`, then run `npm run demo` again. The script checks that the RealtimeSTT folder, `.venv-fastapi`, and `example_fastapi_server\server.py` exist before starting the service.
 
 To stop the demo, close the separate PowerShell windows for the dashboard and RealtimeSTT.
+
+## Recommended Demo Testing Flow
+
+Use this flow to test the main prototype path end to end:
+
+1. Start MySQL.
+2. Start Ollama.
+3. Run `npm install`.
+4. Run `npm run seed`.
+5. Run `npm start` or `npm run demo`.
+6. Open `http://localhost:3000`.
+7. Check the Dashboard cards.
+8. Go to Live Call Intake.
+9. Paste or capture a transcript.
+10. Click Clean Transcript.
+11. Send the transcript to Create Report.
+12. Click Generate AI Report.
+13. Review and edit the generated fields.
+14. Save the report.
+15. Check Incident Reports.
+16. Refresh Dashboard, Map, and Analytics.
 
 ## Seed Sample Incident Reports
 
@@ -408,33 +501,35 @@ The dashboard calls Ollama from the Node.js backend. The browser never calls Oll
 4. Ollama should be available at:
 
    ```text
-   http://localhost:11434
+   http://localhost:11434/api/tags
    ```
 
 ## How Each Feature Works
 
 ### Live Call Intake Flow
 
-```text
-Start Transcription
--> Speak into microphone
--> RealtimeSTT converts speech to text
--> Live Transcript updates
--> Full Transcript stores committed transcript
--> Send transcript to Create Report
-```
+Open `http://localhost:3000/transcription` or choose Live Call Intake from the sidebar.
 
-The page streams browser microphone audio to `ws://localhost:8010/ws/transcribe`. Stop Transcription commits the latest Live Transcript once, and Clear Transcript resets live, full, and cleaned transcript state.
+1. To use live speech-to-text, start RealtimeSTT first and click Start Transcription.
+2. Allow microphone access, then speak into the microphone.
+3. RealtimeSTT converts speech to text through `ws://localhost:8010/ws/transcribe`.
+4. Live Transcript updates with the latest speech segment.
+5. Stop Transcription commits the latest text into Full Transcript.
+6. Click Clean Transcript to send the transcript to Ollama for cleanup.
+7. Click Send Raw Transcript or Send Clean Transcript to open Create Report with the transcript loaded.
+
+If RealtimeSTT is unavailable, paste text into the manual transcript field and continue from the cleanup or send step.
 
 ### AI Report Flow
 
-```text
-Raw Transcript
--> Clean Transcript Text
--> AI-Assisted Incident Draft
--> Officer Review
--> Save Report
-```
+Open Create Report from the sidebar or send a transcript from Live Call Intake.
+
+1. Confirm the Transcript field contains raw or cleaned call text.
+2. Click Generate AI Report.
+3. The backend sends the transcript to Ollama.
+4. The form fills an editable AI-assisted incident draft.
+5. Review and edit the generated fields.
+6. Save the report with Save Draft or Save Report.
 
 Backend AI endpoints:
 
@@ -447,53 +542,93 @@ Both endpoints call Ollama at `OLLAMA_HOST` using `OLLAMA_MODEL`.
 
 ### Incident CRUD Flow
 
-```text
-Create Report
--> Save to MySQL
--> View in Incident Reports
--> Edit or Delete if needed
--> Dashboard and Analytics update after refresh
-```
+Use the report pages to manage MySQL-backed incident records:
+
+1. Open Create Report to add a new incident.
+2. Fill or generate the report fields.
+3. Save the report to MySQL.
+4. Open Incident Reports to view saved reports.
+5. Use search or status filtering to find a report.
+6. Open Report Details or Edit Report to review and update a report.
+7. Delete a report only when it is no longer needed.
+8. Refresh Dashboard and Analytics to see updated totals.
 
 ### Map Flow
 
-```text
-Incident Location
--> Resolve Latitude and Longitude
--> Save Coordinates to MySQL
--> Dashboard Sends Map Payload
--> Leaflet Displays Marker
-```
+Open Dashboard to view the Live Incident Map.
+
+1. Create or edit a report with a clear incident location.
+2. The backend resolves latitude and longitude when possible.
+3. Coordinates are saved to MySQL.
+4. The dashboard sends active incident map data to the browser.
+5. Leaflet displays markers for incidents with valid coordinates.
+6. Completed, reviewed, closed, and resolved reports are hidden from the live map.
 
 ### Analytics Flow
 
-```text
-MySQL Incident Records
--> Group by Type / Status / Location
--> Calculate Totals and Percentages
--> Display Analytics Summary
-```
+Open Analytics from the sidebar.
+
+1. The backend reads current MySQL incident records.
+2. It groups reports by type, status, and location.
+3. It calculates totals and percentages.
+4. The Analytics page displays the latest summary after refresh.
 
 ## Troubleshooting
 
 ### Port 8010 Already in Use
 
-RealtimeSTT needs port `8010`. Stop the process using that port, or start RealtimeSTT on another port and update the dashboard transcription connection if needed.
+RealtimeSTT needs port `8010`. Find the process using the port:
+
+```powershell
+netstat -ano | findstr :8010
+```
+
+Stop the process by replacing `<PID_NUMBER>` with the PID from the last column:
+
+```powershell
+taskkill /PID <PID_NUMBER> /F
+```
 
 ### Map Marker Does Not Appear
 
-Confirm the report has valid `latitude` and `longitude` values. Completed, reviewed, closed, and resolved reports are intentionally hidden from the live map. Run the coordinate backfill script if older reports are missing coordinates.
+Check whether recent reports have coordinates:
+
+```sql
+SELECT incident_id, location, response_status, latitude, longitude
+FROM incidents
+ORDER BY id DESC
+LIMIT 10;
+```
+
+Reports need valid `latitude` and `longitude` values to appear on the map. Completed, reviewed, closed, and resolved reports are intentionally hidden from the live map.
+
+To backfill missing coordinates:
+
+```powershell
+node scripts/backfillIncidentCoordinates.js
+```
 
 ### Dashboard Does Not Connect to MySQL
 
-Confirm MySQL is running and that `.env` contains the correct `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and `DB_PORT`. The demo script only checks whether MySQL is reachable; it does not start MySQL.
+Confirm MySQL is running and that `.env` contains the correct `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and `DB_PORT`.
+
+In MySQL, check the database and tables:
+
+```sql
+SHOW DATABASES;
+USE firefighter_dashboard;
+SHOW TABLES;
+```
+
+The demo script only checks whether MySQL is reachable; it does not start MySQL.
 
 ### Ollama Not Responding
 
-Confirm Ollama is installed and running:
+Confirm Ollama is installed, the model is available, and the local service is running:
 
 ```powershell
 ollama list
+ollama pull qwen2.5:1.5b
 ```
 
 Then check:
@@ -508,9 +643,21 @@ If Ollama is unavailable, transcript cleanup and AI report generation may fail, 
 
 Confirm RealtimeSTT is running on `http://localhost:8010` or `http://127.0.0.1:8010`. If the demo launcher cannot start it, check that the RealtimeSTT folder, `.venv-fastapi`, and `example_fastapi_server\server.py` exist.
 
+Manual transcript input still works when RealtimeSTT is unavailable.
+
 ### Raw Transcript Does Not Send
 
 Confirm there is text in Live Transcript, Full Transcript, Clean Transcript Text, or the manual transcript field before sending. Sent transcripts are stored in `localStorage`, then loaded into the Create Report transcript field.
+
+### README Images Do Not Load
+
+Check the image files and paths:
+
+- Images must be inside `docs/images/`.
+- README paths must match the file names exactly.
+- Avoid spaces in image names.
+- Use hyphens instead, for example `live-call-intake.png`.
+- Check capitalization because GitHub paths are case-sensitive.
 
 ## Project Status
 
