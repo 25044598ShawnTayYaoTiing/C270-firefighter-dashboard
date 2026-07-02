@@ -264,6 +264,26 @@ Open MySQL, then create and select the project database:
 ```sql
 CREATE DATABASE IF NOT EXISTS firefighter_dashboard;
 USE firefighter_dashboard;
+
+CREATE TABLE IF NOT EXISTS incidents (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  incident_id VARCHAR(20) UNIQUE NOT NULL,
+  incident_type VARCHAR(100) NOT NULL,
+  location VARCHAR(255) NOT NULL,
+  incident_datetime DATETIME NOT NULL,
+  incident_summary TEXT NOT NULL,
+  hazards TEXT,
+  injured_or_trapped_persons TEXT,
+  response_status VARCHAR(50) NOT NULL,
+  missing_information TEXT,
+  officer_notes TEXT,
+  transcript TEXT,
+  latitude DECIMAL(10, 8) NULL,
+  longitude DECIMAL(11, 8) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ON UPDATE CURRENT_TIMESTAMP
+);
 ```
 
 The `incidents` table must exist before the dashboard can save and load reports. Refer to the Database Design section for the expected table fields.
