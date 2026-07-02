@@ -63,8 +63,7 @@ a {
   white-space: nowrap;
 }
 
-.brand-mark,
-.operator-avatar {
+.brand-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -184,24 +183,6 @@ a {
   border-radius: 8px;
   background: var(--surface);
   color: var(--text);
-}
-
-.operator {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 4px 12px 4px 4px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  font-weight: 700;
-}
-
-.operator-avatar {
-  width: 34px;
-  height: 34px;
-  font-size: 0.78rem;
 }
 
 .page-content {
@@ -1070,9 +1051,5 @@ a {
   .stacked-mobile {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .operator {
-    width: 100%;
   }
 }

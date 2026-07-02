@@ -156,6 +156,7 @@ Start-PowerShellWindow -Title "Firefighter Dashboard" -Command "Set-Location -Li
 Write-Status "Opening dashboard in browser..."
 Start-Process $DashboardUrl
 
+
 Write-Status "Checking Ollama API..."
 
 if (Test-HttpEndpoint -Url $OllamaApiUrl) {
