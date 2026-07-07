@@ -5,8 +5,10 @@ const {
 const {
   resolveIncidentCoordinates
 } = require('../helpers/geocodingService');
+const officerModel = require('./officerModel');
 
 let coordinateColumnsPromise;
+let incidentOfficerSchemaPromise;
 
 function toSqlDateTime(value) {
   if (!value) return null;
@@ -15,9 +17,49 @@ function toSqlDateTime(value) {
   return value.replace('T', ' ') + (value.length === 16 ? ':00' : '');
 }
 
-async function hasColumn(columnName) {
-  const [rows] = await db.query('SHOW COLUMNS FROM incidents LIKE ?', [columnName]);
+async function hasTable(tableName) {
+  const [rows] = await db.query('SHOW TABLES LIKE ?', [tableName]);
   return rows.length > 0;
+}
+
+async function hasColumn(columnName, tableName = 'incidents') {
+  const [rows] = await db.query(`SHOW COLUMNS FROM ${tableName} LIKE ?`, [columnName]);
+  return rows.length > 0;
+}
+
+async function hasIndex(tableName, indexName) {
+  const [rows] = await db.query(
+    `
+      SELECT 1
+      FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND INDEX_NAME = ?
+      LIMIT 1
+    `,
+    [tableName, indexName]
+  );
+  return rows.length > 0;
+}
+
+async function ensureOfficerSchema() {
+  if (!incidentOfficerSchemaPromise) {
+    incidentOfficerSchemaPromise = (async () => {
+      await officerModel.ensureOfficerSchema();
+
+      if (await hasTable('incidents')) {
+        if (!(await hasColumn('reporting_officer_id'))) {
+          await db.query('ALTER TABLE incidents ADD COLUMN reporting_officer_id INT NULL');
+        }
+
+        if (!(await hasIndex('incidents', 'idx_incidents_reporting_officer_id'))) {
+          await db.query('ALTER TABLE incidents ADD INDEX idx_incidents_reporting_officer_id (reporting_officer_id)');
+        }
+      }
+    })();
+  }
+
+  return incidentOfficerSchemaPromise;
 }
 
 async function hasCoordinateColumns() {
@@ -74,28 +116,32 @@ async function generateIncidentId() {
 }
 
 const SEARCH_FIELDS = [
-  'incident_id',
-  'incident_type',
-  'location',
-  'response_status',
-  'incident_summary',
-  'hazards',
-  'injured_or_trapped_persons',
-  'missing_information',
-  'officer_notes',
-  'transcript'
+  'i.incident_id',
+  'i.incident_type',
+  'i.location',
+  'i.response_status',
+  'i.incident_summary',
+  'i.hazards',
+  'i.injured_or_trapped_persons',
+  'i.missing_information',
+  'i.officer_notes',
+  'i.transcript',
+  'o.officer_name',
+  'o.officer_role'
 ];
 const COMPLETED_STATUS_TERMS = ['completed', 'reviewed', 'closed', 'resolved'];
 
 exports.getAllIncidents = async (filters = {}) => {
+  await ensureOfficerSchema();
+
   const where = [];
   const params = [];
 
   if (filters.statusGroup === 'completed') {
-    where.push(`(${COMPLETED_STATUS_TERMS.map(() => 'LOWER(response_status) LIKE ?').join(' OR ')})`);
+    where.push(`(${COMPLETED_STATUS_TERMS.map(() => 'LOWER(i.response_status) LIKE ?').join(' OR ')})`);
     params.push(...COMPLETED_STATUS_TERMS.map((term) => `%${term}%`));
   } else if (filters.status && filters.status !== 'All') {
-    where.push('response_status = ?');
+    where.push('i.response_status = ?');
     params.push(filters.status);
   }
 
@@ -108,29 +154,49 @@ exports.getAllIncidents = async (filters = {}) => {
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const [rows] = await db.query(`
-    SELECT *
-    FROM incidents
+    SELECT i.*, o.officer_name, o.officer_role
+    FROM incidents i
+    LEFT JOIN officers o ON i.reporting_officer_id = o.id
     ${whereSql}
-    ORDER BY incident_datetime DESC, created_at DESC
+    ORDER BY i.incident_datetime DESC, i.created_at DESC
   `, params);
 
   return rows;
 };
 
 exports.getIncidentByIncidentId = async (incidentId) => {
+  await ensureOfficerSchema();
+
   const [rows] = await db.query(
-    'SELECT * FROM incidents WHERE incident_id = ? LIMIT 1',
+    `
+      SELECT i.*, o.officer_name, o.officer_role
+      FROM incidents i
+      LEFT JOIN officers o ON i.reporting_officer_id = o.id
+      WHERE i.incident_id = ?
+      LIMIT 1
+    `,
     [incidentId]
   );
 
   return rows[0] || null;
 };
 
+exports.getActiveOfficers = async () => {
+  return officerModel.getActiveOfficers();
+};
+
+exports.getOfficerById = async (officerId) => {
+  return officerModel.getOfficerById(officerId);
+};
+
 exports.createIncident = async (incident) => {
+  await ensureOfficerSchema();
+
   const incidentId = await generateIncidentId();
   const hasCoordinates = await hasCoordinateColumns();
   const columns = [
     'incident_id',
+    'reporting_officer_id',
     'incident_type',
     'location',
     'incident_datetime',
@@ -144,6 +210,7 @@ exports.createIncident = async (incident) => {
   ];
   const values = [
     incidentId,
+    incident.reportingOfficerId || null,
     incident.incidentType,
     incident.incidentLocation,
     toSqlDateTime(incident.incidentDateTime),
@@ -178,6 +245,8 @@ exports.createIncident = async (incident) => {
 };
 
 exports.updateIncident = async (incidentId, incident) => {
+  await ensureOfficerSchema();
+
   const hasCoordinates = await hasCoordinateColumns();
   const setColumns = [
     'incident_type = ?',

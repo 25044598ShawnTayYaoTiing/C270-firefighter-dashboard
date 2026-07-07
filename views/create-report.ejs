@@ -7,11 +7,15 @@
       </div>
     </div>
 
+    <%# Done BY SHAWN ID 25044598 %>
+    <%# AI Features: transcript input supplies text for Ollama-based incident draft generation. %>
     <div class="mb-3">
       <label class="form-label" for="transcriptInput">Transcript</label>
       <textarea class="form-control" id="transcriptInput" name="transcript" form="reportForm" rows="8" placeholder="Paste an incident call transcript here..."></textarea>
     </div>
 
+    <%# Done BY SHAWN ID 25044598 %>
+    <%# AI Features: this button starts AI report drafting from the transcript. %>
     <button class="primary-button w-100" type="button" id="generateDraftButton">
       <i class="bi bi-magic"></i>
       Generate Draft
@@ -33,26 +37,40 @@
 
     <%- include('partials/report-completion', { completion }) %>
 
+    <%# Done BY SHAWN ID 25044598 %>
+    <%# AI Features: officer review form receives and edits AI-generated report draft fields before saving. %>
     <form class="report-form" id="reportForm" data-completion-form action="/incidents" method="POST">
+      <input type="hidden" id="reportingOfficerId" name="reportingOfficerId" value="<%= currentOfficer ? currentOfficer.officer_id : '' %>">
+
+      <div class="readonly-field">
+        <span>Reporting Officer</span>
+        <strong><%= currentOfficer ? currentOfficer.officer_name : 'Not assigned' %></strong>
+        <% if (currentOfficer && currentOfficer.officer_role) { %>
+          <small><%= currentOfficer.officer_role %></small>
+        <% } %>
+      </div>
+
       <div class="form-row">
         <label>
           <span>Incident Location</span>
           <input class="form-control" id="incidentLocation" name="incidentLocation" type="text" required>
         </label>
-        <label>
-          <span>Incident Type</span>
-          <select class="form-select" id="incidentType" name="incidentType" required>
-            <option value="">Select type</option>
-            <option>Residential Fire</option>
-            <option>Kitchen Fire</option>
-            <option>Road Traffic Accident</option>
-            <option>Lift Rescue</option>
-            <option>Gas Leak</option>
-            <option>Electrical Fire</option>
-            <option>Rubbish Chute Fire</option>
-            <option>Vehicle Fire</option>
-          </select>
-        </label>
+        <div>
+          <label>
+            <span>Incident Type</span>
+            <select class="form-select" id="incidentType" name="incidentType" required>
+              <option value="">Select type</option>
+              <% incidentTypes.forEach((type) => { %>
+                <option><%= type %></option>
+              <% }) %>
+              <option value="__other_special_incident__">Other / Special Incident</option>
+            </select>
+          </label>
+          <label id="customIncidentTypeField" hidden>
+            <span>Custom Incident Type</span>
+            <input class="form-control" id="customIncidentType" name="customIncidentType" type="text">
+          </label>
+        </div>
       </div>
 
       <div class="form-row">
@@ -85,10 +103,24 @@
         <textarea class="form-control" id="injuredPersons" name="injuredPersons" rows="3"></textarea>
       </label>
 
-      <label>
-        <span>Missing Information</span>
-        <textarea class="form-control" id="missingInfo" name="missingInfo" rows="3"></textarea>
-      </label>
+      <div class="missing-info-section">
+        <%# // Done BY SHAWN ID 25044598 %>
+        <%# AI Missing Information enhancement: helper copy and action for Ollama-assisted field review. %>
+        <label>
+          <span class="field-label-line">Missing Information <small class="ai-field-helper">(Enhance using Ollama AI)</small></span>
+          <textarea class="form-control" id="missingInfo" name="missingInfo" rows="3"></textarea>
+        </label>
+        <div class="missing-info-actions">
+          <button class="secondary-button" type="button" id="enhanceMissingInfoButton">
+            <i class="bi bi-stars"></i>
+            Enhance Missing Information
+          </button>
+        </div>
+        <div class="notice-strip notice-hidden" id="missingInfoEnhancementNotice">
+          <i class="bi bi-info-circle"></i>
+          <span></span>
+        </div>
+      </div>
 
       <label>
         <span>Officer Notes</span>
@@ -96,7 +128,7 @@
       </label>
 
       <div class="form-actions">
-        <button class="secondary-button" type="submit" name="saveMode" value="draft">
+        <button class="secondary-button" type="submit" name="saveMode" value="draft" formnovalidate>
           <i class="bi bi-save"></i>
           Save Draft
         </button>

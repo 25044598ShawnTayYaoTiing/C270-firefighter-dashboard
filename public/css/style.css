@@ -14,7 +14,7 @@
   --blue: #2563a8;
   --grey: #68707c;
   --shadow: 0 14px 34px rgba(22, 32, 42, 0.08);
-  --sidebar-width: 286px;
+  --sidebar-width: 320px;
 }
 
 * {
@@ -38,19 +38,21 @@ a {
   position: fixed;
   inset: 0 auto 0 0;
   z-index: 20;
+  display: flex;
+  flex-direction: column;
   width: var(--sidebar-width);
   overflow-y: auto;
-  padding: 24px 18px;
+  padding: 24px 20px;
   color: #ffffff;
   background: var(--sidebar);
 }
 
 .brand {
   display: grid;
-  grid-template-columns: 42px 1fr;
-  gap: 12px;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 14px;
   align-items: center;
-  min-height: 50px;
+  min-height: 56px;
   margin-bottom: 28px;
   font-weight: 800;
   line-height: 1.2;
@@ -58,21 +60,35 @@ a {
 
 .brand-title {
   display: block;
-  font-size: 0.98rem;
+  min-width: 0;
+  font-size: 1rem;
   line-height: 1.15;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .brand-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
+  width: 48px;
+  height: 48px;
   border-radius: 8px;
   color: #ffffff;
   background: var(--red);
   font-weight: 800;
+}
+
+.brand-mark.logo-mark {
+  padding: 3px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.brand-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .sidebar-nav {
@@ -91,6 +107,7 @@ a {
 .nav-link {
   display: flex;
   align-items: center;
+  min-width: 0;
   min-height: 42px;
   gap: 12px;
   padding: 10px 12px;
@@ -100,6 +117,7 @@ a {
 }
 
 .nav-link i {
+  flex: 0 0 20px;
   width: 20px;
   text-align: center;
 }
@@ -110,15 +128,83 @@ a {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.sidebar-account {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-top: auto;
+  padding: 18px 10px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.officer-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.14);
+  font-weight: 800;
+}
+
+.officer-meta {
+  min-width: 0;
+}
+
+.officer-meta strong,
+.officer-meta span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.officer-meta strong {
+  color: #ffffff;
+  font-size: 0.92rem;
+}
+
+.officer-meta span {
+  margin-top: 2px;
+  color: var(--sidebar-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.logout-form {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+}
+
+.logout-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 38px;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 800;
+}
+
+.logout-button:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
 .app-shell {
   min-height: 100vh;
   margin-left: var(--sidebar-width);
+  min-width: 0;
 }
 
 .topbar {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -149,6 +235,7 @@ a {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .search-field {
@@ -194,10 +281,11 @@ a {
   display: grid;
   gap: 16px;
   margin-bottom: 20px;
+  min-width: 0;
 }
 
 .summary-grid {
-  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .analytics-grid {
@@ -215,7 +303,7 @@ a {
 
 .summary-card {
   display: grid;
-  grid-template-columns: 48px 1fr;
+  grid-template-columns: 48px minmax(0, 1fr);
   gap: 14px;
   align-items: center;
   min-height: 122px;
@@ -286,9 +374,10 @@ a {
 .details-layout,
 .form-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
   gap: 20px;
   align-items: start;
+  min-width: 0;
 }
 
 .form-grid {
@@ -299,10 +388,19 @@ a {
 .side-column {
   display: grid;
   gap: 20px;
+  min-width: 0;
+}
+
+.dashboard-grid > *,
+.main-column > *,
+.side-column > * {
+  min-width: 0;
 }
 
 .panel {
   padding: 20px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .panel-header {
@@ -324,8 +422,13 @@ a {
 }
 
 .operations-table {
-  min-width: 760px;
+  min-width: 720px;
   margin-bottom: 0;
+}
+
+.table-responsive {
+  max-width: 100%;
+  min-width: 0;
 }
 
 .operations-table thead th {
@@ -513,6 +616,31 @@ a {
   box-shadow: 0 0 0 0.2rem rgba(217, 119, 6, 0.15);
 }
 
+.readonly-field {
+  display: grid;
+  gap: 5px;
+  min-height: 74px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.readonly-field span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.readonly-field strong {
+  color: #273241;
+}
+
+.readonly-field small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
 .action-group,
 .form-actions {
   display: flex;
@@ -594,12 +722,22 @@ a {
 
 .incident-map {
   position: relative;
+  z-index: 0;
+  isolation: isolate;
   width: 100%;
-  min-height: 360px;
+  height: 420px;
+  min-height: 320px;
+  max-height: 52vh;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
   background: var(--surface-soft);
+}
+
+.incident-map.leaflet-container,
+.incident-map .leaflet-pane,
+.incident-map .leaflet-control-container {
+  max-width: 100%;
 }
 
 .unmapped-list {
@@ -752,6 +890,113 @@ a {
   background: #fff4f3;
 }
 
+.auth-page {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  overflow: hidden;
+  padding: 32px;
+  color: #ffffff;
+  background-color: #07101b;
+}
+
+.auth-page::before {
+  content: "";
+  position: fixed;
+  inset: -42px;
+  z-index: 0;
+  background-image:
+    linear-gradient(rgba(5, 12, 22, 0.78), rgba(5, 12, 22, 0.86)),
+    radial-gradient(circle at 18% 28%, rgba(255, 121, 31, 0.65) 0 8%, transparent 18%),
+    radial-gradient(circle at 78% 24%, rgba(199, 54, 47, 0.8) 0 9%, transparent 19%),
+    linear-gradient(10deg, transparent 0 45%, rgba(199, 54, 47, 0.42) 45% 58%, transparent 58%),
+    linear-gradient(0deg, #0a111d 0 34%, #7c1719 34% 47%, #1d2f42 47% 59%, #0e1825 59% 100%);
+  background-size: cover;
+  filter: blur(14px) saturate(1.18);
+  transform: scale(1.04);
+}
+
+.auth-page::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    linear-gradient(90deg, rgba(7, 16, 27, 0.88), rgba(7, 16, 27, 0.42), rgba(7, 16, 27, 0.86)),
+    radial-gradient(circle at 50% 120%, rgba(217, 119, 6, 0.24), transparent 36%);
+}
+
+.login-shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: min(100%, 580px);
+}
+
+.login-panel {
+  display: grid;
+  gap: 30px;
+  padding: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.42);
+}
+
+.login-brand {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  align-items: center;
+  text-align: center;
+}
+
+.login-logo {
+  display: block;
+  width: 122px;
+  height: 122px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(16, 24, 32, 0.16);
+}
+
+.login-brand h1 {
+  margin: 4px 0 0;
+  color: #101820;
+  font-size: 2.15rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.login-brand p:last-child {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.login-panel .report-form {
+  gap: 20px;
+}
+
+.login-panel .form-control {
+  min-height: 52px;
+  font-size: 1rem;
+}
+
+.login-panel .primary-button {
+  min-height: 52px;
+  background: linear-gradient(135deg, var(--red), var(--orange));
+  font-size: 1rem;
+}
+
+.login-panel .primary-button:hover {
+  filter: brightness(0.95);
+}
+
 .notice-hidden {
   display: none;
 }
@@ -765,6 +1010,32 @@ a {
 .report-form {
   display: grid;
   gap: 16px;
+}
+
+/* // Done BY SHAWN ID 25044598 */
+/* AI Missing Information enhancement: subtle inline helper and action spacing for the Create Report field. */
+.missing-info-section {
+  display: grid;
+  gap: 8px;
+}
+
+.report-form .field-label-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.ai-field-helper {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.missing-info-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .report-completion {
@@ -981,7 +1252,7 @@ a {
   }
 
   .side-column {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   }
 
   .transcript-panel {
@@ -994,6 +1265,10 @@ a {
 }
 
 @media (max-width: 980px) {
+  .login-shell {
+    width: min(100%, 580px);
+  }
+
   .sidebar {
     position: static;
     width: 100%;
@@ -1031,6 +1306,24 @@ a {
 }
 
 @media (max-width: 720px) {
+  .auth-page {
+    padding: 18px;
+  }
+
+  .login-panel {
+    gap: 24px;
+    padding: 28px 22px;
+  }
+
+  .login-brand h1 {
+    font-size: 1.8rem;
+  }
+
+  .login-logo {
+    width: 96px;
+    height: 96px;
+  }
+
   .page-content,
   .topbar {
     padding-left: 18px;

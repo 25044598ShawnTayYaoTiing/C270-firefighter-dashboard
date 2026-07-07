@@ -42,6 +42,7 @@
           <th>Incident ID</th>
           <th>Incident Type</th>
           <th>Location</th>
+          <th>Reporting Officer</th>
           <th>Status</th>
           <th>Created Date</th>
           <th>Last Updated</th>
@@ -51,7 +52,7 @@
       <tbody>
         <% if (reports.length === 0) { %>
           <tr>
-            <td colspan="7">
+            <td colspan="8">
               <div class="table-empty-state">
                 <i class="bi bi-inbox"></i>
                 <span><%= emptyMessage %></span>
@@ -60,10 +61,11 @@
           </tr>
         <% } %>
         <% reports.forEach((report) => { %>
-          <tr data-status="<%= report.status %>" data-search="<%= [report.id, report.type, report.location, report.status, report.summary, report.hazards, report.injured, report.missingInfo, report.officerNotes, report.transcript].join(' ').toLowerCase() %>">
+          <tr data-status="<%= report.status %>" data-search="<%= [report.id, report.type, report.location, report.reportingOfficerDisplay, report.status, report.summary, report.hazards, report.injured, report.missingInfo, report.officerNotes, report.transcript].join(' ').toLowerCase() %>">
             <td><strong><%= report.id %></strong></td>
             <td><%= report.type %></td>
             <td><%= report.location %></td>
+            <td><%= report.reportingOfficerDisplay %></td>
             <td><span class="status-badge status-<%= statusKey(report.status) %>"><%= report.status %></span></td>
             <td><%= report.createdDate %></td>
             <td><%= report.lastUpdated %></td>

@@ -15,6 +15,17 @@
   <%- include('partials/report-completion', { completion: report.completion }) %>
 
   <form class="report-form" id="reportForm" data-completion-form action="/incidents/<%= report.id %>" method="POST">
+    <input type="hidden" name="transcript" value="<%= report.transcriptInput %>">
+    <input type="hidden" name="reportingOfficerId" value="<%= report.reportingOfficerId || '' %>">
+
+    <div class="readonly-field">
+      <span>Reporting Officer</span>
+      <strong><%= report.reportingOfficerName || 'Not assigned' %></strong>
+      <% if (report.reportingOfficerRole) { %>
+        <small><%= report.reportingOfficerRole %></small>
+      <% } %>
+    </div>
+
     <div class="form-row">
       <label>
         <span>Incident Location</span>
@@ -71,7 +82,7 @@
     </label>
 
     <div class="form-actions">
-      <button class="secondary-button" type="submit" name="saveMode" value="draft">
+      <button class="secondary-button" type="submit" name="saveMode" value="draft" formnovalidate>
         <i class="bi bi-save"></i>
         Save Draft
       </button>

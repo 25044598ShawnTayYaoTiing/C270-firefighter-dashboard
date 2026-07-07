@@ -1,7 +1,9 @@
+<%# Done BY SHAWN ID 25044598 %>
+<%# AI Features: completion UI supports officer review of AI-generated report drafts. %>
 <section class="report-completion" data-report-completion>
   <div class="completion-heading">
     <strong>Report Completion: <span data-completion-percent><%= completion ? completion.percent : 0 %>%</span></strong>
-    <span data-completion-message><%= completion ? completion.message : 'Critical details still missing.' %></span>
+    <span data-completion-message><%= completion ? completion.message : 'No report drafted yet.' %></span>
   </div>
   <div class="progress completion-progress">
     <div class="progress-bar" data-completion-bar style="width: <%= completion ? completion.percent : 0 %>%"></div>
@@ -9,7 +11,7 @@
   <div class="missing-fields">
     <span>Missing fields</span>
     <ul data-missing-fields>
-      <% const missingFields = completion ? completion.missingFields : ['Incident Location', 'Incident Type', 'Date and Time', 'Incident Summary', 'Response Status', 'Hazards', 'Injured or Trapped Persons']; %>
+      <% const missingFields = completion ? completion.missingFields : ['Transcript', 'Reporting Officer', 'Incident Location', 'Incident Type', 'Date and Time', 'Incident Summary', 'Hazards', 'Injured or Trapped Persons', 'Response Status']; %>
       <% if (missingFields.length === 0) { %>
         <li>None</li>
       <% } %>
