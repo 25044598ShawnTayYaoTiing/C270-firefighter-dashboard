@@ -12,7 +12,9 @@
 <body>
   <aside class="sidebar">
     <a class="brand" href="/dashboard">
-      <span class="brand-mark">FD</span>
+      <span class="brand-mark logo-mark" aria-hidden="true">
+        <img class="brand-logo" src="/images/scdf-logo.png" alt="">
+      </span>
       <span class="brand-title">Incident Command</span>
     </a>
 
@@ -53,6 +55,22 @@
         Escalated Incidents
       </a>
     </nav>
+
+    <% if (currentOfficer) { %>
+      <div class="sidebar-account">
+        <div class="officer-avatar" aria-hidden="true"><%= currentOfficer.officer_name ? currentOfficer.officer_name.charAt(0) : 'O' %></div>
+        <div class="officer-meta">
+          <strong><%= currentOfficer.officer_name %></strong>
+          <span><%= currentOfficer.officer_role %></span>
+        </div>
+        <form class="logout-form" action="/logout" method="POST">
+          <button class="logout-button" type="submit">
+            <i class="bi bi-box-arrow-right"></i>
+            Logout
+          </button>
+        </form>
+      </div>
+    <% } %>
   </aside>
 
   <div class="app-shell">

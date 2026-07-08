@@ -410,6 +410,8 @@ document.addEventListener('DOMContentLoaded', () => {
     element.textContent = text;
   }
 
+  // Done BY SHAWN ID 25044598
+  // AI Features: sends raw transcript text to the AI cleanup endpoint and displays reviewed output.
   async function cleanTranscript() {
     const transcript = getTranscriptForCleaning();
 
@@ -461,6 +463,8 @@ document.addEventListener('DOMContentLoaded', () => {
     window.location.href = '/create-report?transcript=sent';
   }
 
+  // Done BY SHAWN ID 25044598
+  // AI Features: moves cleaned transcript text into Create Report for AI-assisted draft generation.
   function sendCleanTranscriptToCreateReport() {
     const transcriptData = getCleanTranscriptForSending();
 

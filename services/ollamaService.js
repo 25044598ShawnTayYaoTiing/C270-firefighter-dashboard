@@ -1,5 +1,7 @@
 require('dotenv').config();
 
+// Done BY SHAWN ID 25044598
+// AI Features: Ollama service configuration for transcript cleanup and incident draft generation.
 const OLLAMA_HOST = (process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:1.5b';
 
@@ -17,6 +19,8 @@ async function requestWithTimeout(url, options = {}, timeoutMs = 1500) {
   }
 }
 
+// Done BY SHAWN ID 25044598
+// AI Features: shared backend call path that sends prompts to Ollama and returns model output.
 async function callOllama(messages, timeoutMs = 30000) {
   // The backend is the only place that talks to Ollama; browser code calls Express.
   const response = await requestWithTimeout(`${OLLAMA_HOST}/api/chat`, {
@@ -48,6 +52,8 @@ async function callOllama(messages, timeoutMs = 30000) {
   return content.trim();
 }
 
+// Done BY SHAWN ID 25044598
+// AI Features: checks whether Ollama is reachable before AI cleanup or draft generation runs.
 async function checkHealth() {
   try {
     const response = await requestWithTimeout(`${OLLAMA_HOST}/api/tags`, {
@@ -126,6 +132,8 @@ function normalizeLocationExtraction(value) {
   };
 }
 
+// Done BY SHAWN ID 25044598
+// AI Features: asks Ollama to clean transcript text without inventing incident details.
 exports.cleanTranscript = async (transcript) => {
   return callOllama([
     {
@@ -146,6 +154,8 @@ exports.cleanTranscript = async (transcript) => {
   ]);
 };
 
+// Done BY SHAWN ID 25044598
+// AI Features: asks Ollama to produce an editable incident report draft from a transcript.
 exports.generateReport = async (transcript) => {
   const response = await callOllama([
     {
@@ -173,6 +183,48 @@ exports.generateReport = async (transcript) => {
   ]);
 
   return normalizeReport(parseJsonObject(response));
+};
+
+// Done BY SHAWN ID 25044598
+// AI Missing Information enhancement: asks Ollama to identify only unclear or missing operational details.
+exports.enhanceMissingInformation = async ({
+  transcript,
+  location,
+  incident_type,
+  incident_summary,
+  hazards,
+  injured_or_trapped_persons,
+  missing_information
+}) => {
+  return callOllama([
+    {
+      role: 'system',
+      content: [
+        'You are assisting firefighter incident report review.',
+        'Identify only missing or unclear operational information that the officer may need to confirm.',
+        'Use only the provided transcript and report fields.',
+        'Do not invent facts.',
+        'Do not change confirmed facts.',
+        'Do not restate confirmed details as missing.',
+        'Return concise bullet points only.',
+        'If no major missing details are found, return exactly: No major missing information identified. Officer should still verify report details before saving.'
+      ].join(' ')
+    },
+    {
+      role: 'user',
+      content: [
+        'Review these current report details for missing or unclear operational information.',
+        '',
+        `Transcript: ${transcript || ''}`,
+        `Incident location: ${location || ''}`,
+        `Incident type: ${incident_type || ''}`,
+        `Incident summary: ${incident_summary || ''}`,
+        `Hazards: ${hazards || ''}`,
+        `Injured or trapped persons: ${injured_or_trapped_persons || ''}`,
+        `Current missing information: ${missing_information || ''}`
+      ].join('\n')
+    }
+  ]);
 };
 
 exports.extractIncidentLocation = async ({ location, summary, transcript }, timeoutMs = 8000) => {
@@ -206,6 +258,8 @@ exports.extractIncidentLocation = async ({ location, summary, transcript }, time
   return normalizeLocationExtraction(parseJsonObject(response));
 };
 
+// Done BY SHAWN ID 25044598
+// AI Features: exposes the active Ollama host and model used by the AI backend flow.
 exports.getConfig = () => ({
   host: OLLAMA_HOST,
   model: OLLAMA_MODEL

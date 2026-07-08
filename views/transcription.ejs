@@ -28,6 +28,8 @@
       </div>
     </div>
 
+    <%# Done BY SHAWN ID 25044598 %>
+    <%# AI Features: cleaned transcript output lets officers review Ollama-cleaned text before report generation. %>
     <label class="cleaned-transcript">
       <span>Cleaned Transcript</span>
       <textarea class="form-control" id="cleanedTranscriptInput" rows="8" placeholder="Cleaned transcript will appear here. You can edit it before sending it to Create Report."></textarea>
@@ -51,6 +53,8 @@
         <i class="bi bi-x-circle"></i>
         Clear Transcript
       </button>
+      <%# Done BY SHAWN ID 25044598 %>
+      <%# AI Features: sends transcript text to the backend cleanup endpoint. %>
       <button class="secondary-button" type="button" id="cleanTranscriptButton">
         <i class="bi bi-stars"></i>
         Clean Transcript
@@ -59,6 +63,8 @@
         <i class="bi bi-send"></i>
         Send Raw Transcript
       </button>
+      <%# Done BY SHAWN ID 25044598 %>
+      <%# AI Features: forwards reviewed cleaned transcript text into Create Report for AI draft generation. %>
       <button class="primary-button" type="button" id="sendCleanTranscriptButton">
         <i class="bi bi-send-check"></i>
         Send Clean Transcript

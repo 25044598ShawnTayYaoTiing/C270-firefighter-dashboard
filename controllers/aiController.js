@@ -1,11 +1,41 @@
 const ollamaService = require('../services/ollamaService');
 
+// Done BY SHAWN ID 25044598
+// AI Features: controller layer for transcript cleanup, report drafting, Ollama status, and fallback review support.
 function getTranscript(req) {
   return req.body && typeof req.body.transcript === 'string'
     ? req.body.transcript.trim()
     : '';
 }
 
+function getOptionalText(body, field) {
+  return body && typeof body[field] === 'string'
+    ? body[field].trim()
+    : '';
+}
+
+// Done BY SHAWN ID 25044598
+// AI Missing Information enhancement: normalizes officer-entered report context before Ollama review.
+function getMissingInformationPayload(req) {
+  const body = req.body || {};
+
+  return {
+    transcript: getOptionalText(body, 'transcript'),
+    location: getOptionalText(body, 'location'),
+    incident_type: getOptionalText(body, 'incident_type'),
+    incident_summary: getOptionalText(body, 'incident_summary'),
+    hazards: getOptionalText(body, 'hazards'),
+    injured_or_trapped_persons: getOptionalText(body, 'injured_or_trapped_persons'),
+    missing_information: getOptionalText(body, 'missing_information')
+  };
+}
+
+function hasAnyReportDetail(payload) {
+  return Object.values(payload).some((value) => value.length > 0);
+}
+
+// Done BY SHAWN ID 25044598
+// AI Features: conservative fallback report keeps officer review usable when Ollama is unavailable.
 function fallbackReport(transcript) {
   // Fallback data stays conservative so officers can manually complete missing details.
   return {
@@ -23,6 +53,8 @@ function fallbackReport(transcript) {
   };
 }
 
+// Done BY SHAWN ID 25044598
+// AI Features: cleans raw emergency transcripts through the Ollama service before report drafting.
 exports.cleanTranscript = async (req, res) => {
   const transcript = getTranscript(req);
 
@@ -49,6 +81,8 @@ exports.cleanTranscript = async (req, res) => {
   }
 };
 
+// Done BY SHAWN ID 25044598
+// AI Features: generates editable incident report drafts from transcript text for officer review.
 exports.generateReport = async (req, res) => {
   const transcript = getTranscript(req);
 
@@ -76,6 +110,37 @@ exports.generateReport = async (req, res) => {
   }
 };
 
+// Done BY SHAWN ID 25044598
+// AI Missing Information enhancement: reviews current report details and returns editable missing-detail bullets.
+exports.enhanceMissingInformation = async (req, res) => {
+  const payload = getMissingInformationPayload(req);
+
+  if (!hasAnyReportDetail(payload)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Report details are required before enhancing missing information.'
+    });
+  }
+
+  try {
+    const missingInformation = await ollamaService.enhanceMissingInformation(payload);
+
+    return res.json({
+      success: true,
+      missingInformation
+    });
+  } catch (error) {
+    console.error('[AI Missing Information] Enhancement failed:', error.message);
+
+    return res.status(503).json({
+      success: false,
+      error: 'Missing information enhancement is unavailable. Please review manually.'
+    });
+  }
+};
+
+// Done BY SHAWN ID 25044598
+// AI Features: exposes Ollama availability and config status to support the AI workflow UI.
 exports.getOllamaStatus = async (req, res) => {
   const health = await ollamaService.checkHealth();
 

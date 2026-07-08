@@ -7,18 +7,56 @@ const {
   toNullableNumber
 } = require('./locationResolver');
 
-const REQUIRED_FIELDS = [
-  { key: 'location', label: 'Incident Location' },
-  { key: 'type', label: 'Incident Type' },
-  { key: 'dateTime', label: 'Date and Time' },
-  { key: 'summary', label: 'Incident Summary' },
-  { key: 'status', label: 'Response Status' },
-  { key: 'hazards', label: 'Hazards' },
-  { key: 'injured', label: 'Injured or Trapped Persons' }
+const COMPLETION_FIELDS = [
+  { key: 'transcript', label: 'Transcript', weight: 10 },
+  { key: 'reportingOfficer', label: 'Reporting Officer', weight: 10 },
+  { key: 'location', label: 'Incident Location', weight: 15 },
+  { key: 'type', label: 'Incident Type', weight: 15 },
+  { key: 'dateTime', label: 'Date and Time', weight: 10 },
+  { key: 'summary', label: 'Incident Summary', weight: 15 },
+  { key: 'hazards', label: 'Hazards', weight: 10 },
+  { key: 'injured', label: 'Injured or Trapped Persons', weight: 10 },
+  { key: 'status', label: 'Response Status', weight: 5 }
 ];
 
-function hasValue(value) {
-  return value !== null && value !== undefined && String(value).trim() !== '';
+const NON_MEANINGFUL_TEXT = new Set([
+  'null',
+  'undefined',
+  'select type',
+  'select reporting officer',
+  'not identified in transcript',
+  'not available',
+  'n/a',
+  'placeholder text'
+]);
+
+function normalizeCompletionText(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/\.+$/, '');
+}
+
+function hasMeaningfulValue(fieldKey, value) {
+  if (value instanceof Date) {
+    return !Number.isNaN(value.getTime());
+  }
+
+  const normalized = normalizeCompletionText(value);
+
+  if (!normalized) return false;
+  if (fieldKey === 'status') return normalized !== 'draft';
+
+  return !NON_MEANINGFUL_TEXT.has(normalized);
+}
+
+function getCompletionMessage(percent) {
+  if (percent === 0) return 'No report drafted yet.';
+  if (percent < 50) return 'Critical details still missing.';
+  if (percent < 80) return 'Review required before submission.';
+  if (percent < 100) return 'Almost complete. Please verify remaining details.';
+  return 'Report appears complete.';
 }
 
 function formatDateTime(value) {
@@ -51,21 +89,20 @@ function toDateInput(value) {
   ].join('-') + `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function calculateCompletion(values) {
-  const missingFields = REQUIRED_FIELDS
-    .filter((field) => !hasValue(values[field.key]))
+function calculateCompletion(values = {}) {
+  const missingFields = COMPLETION_FIELDS
+    .filter((field) => !hasMeaningfulValue(field.key, values[field.key]))
     .map((field) => field.label);
-  const filledCount = REQUIRED_FIELDS.length - missingFields.length;
-  const percent = Math.round((filledCount / REQUIRED_FIELDS.length) * 100);
+  const percent = COMPLETION_FIELDS.reduce((total, field) => {
+    return hasMeaningfulValue(field.key, values[field.key])
+      ? total + field.weight
+      : total;
+  }, 0);
 
   return {
     percent,
     missingFields,
-    message: percent === 100
-      ? 'Required fields complete.'
-      : percent < 70
-        ? 'Critical details still missing.'
-        : 'Only a few details remain.'
+    message: getCompletionMessage(percent)
   };
 }
 
@@ -73,9 +110,14 @@ function mapIncident(row) {
   const incidentId = row.incident_id || '';
   const incidentType = row.incident_type || 'Unspecified';
   const responseStatus = row.response_status || 'Draft';
+  const reportingOfficerId = row.reporting_officer_id || null;
+  const reportingOfficerName = row.officer_name || '';
+  const reportingOfficerRole = row.officer_role || '';
   const completion = calculateCompletion({
+    transcript: row.transcript,
+    reportingOfficer: reportingOfficerId || reportingOfficerName,
     location: row.location,
-    type: incidentType,
+    type: row.incident_type,
     dateTime: row.incident_datetime,
     summary: row.incident_summary,
     status: responseStatus,
@@ -93,6 +135,15 @@ function mapIncident(row) {
     location: row.location || '',
     status: responseStatus,
     response_status: responseStatus,
+    reportingOfficerId,
+    reporting_officer_id: reportingOfficerId,
+    reportingOfficerName,
+    officer_name: reportingOfficerName,
+    reportingOfficerRole,
+    officer_role: reportingOfficerRole,
+    reportingOfficerDisplay: reportingOfficerName
+      ? `${reportingOfficerName}${reportingOfficerRole ? ` - ${reportingOfficerRole}` : ''}`
+      : 'Not assigned',
     createdDate: formatDateTime(row.incident_datetime),
     lastUpdated: formatDateTime(row.updated_at || row.created_at),
     incidentDate: row.incident_datetime ? new Date(row.incident_datetime) : null,
@@ -106,6 +157,7 @@ function mapIncident(row) {
     missingInfo: row.missing_information || 'None.',
     officerNotes: row.officer_notes || 'None.',
     transcript: row.transcript || 'No transcript provided.',
+    transcriptInput: row.transcript || '',
     latitude: toNullableNumber(row.latitude),
     longitude: toNullableNumber(row.longitude),
     completion
@@ -195,8 +247,9 @@ function safeJson(value) {
 }
 
 module.exports = {
-  REQUIRED_FIELDS,
+  COMPLETION_FIELDS,
   calculateCompletion,
+  hasMeaningfulValue,
   mapIncident,
   buildMapData,
   safeJson,

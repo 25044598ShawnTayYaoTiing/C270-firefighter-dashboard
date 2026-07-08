@@ -29,13 +29,26 @@ function renderPage(res, view, options) {
   });
 }
 
-function readIncidentForm(body) {
+function toReportingOfficerId(value) {
+  const officerId = Number(value);
+
+  return Number.isInteger(officerId) && officerId > 0 ? officerId : null;
+}
+
+function getSessionOfficerId(req) {
+  return toReportingOfficerId(req.session ? req.session.officer_id : null);
+}
+
+function readIncidentForm(body, options = {}) {
   const responseStatus = body.saveMode === 'draft'
     ? 'Draft'
     : body.responseStatus;
 
   // The controller normalizes form field names before handing data to the model.
   return {
+    reportingOfficerId: options.reportingOfficerId !== undefined
+      ? toReportingOfficerId(options.reportingOfficerId)
+      : toReportingOfficerId(body.reportingOfficerId),
     incidentLocation: body.incidentLocation ? body.incidentLocation.trim() : '',
     incidentType: body.incidentType ? body.incidentType.trim() : '',
     incidentDateTime: body.incidentDateTime || '',
@@ -56,17 +69,26 @@ async function getMappedIncidents() {
   return incidents.map(mapIncident);
 }
 
-exports.showCreateReport = (req, res) => {
-  renderPage(res, 'create-report', {
-    pageTitle: 'Create Report',
-    activePage: 'create-report',
-    completion: calculateCompletion({})
-  });
+exports.showCreateReport = async (req, res, next) => {
+  try {
+    return renderPage(res, 'create-report', {
+      pageTitle: 'Create Report',
+      activePage: 'create-report',
+      incidentTypes,
+      completion: calculateCompletion({
+        reportingOfficer: getSessionOfficerId(req)
+      })
+    });
+  } catch (error) {
+    return next(error);
+  }
 };
 
 exports.createIncident = async (req, res, next) => {
   try {
-    const incident = readIncidentForm(req.body);
+    const incident = readIncidentForm(req.body, {
+      reportingOfficerId: getSessionOfficerId(req)
+    });
     const incidentId = await incidentModel.createIncident(incident);
 
     res.redirect(`/incidents/${incidentId}`);

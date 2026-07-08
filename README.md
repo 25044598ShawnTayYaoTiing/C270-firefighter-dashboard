@@ -2,13 +2,13 @@
 
 ## Overview
 
-The Firefighter Smart Incident Dashboard is a web-based incident reporting prototype for SCDF personnel. It helps users capture emergency call information, clean raw transcripts, generate AI-assisted incident report drafts, review and edit report details, save reports to MySQL, and monitor operational records through dashboard, reports, map, and analytics pages.
+The Firefighter Smart Incident Dashboard is an SCDF-inspired school prototype for emergency incident reporting. It helps users capture emergency call information, clean raw transcripts, generate AI-assisted incident report drafts, review and edit report details, save reports to MySQL, and monitor operational records through dashboard, reports, map, and analytics pages.
 
 The project uses Node.js, Express.js, EJS, CSS, JavaScript, MySQL, Ollama, RealtimeSTT, Leaflet, and OpenStreetMap.
 
 ## Problem Statement
 
-Emergency incident reporting can be time-consuming when important details are captured manually. SCDF personnel need to record location, incident type, hazards, injured or trapped persons, response status, missing information, and officer notes. Missing or unclear details can slow down report review, documentation, and follow-up action.
+Emergency incident reporting can be time-consuming when important details are captured manually. Duty officers need to record location, incident type, hazards, injured or trapped persons, response status, missing information, and officer notes. Missing or unclear details can slow down report review, documentation, and follow-up action.
 
 This prototype reduces manual effort by supporting transcript intake, AI-assisted cleanup, AI-assisted draft generation, structured review, searchable MySQL storage, and live operational summaries.
 
@@ -27,10 +27,10 @@ This prototype reduces manual effort by supporting transcript intake, AI-assiste
 The application uses a modular monolith structure. The Node.js / Express backend renders EJS pages, handles report routes, calls local AI services, and reads/writes incident records in MySQL.
 
 ```text
-SCDF Personnel
+Prototype Users
 -> Frontend Web Application using EJS, CSS, and JavaScript
 -> Backend Application using Node.js and Express.js
--> MySQL Database using firefighter_dashboard and incidents table
+-> MySQL Database using firefighter_dashboard, incidents table, and officers table
 ```
 
 Supporting services:
@@ -49,7 +49,7 @@ Emergency Call Information
 -> Transcript Intake
 -> AI Transcript Cleanup
 -> AI-Assisted Incident Draft
--> SCDF Personnel Review and Edit
+-> Duty Officer Review and Edit
 -> Save Incident Report to MySQL
 -> Dashboard / Reports / Map / Analytics Updated
 ```
@@ -99,7 +99,7 @@ Ollama helps generate editable incident fields from a transcript, including:
 - Officer notes
 - Response status
 
-AI drafts must be reviewed by SCDF personnel before saving. If Ollama is unavailable, the app keeps manual editing available and can return a conservative fallback draft.
+AI drafts must be reviewed by duty officers before saving. If Ollama is unavailable, the app keeps manual editing available and can return a conservative fallback draft.
 
 ### Incident Report CRUD
 
@@ -118,7 +118,9 @@ The dashboard keeps MySQL-backed incident report management:
 - Search reports
 - Filter reports by status
 
-Report completion appears on Create Report, Edit Report, and Report Details. Completion is based on incident location, incident type, date and time, summary, response status, hazards, and injured or trapped persons. The progress bar is advisory only and does not block the existing MySQL save flow.
+Officer login is backed by the MySQL `officers` table. New reports automatically save the logged-in officer as `reporting_officer_id`, and existing reports without an officer still display `Not assigned`.
+
+Report completion appears on Create Report, Edit Report, and Report Details. Completion is based on transcript, reporting officer, incident location, incident type, date and time, summary, hazards, injured or trapped persons, and non-draft response status. The logged-in officer is counted automatically on Create Report. The progress bar is advisory only and does not block the existing MySQL save flow.
 
 ### Live Incident Map
 
@@ -154,13 +156,8 @@ For backend-only map payload debugging in non-production:
 GET /dev/map-payload
 ```
 
-When `GEOCODING_DEBUG=true`, dashboard rendering logs map payload counts to the Node.js console. OneMap email, password, and access tokens are never sent to EJS or frontend JavaScript.
-
-### Analytics
-
-![Analytics](docs/images/analytics.png)
-
-Analytics values are recalculated from MySQL and show:
+When `GEOCODING_DEBUG=true`, dashboard rendering logs map payload counts to the Node.js console. OneMa
+es are recalculated from MySQL and show:
 
 - Incident type distribution
 - Response status overview
@@ -186,6 +183,7 @@ Search uses backend MySQL `LIKE` queries with parameters. It checks:
 - Missing Information
 - Officer Notes
 - Transcript
+- Reporting Officer Name and Role
 
 Search routes:
 
@@ -218,6 +216,7 @@ Main table: `incidents`
 |---|---|
 | id | Primary key |
 | incident_id | Unique incident reference |
+| reporting_officer_id | Officer from the login session; nullable for older reports |
 | incident_type | Type of emergency |
 | location | Incident location |
 | incident_datetime | Date and time of incident |
@@ -232,6 +231,18 @@ Main table: `incidents`
 | longitude | Map longitude |
 | created_at | Record creation time |
 | updated_at | Last updated time |
+
+Supporting table: `officers`
+
+| Field | Purpose |
+|---|---|
+| id | Primary key |
+| username | Unique officer login username |
+| password_hash | Bcrypt password hash |
+| officer_name | Reporting officer name |
+| officer_role | Role label shown in navigation and report details |
+| is_active | Whether the officer can log in |
+| created_at | Record creation time |
 
 ## Getting Started
 
@@ -286,7 +297,50 @@ CREATE TABLE IF NOT EXISTS incidents (
 );
 ```
 
-The `incidents` table must exist before the dashboard can save and load reports. Refer to the Database Design section for the expected table fields.
+For a fresh database, create the required tables:
+
+```sql
+CREATE TABLE IF NOT EXISTS officers (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(50) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  officer_name VARCHAR(100) NOT NULL,
+  officer_role VARCHAR(100) NOT NULL,
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS incidents (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  incident_id VARCHAR(20) NOT NULL UNIQUE,
+  reporting_officer_id INT NULL,
+  incident_type VARCHAR(100) NOT NULL,
+  location VARCHAR(255) NOT NULL,
+  incident_datetime DATETIME NULL,
+  incident_summary TEXT NULL,
+  hazards TEXT NULL,
+  injured_or_trapped_persons TEXT NULL,
+  response_status VARCHAR(50) DEFAULT 'Draft',
+  missing_information TEXT NULL,
+  officer_notes TEXT NULL,
+  transcript TEXT NULL,
+  latitude DECIMAL(10, 7) NULL,
+  longitude DECIMAL(10, 7) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_incidents_reporting_officer_id ON incidents (reporting_officer_id);
+```
+
+For an existing database, add the reporting officer column only if it is missing:
+
+```sql
+SHOW COLUMNS FROM incidents LIKE 'reporting_officer_id';
+ALTER TABLE incidents ADD COLUMN reporting_officer_id INT NULL;
+```
+
+The app, `npm run seed`, and `npm run seed:users` also check/create the `officers` table, add missing login columns, bcrypt-hash demo passwords, and add `reporting_officer_id` when the configured database already exists.
 
 ### 4. Create `.env`
 
@@ -298,6 +352,7 @@ DB_USER=root
 DB_PASSWORD=your_password
 DB_NAME=firefighter_dashboard
 DB_PORT=3306
+SESSION_SECRET=replace_with_a_long_random_string
 
 OLLAMA_HOST=http://localhost:11434
 OLLAMA_MODEL=qwen2.5:1.5b
@@ -308,7 +363,7 @@ ONEMAP_BASE_URL=https://www.onemap.gov.sg
 GEOCODING_DEBUG=false
 ```
 
-Replace `your_password` with your local MySQL password. OneMap credentials are optional; if they are blank, report creation, report editing, and coordinate backfill use the local Singapore fallback resolver. Do not commit `.env` or expose private credentials.
+Replace `your_password` with your local MySQL password and set `SESSION_SECRET` to a long random value for local sessions. OneMap credentials are optional; if they are blank, report creation, report editing, and coordinate backfill use the local Singapore fallback resolver. Do not commit `.env` or expose private credentials.
 
 ### 5. Start Ollama
 
@@ -343,6 +398,24 @@ RealtimeSTT is not required if you are using manual transcript input.
 npm run seed
 ```
 
+This also seeds the demo officer logins:
+
+| Username | Password | Officer |
+|---|---|---|
+| `admin1` | `password123` | Admin Duty Officer 1, Duty Officer |
+| `admin2` | `password123` | Admin Duty Officer 2, Duty Officer |
+| `admin3` | `password123` | Admin Duty Officer 3, Duty Officer |
+| `admin4` | `password123` | Admin Duty Officer 4, Duty Officer |
+| `admin5` | `password123` | Admin Duty Officer 5, Duty Officer |
+
+To refresh only the demo officer users:
+
+```powershell
+npm run seed:users
+```
+
+For this prototype, officer accounts are seeded for demo login only. Full HR/admin account management is intentionally left as a future enhancement because the current project focuses on incident reporting, AI drafting, dashboard, map, analytics, and DevOps workflow.
+
 ### 8. Run RealtimeSTT Only If Live Speech-to-Text Is Needed
 
 ```powershell
@@ -370,6 +443,7 @@ The dashboard reads local configuration from `.env`. Keep this file in the proje
 | `DB_PASSWORD` | Local MySQL password |
 | `DB_NAME` | Database name, `firefighter_dashboard` |
 | `DB_PORT` | MySQL port, usually `3306` |
+| `SESSION_SECRET` | Secret used by `express-session` to sign login cookies |
 | `OLLAMA_HOST` | Ollama server URL |
 | `OLLAMA_MODEL` | Local model used for cleanup and draft generation |
 | `ONEMAP_EMAIL` | Optional OneMap email |
@@ -419,16 +493,18 @@ Use this flow to test the main prototype path end to end:
 4. Run `npm run seed`.
 5. Run `npm start` or `npm run demo`.
 6. Open `http://localhost:3000`.
-7. Check the Dashboard cards.
-8. Go to Live Call Intake.
-9. Paste or capture a transcript.
-10. Click Clean Transcript.
-11. Send the transcript to Create Report.
-12. Click Generate AI Report.
-13. Review and edit the generated fields.
-14. Save the report.
-15. Check Incident Reports.
-16. Refresh Dashboard, Map, and Analytics.
+7. Log in with one demo officer account.
+8. Check the Dashboard cards.
+9. Go to Live Call Intake.
+10. Paste or capture a transcript.
+11. Click Clean Transcript.
+12. Send the transcript to Create Report.
+13. Click Generate AI Report.
+14. Review and edit the generated fields.
+15. Save the report.
+16. Confirm Report Details shows the logged-in officer.
+17. Log out and confirm protected pages redirect to `/login`.
+18. Refresh Dashboard, Map, and Analytics after logging back in.
 
 ## Seed Sample Incident Reports
 
@@ -438,7 +514,7 @@ The dashboard and analytics read from the MySQL `incidents` table. To load reali
 npm run seed
 ```
 
-The seed script inserts or refreshes 10 sample reports with IDs `INC-1001` through `INC-1010`, including residential fires, kitchen fire, road traffic accident, lift rescues, gas leak, electrical fire, rubbish chute fire, and vehicle fire. The script uses `ON DUPLICATE KEY UPDATE`, so running it again refreshes those same sample records instead of creating duplicates.
+The seed script creates or upgrades the `officers` table, stores bcrypt password hashes for demo users, adds `reporting_officer_id` to `incidents` when missing, and inserts or refreshes 10 sample reports with IDs `INC-1001` through `INC-1010`. The sample reports include residential fires, kitchen fire, road traffic accident, lift rescues, gas leak, electrical fire, rubbish chute fire, and vehicle fire. The script uses `ON DUPLICATE KEY UPDATE`, so running it again refreshes those same sample records instead of creating duplicates.
 
 After seeding, open `http://localhost:3000/dashboard` and `http://localhost:3000/analytics` to confirm totals, charts, and percentages update.
 
@@ -668,4 +744,3 @@ Manual transcript input still works when RealtimeSTT is unavailable.
 ### Raw Transcript Does Not Send
 
 Confirm there is text in Live Transcript, Full Transcript, Clean Transcript Text, or the manual transcript field before sending. Sent transcripts are stored in `localStorage`, then loaded into the Create Report transcript field.
-

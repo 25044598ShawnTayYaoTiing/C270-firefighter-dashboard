@@ -7,12 +7,15 @@
     "start": "node app.js",
     "dev": "node app.js",
     "demo": "powershell -ExecutionPolicy Bypass -File scripts/start-demo.ps1",
-    "seed": "node scripts/seedIncidents.js"
+    "seed": "node scripts/seedIncidents.js",
+    "seed:users": "node scripts/seedUsers.js"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "dotenv": "^17.4.2",
     "ejs": "^3.1.10",
     "express": "^4.19.2",
+    "express-session": "^1.19.0",
     "mysql2": "^3.22.5"
   }
 }

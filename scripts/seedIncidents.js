@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const officerModel = require('../models/officerModel');
 
 const incidents = [
   {
@@ -154,12 +155,82 @@ async function hasColumn(columnName) {
   return rows.length > 0;
 }
 
+async function hasIndex(tableName, indexName) {
+  const [rows] = await db.query(
+    `
+      SELECT 1
+      FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND INDEX_NAME = ?
+      LIMIT 1
+    `,
+    [tableName, indexName]
+  );
+  return rows.length > 0;
+}
+
+async function addIncidentColumnIfMissing(columnName, definition) {
+  if (!(await hasColumn(columnName))) {
+    await db.query(`ALTER TABLE incidents ADD COLUMN ${columnName} ${definition}`);
+  }
+}
+
+async function ensureDatabaseObjects() {
+  await officerModel.ensureOfficerSchema();
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS incidents (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      incident_id VARCHAR(20) NOT NULL UNIQUE,
+      reporting_officer_id INT NULL,
+      incident_type VARCHAR(100) NOT NULL,
+      location VARCHAR(255) NOT NULL,
+      incident_datetime DATETIME NULL,
+      incident_summary TEXT NULL,
+      hazards TEXT NULL,
+      injured_or_trapped_persons TEXT NULL,
+      response_status VARCHAR(50) DEFAULT 'Draft',
+      missing_information TEXT NULL,
+      officer_notes TEXT NULL,
+      transcript TEXT NULL,
+      latitude DECIMAL(10, 7) NULL,
+      longitude DECIMAL(10, 7) NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+  await addIncidentColumnIfMissing('reporting_officer_id', 'INT NULL');
+
+  if (!(await hasIndex('incidents', 'idx_incidents_reporting_officer_id'))) {
+    await db.query('ALTER TABLE incidents ADD INDEX idx_incidents_reporting_officer_id (reporting_officer_id)');
+  }
+
+  console.log('Seeded demo officer users.');
+}
+
+async function getOfficerIds() {
+  const [rows] = await db.query(`
+    SELECT id
+    FROM officers
+    WHERE is_active = TRUE
+    ORDER BY officer_name ASC
+  `);
+
+  return rows.map((row) => row.id);
+}
+
 async function seed() {
+  await ensureDatabaseObjects();
+
   const hasLatitude = await hasColumn('latitude');
   const hasLongitude = await hasColumn('longitude');
   const hasCoordinates = hasLatitude && hasLongitude;
+  const officerIds = await getOfficerIds();
   const columns = [
     'incident_id',
+    'reporting_officer_id',
     'incident_type',
     'location',
     'incident_datetime',
@@ -189,9 +260,10 @@ async function seed() {
       ${updates}
   `;
 
-  for (const incident of incidents) {
+  for (const [index, incident] of incidents.entries()) {
     const values = [
       incident.incident_id,
+      officerIds.length ? officerIds[index % officerIds.length] : null,
       incident.incident_type,
       incident.location,
       incident.incident_datetime,
