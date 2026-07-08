@@ -156,13 +156,8 @@ For backend-only map payload debugging in non-production:
 GET /dev/map-payload
 ```
 
-When `GEOCODING_DEBUG=true`, dashboard rendering logs map payload counts to the Node.js console. OneMap email, password, and access tokens are never sent to EJS or frontend JavaScript.
-
-### Analytics
-
-![Analytics](docs/images/analytics.png)
-
-Analytics values are recalculated from MySQL and show:
+When `GEOCODING_DEBUG=true`, dashboard rendering logs map payload counts to the Node.js console. OneMa
+es are recalculated from MySQL and show:
 
 - Incident type distribution
 - Response status overview
