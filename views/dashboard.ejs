@@ -21,7 +21,7 @@
           <p class="eyebrow">Operations</p>
           <h2>Recent Incident Reports</h2>
         </div>
-        <a class="link-button" href="/incidents">View all</a>
+        <a class="link-button" href="/incidents"><i class="bi bi-collection-fill"></i> View all</a>
       </div>
 
       <div class="table-responsive">
@@ -29,11 +29,11 @@
           <thead>
             <tr>
               <th>Incident ID</th>
-              <th>Incident Type</th>
-              <th>Location</th>
-              <th>Status</th>
-              <th>Date/Time</th>
-              <th>Action</th>
+              <th><i class="bi bi-tag-fill"></i> Incident Type</th>
+              <th><i class="bi bi-geo-alt-fill"></i> Location</th>
+              <th><i class="bi bi-flag-fill"></i> Status</th>
+              <th><i class="bi bi-calendar-fill"></i> Date/Time</th>
+              <th><i class="bi bi-gear-fill"></i> Action</th>
             </tr>
           </thead>
           <tbody>
@@ -41,7 +41,7 @@
               <tr>
                 <td colspan="6">
                   <div class="table-empty-state">
-                    <i class="bi bi-inbox"></i>
+                    <i class="bi bi-inbox-fill"></i>
                     <span>No incident reports have been saved yet.</span>
                   </div>
                 </td>
@@ -54,7 +54,7 @@
                   <td><%= report.location %></td>
                   <td><span class="status-badge status-<%= statusKey(report.status) %>"><%= report.status %></span></td>
                   <td><%= report.createdDate %></td>
-                  <td><a class="table-action" href="/incidents/<%= report.id %>">View</a></td>
+                  <td><a class="table-action" href="/incidents/<%= report.id %>"><i class="bi bi-eye-fill"></i> View</a></td>
                 </tr>
             <% }) %>
           </tbody>
@@ -68,7 +68,7 @@
           <p class="eyebrow">Incident Map</p>
           <h2>Singapore Incident Locations</h2>
         </div>
-        <a class="link-button" href="/incidents">View reports</a>
+        <a class="link-button" href="/incidents"><i class="bi bi-map-fill"></i> View reports</a>
       </div>
 
       <div class="incident-map" id="incidentMap"></div>
@@ -89,36 +89,6 @@
           </a>
         <% }) %>
       </div>
-    </article>
-
-    <article class="panel">
-      <div class="panel-header">
-        <div>
-          <p class="eyebrow">Audit Trail</p>
-          <h2>Recent Activity</h2>
-        </div>
-      </div>
-
-      <ul class="activity-list">
-        <% activityItems.forEach((item, index) => { %>
-          <li>
-            <span class="activity-dot"></span>
-            <div>
-              <strong><%= item.label %></strong>
-              <small><%= item.time %></small>
-            </div>
-          </li>
-        <% }) %>
-        <% if (activityItems.length === 0) { %>
-          <li>
-            <span class="activity-dot"></span>
-            <div>
-              <strong>No recent incident activity</strong>
-              <small>Save a report to populate this list</small>
-            </div>
-          </li>
-        <% } %>
-      </ul>
     </article>
   </div>
 
@@ -174,7 +144,7 @@
         <% }) %>
         <% if (typeBreakdown.length === 0) { %>
           <div class="table-empty-state">
-            <i class="bi bi-inbox"></i>
+            <i class="bi bi-inbox-fill"></i>
             <span>No type data available yet.</span>
           </div>
         <% } %>

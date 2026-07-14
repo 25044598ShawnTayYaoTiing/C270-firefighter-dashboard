@@ -9,7 +9,7 @@
     </div>
 
     <div class="notice-strip" id="transcriptionNotice">
-      <i class="bi bi-info-circle"></i>
+      <i class="bi bi-info-circle-fill"></i>
       <span>Checking call transcription service.</span>
     </div>
 
@@ -36,21 +36,21 @@
     </label>
 
     <div class="notice-strip notice-hidden" id="cleanupNotice">
-      <i class="bi bi-info-circle"></i>
+      <i class="bi bi-info-circle-fill"></i>
       <span></span>
     </div>
 
     <div class="form-actions transcription-actions">
       <button class="primary-button" type="button" id="startTranscriptionButton">
-        <i class="bi bi-record-circle"></i>
+        <i class="bi bi-record-circle-fill"></i>
         Start Transcription
       </button>
       <button class="secondary-button" type="button" id="stopTranscriptionButton" disabled>
-        <i class="bi bi-stop-circle"></i>
+        <i class="bi bi-stop-circle-fill"></i>
         Stop Transcription
       </button>
       <button class="ghost-button" type="button" id="clearTranscriptButton">
-        <i class="bi bi-x-circle"></i>
+        <i class="bi bi-x-circle-fill"></i>
         Clear Transcript
       </button>
       <%# Done BY SHAWN ID 25044598 %>
@@ -60,13 +60,13 @@
         Clean Transcript
       </button>
       <button class="ghost-button" type="button" id="sendTranscriptButton">
-        <i class="bi bi-send"></i>
+        <i class="bi bi-send-fill"></i>
         Send Raw Transcript
       </button>
       <%# Done BY SHAWN ID 25044598 %>
       <%# AI Features: forwards reviewed cleaned transcript text into Create Report for AI draft generation. %>
       <button class="primary-button" type="button" id="sendCleanTranscriptButton">
-        <i class="bi bi-send-check"></i>
+        <i class="bi bi-send-check-fill"></i>
         Send Clean Transcript
       </button>
     </div>
@@ -81,23 +81,23 @@
     </div>
 
     <div class="connection-list">
-      <div>
-        <span>Call Transcription Service</span>
-        <strong class="status-badge status-draft" id="realtimeServiceStatus">Checking</strong>
-      </div>
-      <div>
-        <span>Report Drafting Service</span>
-        <strong class="status-badge status-draft" id="aiServiceStatus">Checking</strong>
-      </div>
-      <div>
-        <span>Database</span>
-        <strong class="status-badge status-draft" id="databaseStatus">Checking</strong>
-      </div>
+      <span class="status-pill" id="realtimeServiceStatus">
+        <span class="status-dot"></span>
+        <span class="status-name">Call Transcription Service</span>
+      </span>
+      <span class="status-pill" id="aiServiceStatus">
+        <span class="status-dot"></span>
+        <span class="status-name">Report Drafting Service</span>
+      </span>
+      <span class="status-pill" id="databaseStatus">
+        <span class="status-dot"></span>
+        <span class="status-name">Database</span>
+      </span>
     </div>
 
     <label class="manual-transcript">
       <span>Manual Transcript Input</span>
-      <textarea class="form-control" id="manualTranscriptInput" rows="10" placeholder="Paste transcript text here if the call transcription service is unavailable."></textarea>
+      <textarea class="form-control" id="manualTranscriptInput" rows="18" placeholder="Paste transcript text here if the call transcription service is unavailable."></textarea>
     </label>
   </aside>
 </section>

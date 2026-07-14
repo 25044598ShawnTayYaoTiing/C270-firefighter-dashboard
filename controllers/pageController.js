@@ -136,20 +136,6 @@ function buildBreakdown(reports, key, limit) {
     .slice(0, limit);
 }
 
-function buildActivityItems(reports) {
-  return [...reports]
-    .sort((a, b) => {
-      const left = a.updatedDate ? a.updatedDate.getTime() : 0;
-      const right = b.updatedDate ? b.updatedDate.getTime() : 0;
-      return right - left;
-    })
-    .slice(0, 5)
-    .map((report) => ({
-      label: `${report.id} - ${report.type} (${report.status})`,
-      time: report.lastUpdated
-    }));
-}
-
 function buildTrendNotes(typeBreakdown, locations, totalReports) {
   const topType = typeBreakdown[0];
   const topLocation = locations[0];
@@ -162,11 +148,11 @@ function buildTrendNotes(typeBreakdown, locations, totalReports) {
         : 'No incident type trends are available yet.'
     },
     {
-      icon: 'bi-clipboard-data',
+      icon: 'bi-clipboard-data-fill',
       text: `${totalReports} total incident report${totalReports === 1 ? '' : 's'} currently recorded.`
     },
     {
-      icon: 'bi-geo-alt',
+      icon: 'bi-geo-alt-fill',
       text: topLocation
         ? `${topLocation.label} appears most often with ${topLocation.count} report${topLocation.count === 1 ? '' : 's'}.`
         : 'No location trends are available yet.'
@@ -232,11 +218,11 @@ exports.showDashboard = async (req, res, next) => {
     logMapPayloadDebug(incidentMapData);
 
     const summaryCards = [
-      { label: 'Total Incident Reports', value: totalReports, subtext: 'Current incident log', icon: 'bi-file-earmark-text', accent: 'red' },
+      { label: 'Total Incident Reports', value: totalReports, subtext: 'Current incident log', icon: 'bi-file-earmark-text-fill', accent: 'red' },
       { label: 'Pending Review', value: pendingCount, subtext: 'Awaiting officer review', icon: 'bi-hourglass-split', accent: 'orange' },
       { label: 'Completed Reports', value: completedCount, subtext: 'Closed by officer review', icon: 'bi-check2-circle', accent: 'green' },
-      { label: 'Reports This Week', value: reportsThisWeek, subtext: 'Created this week', icon: 'bi-calendar-week', accent: 'blue' },
-      { label: 'Escalated Incidents', value: escalatedCount, subtext: 'Requires urgent review', icon: 'bi-exclamation-triangle', accent: 'red' }
+      { label: 'Reports This Week', value: reportsThisWeek, subtext: 'Created this week', icon: 'bi-calendar-week-fill', accent: 'blue' },
+      { label: 'Escalated Incidents', value: escalatedCount, subtext: 'Requires urgent review', icon: 'bi-exclamation-triangle-fill', accent: 'red' }
     ];
 
     renderPage(res, 'dashboard', {
@@ -245,7 +231,6 @@ exports.showDashboard = async (req, res, next) => {
       summaryCards,
       recentReports: reports.slice(0, 4),
       pendingReports: reports.filter((report) => report.status === 'Pending Review').slice(0, 5),
-      activityItems: buildActivityItems(reports),
       typeBreakdown,
       locations,
       incidentMapData,
@@ -282,10 +267,17 @@ exports.showAnalytics = async (req, res, next) => {
     const escalatedCount = getStatusCount(reports, 'Escalated');
     const typeBreakdown = buildBreakdown(reports, 'type', 8);
     const locations = buildBreakdown(reports, 'location', 6);
+    const statusIconMap = {
+      'Draft': 'bi-file-earmark-fill',
+      'Pending Review': 'bi-clock-fill',
+      'Completed': 'bi-check-circle-fill',
+      'Escalated': 'bi-exclamation-triangle-fill'
+    };
     const statusCounts = statuses.map((status) => {
       const value = getStatusCount(reports, status);
       return {
         label: status,
+        icon: statusIconMap[status] || 'bi-circle-fill',
         value,
         percent: toPercent(value, totalReports)
       };
@@ -340,18 +332,6 @@ exports.checkSystemStatus = async (req, res) => {
       connected: databaseHealth.connected
     }
   });
-};
-
-exports.showPendingReview = (req, res) => {
-  res.redirect('/incidents?status=Pending%20Review');
-};
-
-exports.showCompletedReports = (req, res) => {
-  res.redirect('/incidents?statusGroup=completed');
-};
-
-exports.showEscalatedIncidents = (req, res) => {
-  res.redirect('/incidents?status=Escalated');
 };
 
 function showPlaceholder(res, pageTitle, activePage, message) {
