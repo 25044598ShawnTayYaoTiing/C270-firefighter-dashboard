@@ -206,6 +206,8 @@ function logMapPayloadDebug(incidentMapData) {
 
 exports.showDashboard = async (req, res, next) => {
   try {
+    // Done by Fatin ID: 25050557
+    // Read all incidents from the database and prepare them for the dashboard
     const reports = await getReports();
     const totalReports = reports.length;
     const pendingCount = getStatusCount(reports, 'Pending Review');
@@ -214,6 +216,7 @@ exports.showDashboard = async (req, res, next) => {
     const reportsThisWeek = getReportsThisWeek(reports);
     const typeBreakdown = buildBreakdown(reports, 'type', 5);
     const locations = buildBreakdown(reports, 'location', 4);
+    // Convert incident reports into map markers and unmapped incidents
     const incidentMapData = await buildMapData(reports);
     logMapPayloadDebug(incidentMapData);
 
@@ -225,6 +228,7 @@ exports.showDashboard = async (req, res, next) => {
       { label: 'Escalated Incidents', value: escalatedCount, subtext: 'Requires urgent review', icon: 'bi-exclamation-triangle-fill', accent: 'red' }
     ];
 
+    // Pass all dashboard data (including the map) to dashboard.ejs
     renderPage(res, 'dashboard', {
       pageTitle: 'Dashboard',
       activePage: 'dashboard',

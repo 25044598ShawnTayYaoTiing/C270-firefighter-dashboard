@@ -1,3 +1,5 @@
+// Done By Fatin ID: 25050557
+// Initialize the Leaflet map and display live incident markers
 document.addEventListener('DOMContentLoaded', () => {
   const mapElement = document.getElementById('incidentMap');
   const dataElement = document.getElementById('incidentMapData');
@@ -39,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
     scrollWheelZoom: false
   });
 
+  // Load OpenStreetMap tiles to provide the map background
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
     attribution: '&copy; OpenStreetMap contributors'
@@ -49,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   markerGroup.clearLayers();
 
+  // Create one marker for every active incident with valid coordinates
   markers
     .filter(shouldShowOnLiveMap)
     .forEach((incident) => {
@@ -63,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      // Assign marker colour based on incident priority/status
       const color = incident.markerColor || getIncidentMarkerColor(incident.response_status || incident.status);
       const marker = L.circleMarker([latitude, longitude], {
         radius: 9,
@@ -72,6 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
         weight: 2
       }).addTo(markerGroup);
 
+      // Show incident details when a marker is clicked
       marker.bindPopup(buildPopup(incident));
     });
 
