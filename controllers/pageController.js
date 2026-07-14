@@ -23,6 +23,8 @@ function renderPage(res, view, options) {
   });
 }
 
+// Done by: Khin (25036933)
+// Check whether the external real-time transcription service is reachable before the UI shows it as available.
 function requestTranscriptionHealth() {
   return new Promise((resolve) => {
     const request = http.get('http://127.0.0.1:8010/health', { timeout: 1500 }, (response) => {
@@ -306,6 +308,8 @@ exports.showAnalytics = async (req, res, next) => {
   }
 };
 
+// Done by: Khin (25036933)
+// Render the live call intake page where operators can start transcription, review text, and send it to report creation.
 exports.showTranscription = (req, res) => {
   renderPage(res, 'transcription', {
     pageTitle: 'Live Call Intake',
@@ -318,6 +322,8 @@ exports.checkTranscriptionHealth = async (req, res) => {
   res.json(health);
 };
 
+// Done by: Khin (25036933)
+// Gather the current health of transcription, AI cleanup, and the database so the page can show a reliable system status.
 exports.checkSystemStatus = async (req, res) => {
   const [transcriptionHealth, aiHealth, databaseHealth] = await Promise.all([
     requestTranscriptionHealth(),

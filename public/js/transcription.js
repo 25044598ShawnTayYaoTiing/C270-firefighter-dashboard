@@ -35,6 +35,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let fullTranscript = '';
   let lastCommittedTranscript = '';
 
+  // Done by: Khin (25036933)
+  // Set up the main UI controls and initialize the transcript views.
   startButton.addEventListener('click', startTranscription);
   stopButton.addEventListener('click', stopTranscription);
   clearButton.addEventListener('click', clearTranscript);
@@ -47,6 +49,8 @@ document.addEventListener('DOMContentLoaded', () => {
   updateTranscriptDisplays();
   checkSystemStatus();
 
+  // Done by: Khin (25036933)
+  // Check whether the live transcription and AI services are available before the user starts streaming.
   async function checkSystemStatus() {
     try {
       const response = await fetch('/system/status', { cache: 'no-store' });
@@ -69,6 +73,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Done by: Khin (25036933)
+  // Start microphone capture and connect to the live transcription service.
   async function startTranscription() {
     if (isStreaming || isConnecting) return;
 
@@ -103,6 +109,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Done by: Khin (25036933)
+  // Open a websocket connection so the browser can receive transcription updates in real time.
   function connectSocket() {
     return new Promise((resolve, reject) => {
       const nextSocket = new WebSocket(serviceWsUrl);
@@ -183,6 +191,8 @@ document.addEventListener('DOMContentLoaded', () => {
     updateTranscriptDisplays();
   }
 
+  // Done by: Khin (25036933)
+  // Process incoming transcription messages and decide whether they should appear as live text or finalized text.
   function handleSocketMessage(event) {
     let message;
 
@@ -256,6 +266,8 @@ document.addEventListener('DOMContentLoaded', () => {
     updateTranscriptDisplays();
   }
 
+  // Done by: Khin (25036933)
+  // Keep the completed transcript readable by avoiding duplicate or repeated segments.
   function appendToFullTranscript(text) {
     const normalizedSegment = normalizeTranscriptText(text);
     const existingSegments = getFullTranscriptSegments();
@@ -346,6 +358,8 @@ document.addEventListener('DOMContentLoaded', () => {
       .join('\n');
   }
 
+  // Done by: Khin (25036933)
+  // Move any live transcript text into the main transcript when the user wants to save or send it.
   function commitLiveTranscript(options = {}) {
     const shouldClearLive = options.clearLive !== false;
     const normalizedLiveTranscript = normalizeTranscriptText(liveTranscript);
@@ -390,6 +404,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Done by: Khin (25036933)
+  // Normalize whitespace so transcript text is displayed and stored consistently.
   function normalizeTranscriptText(text) {
     return String(text || '').replace(/\s+/g, ' ').trim();
   }
@@ -578,6 +594,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// Done by: Khin (25036933)
+// Convert microphone audio samples into the binary format expected by the transcription service.
 function buildAudioPacket(samples, sampleRate) {
   const metadata = {
     sampleRate,
