@@ -31,7 +31,7 @@
         <% }) %>
         <% if (typeBreakdown.length === 0) { %>
           <div class="table-empty-state">
-            <i class="bi bi-inbox"></i>
+            <i class="bi bi-inbox-fill"></i>
             <span>No incident type data available yet.</span>
           </div>
         <% } %>
@@ -60,16 +60,23 @@
     <article class="panel compact-panel">
       <div class="panel-header">
         <div>
-          <p class="eyebrow">Incident Count</p>
+          <p class="eyebrow">Reports by Status</p>
           <h2>By Status</h2>
         </div>
       </div>
       <div class="status-stack">
         <% statusCounts.forEach((status) => { %>
           <div>
-            <span class="status-badge status-<%= statusKey(status.label) %>"><%= status.label %></span>
-            <strong><%= status.value %></strong>
-            <div class="progress">
+            <span class="status-badge status-<%= statusKey(status.label) %>">
+              <i class="bi <%= status.icon %>"></i>
+              <%= status.label %>
+            </span>
+            <strong class="status-figure">
+              <span class="status-count"><%= status.value %></span>
+              <span class="status-divider" aria-hidden="true"></span>
+              <span class="status-percent"><%= status.percent %>%</span>
+            </strong>
+            <div class="progress bar-<%= statusKey(status.label) %>">
               <div class="progress-bar" style="width: <%= status.percent %>%"></div>
             </div>
           </div>

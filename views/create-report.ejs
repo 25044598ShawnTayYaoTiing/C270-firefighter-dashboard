@@ -1,5 +1,5 @@
 <section class="form-grid">
-  <article class="panel">
+  <article class="panel transcript-panel">
     <div class="panel-header">
       <div>
         <p class="eyebrow">Call Transcript</p>
@@ -11,7 +11,7 @@
     <%# AI Features: transcript input supplies text for Ollama-based incident draft generation. %>
     <div class="mb-3">
       <label class="form-label" for="transcriptInput">Transcript</label>
-      <textarea class="form-control" id="transcriptInput" name="transcript" form="reportForm" rows="8" placeholder="Paste an incident call transcript here..."></textarea>
+      <textarea class="form-control" id="transcriptInput" name="transcript" form="reportForm" rows="16" placeholder="Paste an incident call transcript here..."></textarea>
     </div>
 
     <%# Done BY SHAWN ID 25044598 %>
@@ -22,12 +22,12 @@
     </button>
     <p class="helper-text">Creates an editable draft from the transcript. Nothing is saved until an officer reviews and submits the report.</p>
     <div class="notice-strip notice-hidden" id="aiReportNotice">
-      <i class="bi bi-info-circle"></i>
+      <i class="bi bi-info-circle-fill"></i>
       <span></span>
     </div>
   </article>
 
-  <article class="panel">
+  <article class="panel report-draft-panel">
     <div class="panel-header">
       <div>
         <p class="eyebrow">Officer Review</p>
@@ -126,7 +126,7 @@
 
       <div class="form-actions">
         <button class="secondary-button" type="submit" name="saveMode" value="draft" formnovalidate>
-          <i class="bi bi-save"></i>
+          <i class="bi bi-save-fill"></i>
           Save Draft
         </button>
         <button class="primary-button" type="submit" name="saveMode" value="report">
@@ -134,7 +134,7 @@
           Save Report
         </button>
         <button class="ghost-button" type="reset">
-          <i class="bi bi-x-circle"></i>
+          <i class="bi bi-x-circle-fill"></i>
           Clear Form
         </button>
       </div>

@@ -54,7 +54,7 @@
           <tr>
             <td colspan="8">
               <div class="table-empty-state">
-                <i class="bi bi-inbox"></i>
+                <i class="bi bi-inbox-fill"></i>
                 <span><%= emptyMessage %></span>
               </div>
             </td>
@@ -71,18 +71,15 @@
             <td><%= report.lastUpdated %></td>
             <td>
               <div class="action-group">
-                <a href="/incidents/<%= report.id %>" class="icon-text-button">
-                  <i class="bi bi-eye"></i>
-                  View
+                <a href="/incidents/<%= report.id %>" class="icon-text-button" aria-label="View">
+                  <i class="bi bi-eye-fill"></i>
                 </a>
-                <a href="/incidents/<%= report.id %>/edit" class="icon-text-button neutral">
-                  <i class="bi bi-pencil"></i>
-                  Edit
+                <a href="/incidents/<%= report.id %>/edit" class="icon-text-button neutral" aria-label="Edit">
+                  <i class="bi bi-pencil-fill"></i>
                 </a>
                 <form class="delete-report-form" action="/incidents/<%= report.id %>/delete" method="POST">
-                  <button class="icon-text-button danger js-delete-report" type="submit" data-report-id="<%= report.id %>">
-                    <i class="bi bi-trash"></i>
-                    Delete
+                  <button class="icon-text-button danger js-delete-report" type="submit" data-report-id="<%= report.id %>" aria-label="Delete">
+                    <i class="bi bi-trash-fill"></i>
                   </button>
                 </form>
               </div>

@@ -555,10 +555,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function setStatusBadge(element, isAvailable, availableText, unavailableText) {
     if (!element) return;
 
-    element.textContent = isAvailable ? availableText : unavailableText;
-    element.className = isAvailable
-      ? 'status-badge status-completed'
-      : 'status-badge status-escalated';
+    element.classList.toggle('is-up', !!isAvailable);
+    element.classList.toggle('is-down', !isAvailable);
   }
 
   function showCleanupNotice(state, message) {
