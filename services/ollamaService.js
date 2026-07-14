@@ -185,48 +185,6 @@ exports.generateReport = async (transcript) => {
   return normalizeReport(parseJsonObject(response));
 };
 
-// Done BY SHAWN ID 25044598
-// AI Missing Information enhancement: asks Ollama to identify only unclear or missing operational details.
-exports.enhanceMissingInformation = async ({
-  transcript,
-  location,
-  incident_type,
-  incident_summary,
-  hazards,
-  injured_or_trapped_persons,
-  missing_information
-}) => {
-  return callOllama([
-    {
-      role: 'system',
-      content: [
-        'You are assisting firefighter incident report review.',
-        'Identify only missing or unclear operational information that the officer may need to confirm.',
-        'Use only the provided transcript and report fields.',
-        'Do not invent facts.',
-        'Do not change confirmed facts.',
-        'Do not restate confirmed details as missing.',
-        'Return concise bullet points only.',
-        'If no major missing details are found, return exactly: No major missing information identified. Officer should still verify report details before saving.'
-      ].join(' ')
-    },
-    {
-      role: 'user',
-      content: [
-        'Review these current report details for missing or unclear operational information.',
-        '',
-        `Transcript: ${transcript || ''}`,
-        `Incident location: ${location || ''}`,
-        `Incident type: ${incident_type || ''}`,
-        `Incident summary: ${incident_summary || ''}`,
-        `Hazards: ${hazards || ''}`,
-        `Injured or trapped persons: ${injured_or_trapped_persons || ''}`,
-        `Current missing information: ${missing_information || ''}`
-      ].join('\n')
-    }
-  ]);
-};
-
 exports.extractIncidentLocation = async ({ location, summary, transcript }, timeoutMs = 8000) => {
   const response = await callOllama([
     {

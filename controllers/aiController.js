@@ -8,32 +8,6 @@ function getTranscript(req) {
     : '';
 }
 
-function getOptionalText(body, field) {
-  return body && typeof body[field] === 'string'
-    ? body[field].trim()
-    : '';
-}
-
-// Done BY SHAWN ID 25044598
-// AI Missing Information enhancement: normalizes officer-entered report context before Ollama review.
-function getMissingInformationPayload(req) {
-  const body = req.body || {};
-
-  return {
-    transcript: getOptionalText(body, 'transcript'),
-    location: getOptionalText(body, 'location'),
-    incident_type: getOptionalText(body, 'incident_type'),
-    incident_summary: getOptionalText(body, 'incident_summary'),
-    hazards: getOptionalText(body, 'hazards'),
-    injured_or_trapped_persons: getOptionalText(body, 'injured_or_trapped_persons'),
-    missing_information: getOptionalText(body, 'missing_information')
-  };
-}
-
-function hasAnyReportDetail(payload) {
-  return Object.values(payload).some((value) => value.length > 0);
-}
-
 // Done BY SHAWN ID 25044598
 // AI Features: conservative fallback report keeps officer review usable when Ollama is unavailable.
 function fallbackReport(transcript) {
@@ -106,35 +80,6 @@ exports.generateReport = async (req, res) => {
       fallback: true,
       error: 'Report drafting service is unavailable. A manual draft was prepared for review.',
       report: fallbackReport(transcript)
-    });
-  }
-};
-
-// Done BY SHAWN ID 25044598
-// AI Missing Information enhancement: reviews current report details and returns editable missing-detail bullets.
-exports.enhanceMissingInformation = async (req, res) => {
-  const payload = getMissingInformationPayload(req);
-
-  if (!hasAnyReportDetail(payload)) {
-    return res.status(400).json({
-      success: false,
-      error: 'Report details are required before enhancing missing information.'
-    });
-  }
-
-  try {
-    const missingInformation = await ollamaService.enhanceMissingInformation(payload);
-
-    return res.json({
-      success: true,
-      missingInformation
-    });
-  } catch (error) {
-    console.error('[AI Missing Information] Enhancement failed:', error.message);
-
-    return res.status(503).json({
-      success: false,
-      error: 'Missing information enhancement is unavailable. Please review manually.'
     });
   }
 };

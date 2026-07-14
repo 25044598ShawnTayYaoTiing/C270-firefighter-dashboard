@@ -1012,32 +1012,6 @@ a {
   gap: 16px;
 }
 
-/* // Done BY SHAWN ID 25044598 */
-/* AI Missing Information enhancement: subtle inline helper and action spacing for the Create Report field. */
-.missing-info-section {
-  display: grid;
-  gap: 8px;
-}
-
-.report-form .field-label-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.ai-field-helper {
-  color: var(--muted);
-  font-size: 0.74rem;
-  font-weight: 600;
-}
-
-.missing-info-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .report-completion {
   display: grid;
   gap: 10px;
