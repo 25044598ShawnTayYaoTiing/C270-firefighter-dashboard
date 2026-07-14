@@ -1,5 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   const TRANSCRIPT_STORAGE_KEY = 'firefighter.transcriptDraft';
+  const CREATE_REPORT_DRAFT_KEY = 'firefighter.createReportDraft';
+  const DRAFT_SAVE_DELAY_MS = 700;
   const OTHER_INCIDENT_TYPE_VALUE = '__other_special_incident__';
   const transcriptInput = document.getElementById('transcriptInput');
   const generateButton = document.getElementById('generateDraftButton');
@@ -8,26 +10,50 @@ document.addEventListener('DOMContentLoaded', () => {
   const incidentTypeSelect = document.getElementById('incidentType');
   const customIncidentTypeField = document.getElementById('customIncidentTypeField');
   const customIncidentTypeInput = document.getElementById('customIncidentType');
+  const draftRecoveryNotice = document.getElementById('draftRecoveryNotice');
+  const draftRecoveryMessage = document.getElementById('draftRecoveryMessage');
+  const restoreDraftButton = document.getElementById('restoreCreateReportDraftButton');
+  const discardDraftButton = document.getElementById('discardCreateReportDraftButton');
+  let draftSaveTimer = null;
+  let isRestoringDraft = false;
+  let isDiscardingDraft = false;
+  let isSubmittingReport = false;
+  let hasPendingDraftRecovery = false;
+  const initialReportingOfficerId = getFieldValue('reportingOfficerId');
+
+  clearDraftAfterSuccessfulSave();
+
+  if (!transcriptInput || !generateButton || !reportForm) return;
 
   setupCustomIncidentType();
-
-  if (!transcriptInput || !generateButton) return;
-
-  loadSentTranscript();
+  setupDraftRecovery();
+  setupDraftAutosave();
   generateButton.addEventListener('click', generateAiReport);
 
   function loadSentTranscript() {
     const params = new URLSearchParams(window.location.search);
     const directTranscript = params.get('transcriptText');
-    const storedTranscript = localStorage.getItem(TRANSCRIPT_STORAGE_KEY);
+    const storedTranscript = getStorageItem(TRANSCRIPT_STORAGE_KEY);
+    let loadedTranscript = false;
 
     if (directTranscript && !transcriptInput.value.trim()) {
       transcriptInput.value = directTranscript;
+      dispatchFieldUpdate(transcriptInput);
+      loadedTranscript = true;
     }
 
-    if (params.get('transcript') === 'sent' && storedTranscript && !transcriptInput.value.trim()) {
-      transcriptInput.value = storedTranscript;
-      localStorage.removeItem(TRANSCRIPT_STORAGE_KEY);
+    if (params.get('transcript') === 'sent') {
+      if (storedTranscript && !transcriptInput.value.trim()) {
+        transcriptInput.value = storedTranscript;
+        dispatchFieldUpdate(transcriptInput);
+        loadedTranscript = true;
+      }
+
+      removeStorageItem(TRANSCRIPT_STORAGE_KEY);
+    }
+
+    if (loadedTranscript) {
+      saveDraftSoon();
     }
   }
 
@@ -56,6 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (data.report) {
         fillReportForm(data.report);
+        saveDraftSoon();
       }
 
       if (data.success) {
@@ -65,6 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (error) {
       fillReportForm(buildClientFallbackReport(transcript));
+      saveDraftSoon();
       showNotice('warning', 'Report drafting service is unavailable. A manual draft was loaded for editing.');
     } finally {
       generateButton.disabled = false;
@@ -83,6 +111,251 @@ document.addEventListener('DOMContentLoaded', () => {
     setFieldValue('injuredPersons', report.injured_or_trapped_persons || '');
     setFieldValue('missingInfo', report.missing_information || '');
     setFieldValue('officerNotes', report.officer_notes || '');
+  }
+
+  function setupDraftRecovery() {
+    const savedDraft = readSavedDraft();
+
+    if (!savedDraft) {
+      loadSentTranscript();
+      return;
+    }
+
+    showDraftRecovery(savedDraft);
+  }
+
+  function setupDraftAutosave() {
+    reportForm.addEventListener('input', saveDraftSoon);
+    reportForm.addEventListener('change', saveDraftSoon);
+    transcriptInput.addEventListener('input', saveDraftSoon);
+    transcriptInput.addEventListener('change', saveDraftSoon);
+    reportForm.addEventListener('reset', () => {
+      window.setTimeout(() => {
+        removeSavedDraft();
+        hideDraftRecovery();
+      }, 0);
+    });
+    reportForm.addEventListener('submit', () => {
+      isSubmittingReport = true;
+      saveDraftNow();
+    });
+    window.addEventListener('beforeunload', (event) => {
+      if (isSubmittingReport || !hasMeaningfulDraft(collectDraft())) return;
+
+      event.preventDefault();
+      event.returnValue = '';
+    });
+  }
+
+  function showDraftRecovery(savedDraft) {
+    if (!draftRecoveryNotice || !draftRecoveryMessage || !restoreDraftButton || !discardDraftButton) return;
+
+    draftRecoveryMessage.textContent = `An unfinished report draft from ${formatSavedAt(savedDraft.savedAt)} was found. Would you like to restore it?`;
+    draftRecoveryNotice.className = 'draft-recovery notice-strip';
+    hasPendingDraftRecovery = true;
+    restoreDraftButton.onclick = () => {
+      restoreDraft(savedDraft);
+      removeStorageItem(TRANSCRIPT_STORAGE_KEY);
+      hasPendingDraftRecovery = false;
+      draftRecoveryMessage.textContent = 'Draft restored. Continue editing, or discard it to clear the form.';
+      saveDraftSoon();
+    };
+    discardDraftButton.onclick = () => {
+      removeSavedDraft();
+      hasPendingDraftRecovery = false;
+      hideDraftRecovery();
+      discardCurrentDraftValues();
+      loadSentTranscript();
+    };
+  }
+
+  function hideDraftRecovery() {
+    if (!draftRecoveryNotice) return;
+
+    draftRecoveryNotice.className = 'draft-recovery notice-strip notice-hidden';
+  }
+
+  function restoreDraft(draft) {
+    isRestoringDraft = true;
+
+    transcriptInput.value = draft.transcript || '';
+    dispatchFieldUpdate(transcriptInput);
+    setFieldValue('reportingOfficerId', draft.reportingOfficerId || '');
+    setFieldValue('incidentType', draft.incidentType || '');
+    setFieldValue('customIncidentType', draft.customIncidentType || '');
+    setFieldValue('incidentLocation', draft.incidentLocation || '');
+    setFieldValue('incidentDateTime', draft.incidentDateTime || '');
+    setFieldValue('incidentSummary', draft.incidentSummary || '');
+    setFieldValue('hazards', draft.hazards || '');
+    setFieldValue('injuredPersons', draft.injuredPersons || '');
+    setFieldValue('responseStatus', draft.responseStatus || 'Pending Review');
+    setFieldValue('missingInfo', draft.missingInfo || '');
+    setFieldValue('officerNotes', draft.officerNotes || '');
+    syncCustomIncidentType();
+
+    if (window.updateReportCompletion) {
+      window.updateReportCompletion();
+    }
+
+    isRestoringDraft = false;
+  }
+
+  function discardCurrentDraftValues() {
+    isDiscardingDraft = true;
+    window.clearTimeout(draftSaveTimer);
+
+    transcriptInput.value = '';
+    dispatchFieldUpdate(transcriptInput);
+    setFieldValue('reportingOfficerId', initialReportingOfficerId);
+    setFieldValue('incidentType', '');
+    setFieldValue('customIncidentType', '');
+    setFieldValue('incidentLocation', '');
+    setFieldValue('incidentDateTime', '');
+    setFieldValue('incidentSummary', '');
+    setFieldValue('hazards', '');
+    setFieldValue('injuredPersons', '');
+    setFieldValue('responseStatus', '');
+    setFieldValue('missingInfo', '');
+    setFieldValue('officerNotes', '');
+    syncCustomIncidentType();
+    removeSavedDraft();
+
+    if (window.updateReportCompletion) {
+      window.updateReportCompletion();
+    }
+
+    isDiscardingDraft = false;
+  }
+
+  function readSavedDraft() {
+    const savedDraft = getStorageItem(CREATE_REPORT_DRAFT_KEY);
+
+    if (!savedDraft) return null;
+
+    try {
+      const draft = JSON.parse(savedDraft);
+
+      if (!draft || typeof draft !== 'object' || !hasMeaningfulDraft(draft)) {
+        removeSavedDraft();
+        return null;
+      }
+
+      return draft;
+    } catch (error) {
+      removeSavedDraft();
+      return null;
+    }
+  }
+
+  function saveDraftSoon() {
+    if (isRestoringDraft || isDiscardingDraft || hasPendingDraftRecovery) return;
+
+    window.clearTimeout(draftSaveTimer);
+    draftSaveTimer = window.setTimeout(saveDraftNow, DRAFT_SAVE_DELAY_MS);
+  }
+
+  function saveDraftNow() {
+    const draft = collectDraft();
+
+    if (!hasMeaningfulDraft(draft)) {
+      removeSavedDraft();
+      return;
+    }
+
+    setStorageItem(CREATE_REPORT_DRAFT_KEY, JSON.stringify({
+      ...draft,
+      savedAt: new Date().toISOString()
+    }));
+  }
+
+  function collectDraft() {
+    return {
+      transcript: transcriptInput.value.trim(),
+      reportingOfficerId: getFieldValue('reportingOfficerId'),
+      incidentType: getFieldValue('incidentType'),
+      customIncidentType: getFieldValue('customIncidentType'),
+      incidentLocation: getFieldValue('incidentLocation'),
+      incidentDateTime: getFieldValue('incidentDateTime'),
+      incidentSummary: getFieldValue('incidentSummary'),
+      hazards: getFieldValue('hazards'),
+      injuredPersons: getFieldValue('injuredPersons'),
+      responseStatus: getFieldValue('responseStatus'),
+      missingInfo: getFieldValue('missingInfo'),
+      officerNotes: getFieldValue('officerNotes')
+    };
+  }
+
+  function hasMeaningfulDraft(draft) {
+    const incidentType = draft.incidentType === OTHER_INCIDENT_TYPE_VALUE
+      ? draft.customIncidentType
+      : draft.incidentType;
+    const meaningfulValues = [
+      draft.transcript,
+      incidentType,
+      draft.incidentLocation,
+      draft.incidentDateTime,
+      draft.incidentSummary,
+      draft.hazards,
+      draft.injuredPersons,
+      draft.missingInfo,
+      draft.officerNotes
+    ];
+
+    return meaningfulValues.some((value) => String(value || '').trim().length > 0);
+  }
+
+  function removeSavedDraft() {
+    removeStorageItem(CREATE_REPORT_DRAFT_KEY);
+  }
+
+  function clearDraftAfterSuccessfulSave() {
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.get('reportSaved') !== '1') return;
+
+    removeStorageItem(CREATE_REPORT_DRAFT_KEY);
+    removeStorageItem(TRANSCRIPT_STORAGE_KEY);
+    params.delete('reportSaved');
+
+    const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
+    window.history.replaceState({}, document.title, nextUrl);
+  }
+
+  function formatSavedAt(savedAt) {
+    const date = new Date(savedAt);
+
+    if (Number.isNaN(date.getTime())) return 'an earlier session';
+
+    return date.toLocaleString();
+  }
+
+  function getFieldValue(id) {
+    const field = document.getElementById(id);
+    return field ? field.value.trim() : '';
+  }
+
+  function getStorageItem(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function setStorageItem(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (error) {
+      // If browser storage is unavailable, the form still works normally.
+    }
+  }
+
+  function removeStorageItem(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch (error) {
+      // If browser storage is unavailable, there is nothing else to clear.
+    }
   }
 
   function setFieldValue(id, value) {

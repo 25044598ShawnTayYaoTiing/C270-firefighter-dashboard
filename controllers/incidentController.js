@@ -91,7 +91,7 @@ exports.createIncident = async (req, res, next) => {
     });
     const incidentId = await incidentModel.createIncident(incident);
 
-    res.redirect(`/incidents/${incidentId}`);
+    res.redirect(`/incidents/${incidentId}?reportSaved=1`);
   } catch (error) {
     next(error);
   }

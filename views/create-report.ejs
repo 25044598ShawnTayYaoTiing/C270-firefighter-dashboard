@@ -37,6 +37,17 @@
 
     <%- include('partials/report-completion', { completion }) %>
 
+    <div class="draft-recovery notice-strip notice-hidden" id="draftRecoveryNotice">
+      <i class="bi bi-clock-history"></i>
+      <div>
+        <span id="draftRecoveryMessage"></span>
+        <div class="draft-recovery-actions">
+          <button class="secondary-button" type="button" id="restoreCreateReportDraftButton">Restore Draft</button>
+          <button class="ghost-button" type="button" id="discardCreateReportDraftButton">Discard Draft</button>
+        </div>
+      </div>
+    </div>
+
     <%# Done BY SHAWN ID 25044598 %>
     <%# AI Features: officer review form receives and edits AI-generated report draft fields before saving. %>
     <form class="report-form" id="reportForm" data-completion-form action="/incidents" method="POST">
