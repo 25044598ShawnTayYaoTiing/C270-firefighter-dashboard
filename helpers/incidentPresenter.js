@@ -193,6 +193,9 @@ function getUnmappedReason(report) {
   return 'Missing coordinates or location not mapped.';
 }
 
+// Done by Fatin ID: 25050557
+// Build the data used by the Live Incident Map.
+// Separate incidents into visible map markers and unmapped incidents.
 async function buildMapData(reports) {
   const markers = [];
   const unmapped = [];
@@ -211,12 +214,12 @@ async function buildMapData(reports) {
       locationSource: hasValidCoordinates(incident) ? 'database' : '',
       markerColor: getIncidentMarkerColor(report.status)
     };
-
+    // Hide completed incidents from the live operational map
     if (isCompletedLikeStatus(common.response_status)) {
       completedHidden += 1;
       continue;
     }
-
+    // If coordinates are missing, show the report under "Unmapped Incidents"
     if (!shouldShowOnLiveMap(common)) {
       unmapped.push({
         ...common,
@@ -224,7 +227,7 @@ async function buildMapData(reports) {
       });
       continue;
     }
-
+    // Add the incident as a visible marker on the Leaflet map
     markers.push({
       ...common,
       lat: common.latitude,
