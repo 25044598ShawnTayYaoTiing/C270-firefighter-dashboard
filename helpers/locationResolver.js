@@ -5,6 +5,9 @@ const SINGAPORE_BOUNDS = {
   maxLng: 104.15
 };
 
+// Done by Fatin ID: 25050557
+// Local fallback coordinates for common Singapore locations.
+// Used when OneMap geocoding is unavailable.
 const LOCATION_COORDINATES = [
   { matches: ['beach station'], label: 'Sentosa Beach Station', lat: 1.2514, lng: 103.8179 },
   { matches: ['siloso beach walk', 'siloso beach'], label: 'Siloso Beach', lat: 1.2565, lng: 103.8121 },
@@ -94,6 +97,12 @@ function getDatabaseCoordinates(latitudeValue, longitudeValue) {
   };
 }
 
+// Determine the best coordinates for an incident.
+// Priority:
+// 1. Existing database coordinates
+// 2. Match location keywords
+// 3. Match transcript
+// 4. Match summary
 function resolveIncidentCoordinates(incident) {
   const databaseCoordinates = getDatabaseCoordinates(incident.latitude, incident.longitude);
 
@@ -131,6 +140,7 @@ function shouldShowOnLiveMap(incident) {
     && hasValidCoordinates(incident);
 }
 
+// Choose the marker colour based on incident status
 function getIncidentMarkerColor(status) {
   const value = String(status || '').toLowerCase();
 
