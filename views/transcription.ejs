@@ -13,6 +13,8 @@
       <span>Checking call transcription service.</span>
     </div>
 
+    <%# Done by: Khin (25036933) %>
+    <%# Show the live and finalized transcript areas side by side so operators can review speech output as it arrives. %>
     <div class="transcript-display" id="transcriptDisplay" aria-live="polite">
       <div class="transcript-section">
         <span>Full Transcript</span>
@@ -35,11 +37,15 @@
       <textarea class="form-control" id="cleanedTranscriptInput" rows="8" placeholder="Cleaned transcript will appear here. You can edit it before sending it to Create Report."></textarea>
     </label>
 
+    <%# Done by: Khin (25036933) %>
+    <%# Display status messages for the AI cleanup step so the user knows whether the transcript is ready or needs attention. %>
     <div class="notice-strip notice-hidden" id="cleanupNotice">
       <i class="bi bi-info-circle"></i>
       <span></span>
     </div>
 
+    <%# Done by: Khin (25036933) %>
+    <%# Provide the main action buttons for starting, stopping, clearing, cleaning, and sending the transcript. %>
     <div class="form-actions transcription-actions">
       <button class="primary-button" type="button" id="startTranscriptionButton">
         <i class="bi bi-record-circle"></i>
@@ -80,6 +86,8 @@
       </div>
     </div>
 
+    <%# Done by: Khin (25036933) %>
+    <%# Show the availability of the real-time voice service, AI cleanup service, and database in one place. %>
     <div class="connection-list">
       <div>
         <span>Call Transcription Service</span>
@@ -95,6 +103,8 @@
       </div>
     </div>
 
+    <%# Done by: Khin (25036933) %>
+    <%# Give operators a fallback path if the real-time voice service is unavailable or not accessible. %>
     <label class="manual-transcript">
       <span>Manual Transcript Input</span>
       <textarea class="form-control" id="manualTranscriptInput" rows="10" placeholder="Paste transcript text here if the call transcription service is unavailable."></textarea>
