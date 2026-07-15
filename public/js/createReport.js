@@ -1,6 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
   const TRANSCRIPT_STORAGE_KEY = 'firefighter.transcriptDraft';
+  // SHAWN 25044598 - Auto Save Draft: Identifies the temporary report draft in localStorage.
   const CREATE_REPORT_DRAFT_KEY = 'firefighter.createReportDraft';
+  // SHAWN 25044598 - Auto Save Draft: Waits briefly so rapid typing does not save every keystroke.
   const DRAFT_SAVE_DELAY_MS = 700;
   const OTHER_INCIDENT_TYPE_VALUE = '__other_special_incident__';
   const transcriptInput = document.getElementById('transcriptInput');
@@ -57,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Done BY SHAWN ID 25044598
+  // StudentID 25044598 ShawnTay
   // AI Features: calls the backend AI report endpoint to draft incident fields from transcript text.
   async function generateAiReport() {
     const transcript = transcriptInput.value.trim();
@@ -99,7 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Done BY SHAWN ID 25044598
+  // StudentID 25044598 ShawnTay
   // AI Features: places AI-generated draft fields into the officer review form for editing.
   function fillReportForm(report) {
     setFieldValue('incidentType', report.incident_type || '');
@@ -113,6 +115,11 @@ document.addEventListener('DOMContentLoaded', () => {
     setFieldValue('officerNotes', report.officer_notes || '');
   }
 
+  /**
+   * SHAWN 25044598 - Restore Draft
+   * Checks localStorage for an unfinished draft when the Create Report page opens.
+   * If one exists, the recovery controls are shown before new input can overwrite it.
+   */
   function setupDraftRecovery() {
     const savedDraft = readSavedDraft();
 
@@ -124,12 +131,18 @@ document.addEventListener('DOMContentLoaded', () => {
     showDraftRecovery(savedDraft);
   }
 
+  /**
+   * SHAWN 25044598 - Auto Save Draft
+   * Input and change events trigger autosave, but saving is delayed so
+   * localStorage is not updated on every single keystroke.
+   */
   function setupDraftAutosave() {
     reportForm.addEventListener('input', saveDraftSoon);
     reportForm.addEventListener('change', saveDraftSoon);
     transcriptInput.addEventListener('input', saveDraftSoon);
     transcriptInput.addEventListener('change', saveDraftSoon);
     reportForm.addEventListener('reset', () => {
+      // SHAWN 25044598 - Discard Draft: Reset clears the saved recovery copy after the form resets.
       window.setTimeout(() => {
         removeSavedDraft();
         hideDraftRecovery();
@@ -147,6 +160,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  /**
+   * SHAWN 25044598 - Restore/Discard Draft
+   * Shows the Restore and Discard controls and connects each button
+   * to the correct draft-recovery handler.
+   */
   function showDraftRecovery(savedDraft) {
     if (!draftRecoveryNotice || !draftRecoveryMessage || !restoreDraftButton || !discardDraftButton) return;
 
@@ -155,12 +173,14 @@ document.addEventListener('DOMContentLoaded', () => {
     hasPendingDraftRecovery = true;
     restoreDraftButton.onclick = () => {
       restoreDraft(savedDraft);
+      // SHAWN 25044598 - Restore Draft: The restored report takes priority over a waiting transcript.
       removeStorageItem(TRANSCRIPT_STORAGE_KEY);
       hasPendingDraftRecovery = false;
       draftRecoveryMessage.textContent = 'Draft restored. Continue editing, or discard it to clear the form.';
       saveDraftSoon();
     };
     discardDraftButton.onclick = () => {
+      // SHAWN 25044598 - Discard Draft: Deletes only the temporary browser draft, not MySQL reports.
       removeSavedDraft();
       hasPendingDraftRecovery = false;
       hideDraftRecovery();
@@ -169,15 +189,22 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
+  // SHAWN 25044598 - Discard Draft: Hides the recovery controls after the saved draft is removed.
   function hideDraftRecovery() {
     if (!draftRecoveryNotice) return;
 
     draftRecoveryNotice.className = 'draft-recovery notice-strip notice-hidden';
   }
 
+  /**
+   * SHAWN 25044598 - Restore Draft
+   * Maps saved draft values back into the form, uses safe defaults
+   * for missing properties, and refreshes the completion percentage.
+   */
   function restoreDraft(draft) {
     isRestoringDraft = true;
 
+    // SHAWN 25044598 - Restore Draft: Missing properties fall back safely for older drafts.
     transcriptInput.value = draft.transcript || '';
     dispatchFieldUpdate(transcriptInput);
     setFieldValue('reportingOfficerId', draft.reportingOfficerId || '');
@@ -188,6 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setFieldValue('incidentSummary', draft.incidentSummary || '');
     setFieldValue('hazards', draft.hazards || '');
     setFieldValue('injuredPersons', draft.injuredPersons || '');
+    // SHAWN 25044598 - Restore Draft: Use Pending Review when an older draft has no saved status.
     setFieldValue('responseStatus', draft.responseStatus || 'Pending Review');
     setFieldValue('missingInfo', draft.missingInfo || '');
     setFieldValue('officerNotes', draft.officerNotes || '');
@@ -200,6 +228,11 @@ document.addEventListener('DOMContentLoaded', () => {
     isRestoringDraft = false;
   }
 
+  /**
+   * SHAWN 25044598 - Discard Draft
+   * Clears the visible form and removes only the temporary localStorage draft.
+   * This does not delete any report stored in MySQL.
+   */
   function discardCurrentDraftValues() {
     isDiscardingDraft = true;
     window.clearTimeout(draftSaveTimer);
@@ -227,12 +260,18 @@ document.addEventListener('DOMContentLoaded', () => {
     isDiscardingDraft = false;
   }
 
+  /**
+   * SHAWN 25044598 - Restore Draft
+   * Reads the saved JSON string from localStorage, parses it back into an object,
+   * and safely removes invalid or empty saved data.
+   */
   function readSavedDraft() {
     const savedDraft = getStorageItem(CREATE_REPORT_DRAFT_KEY);
 
     if (!savedDraft) return null;
 
     try {
+      // SHAWN 25044598 - Restore Draft: JSON.parse converts the stored string back into a draft object.
       const draft = JSON.parse(savedDraft);
 
       if (!draft || typeof draft !== 'object' || !hasMeaningfulDraft(draft)) {
@@ -247,6 +286,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  /**
+   * SHAWN 25044598 - Auto Save Draft
+   * Clears the previous autosave timer, then waits briefly before calling
+   * saveDraftNow() with the latest form values.
+   */
   function saveDraftSoon() {
     if (isRestoringDraft || isDiscardingDraft || hasPendingDraftRecovery) return;
 
@@ -254,20 +298,33 @@ document.addEventListener('DOMContentLoaded', () => {
     draftSaveTimer = window.setTimeout(saveDraftNow, DRAFT_SAVE_DELAY_MS);
   }
 
+  /**
+   * SHAWN 25044598 - Auto Save Draft
+   * Collects the current form values, converts the draft object with
+   * JSON.stringify(), and stores it temporarily in browser localStorage.
+   */
   function saveDraftNow() {
+    // SHAWN 25044598 - Auto Save Draft: Collect the latest form values before saving.
     const draft = collectDraft();
 
     if (!hasMeaningfulDraft(draft)) {
+      // SHAWN 25044598 - Auto Save Draft: Empty forms remove the saved temporary draft instead of storing blanks.
       removeSavedDraft();
       return;
     }
 
+    // SHAWN 25044598 - Auto Save Draft: localStorage requires JSON.stringify() because it stores strings.
     setStorageItem(CREATE_REPORT_DRAFT_KEY, JSON.stringify({
       ...draft,
       savedAt: new Date().toISOString()
     }));
   }
 
+  /**
+   * SHAWN 25044598 - Auto Save Draft
+   * Gathers the current transcript and report field values needed
+   * to rebuild the Create Report form later.
+   */
   function collectDraft() {
     return {
       transcript: transcriptInput.value.trim(),
@@ -285,6 +342,11 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
+  /**
+   * SHAWN 25044598 - Auto Save Draft
+   * Checks whether officer-entered incident information is meaningful enough to save.
+   * Default officer and status values alone do not create a temporary draft.
+   */
   function hasMeaningfulDraft(draft) {
     const incidentType = draft.incidentType === OTHER_INCIDENT_TYPE_VALUE
       ? draft.customIncidentType
@@ -304,6 +366,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return meaningfulValues.some((value) => String(value || '').trim().length > 0);
   }
 
+  // SHAWN 25044598 - Discard Draft: Removes the draft storage key from localStorage.
   function removeSavedDraft() {
     removeStorageItem(CREATE_REPORT_DRAFT_KEY);
   }
@@ -321,6 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.history.replaceState({}, document.title, nextUrl);
   }
 
+  // SHAWN 25044598 - Restore Draft: Formats the saved timestamp shown in the recovery notice.
   function formatSavedAt(savedAt) {
     const date = new Date(savedAt);
 
@@ -334,6 +398,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return field ? field.value.trim() : '';
   }
 
+  // SHAWN 25044598 - Restore Draft: Reads browser storage without breaking the form if access fails.
   function getStorageItem(key) {
     try {
       return localStorage.getItem(key);
@@ -342,6 +407,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // SHAWN 25044598 - Auto Save Draft: Writes the serialized draft when browser storage is available.
   function setStorageItem(key, value) {
     try {
       localStorage.setItem(key, value);
@@ -350,6 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // SHAWN 25044598 - Discard Draft: Removes a temporary storage key when browser storage is available.
   function removeStorageItem(key) {
     try {
       localStorage.removeItem(key);
