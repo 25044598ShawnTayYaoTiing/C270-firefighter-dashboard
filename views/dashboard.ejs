@@ -1,178 +1,216 @@
 <section class="summary-grid">
-  <% summaryCards.forEach((card) => { %>
-    <article class="summary-card accent-<%= card.accent %>">
-      <div class="summary-icon">
-        <i class="bi <%= card.icon %>"></i>
-      </div>
-      <div>
-        <strong><%= card.value %></strong>
-        <span><%= card.label %></span>
-        <small><%= card.subtext %></small>
-      </div>
-    </article>
-  <% }) %>
+	<!-- Loops through the summaryCards array (pageController.js) - Done by Kong Ji Xun, 25026683 -->
+	<% summaryCards.forEach((card)=> { %>
+		<article class="summary-card accent-<%= card.accent %>">
+			<div class="summary-icon">
+				<i class="bi <%= card.icon %>"></i>
+			</div>
+			<div>
+				<strong>
+					<%= card.value %>
+				</strong>
+				<span>
+					<%= card.label %>
+				</span>
+				<small>
+					<%= card.subtext %>
+				</small>
+			</div>
+		</article>
+		<% }) %>
 </section>
 
 <section class="dashboard-grid">
-  <div class="main-column">
-    <article class="panel">
-      <div class="panel-header">
-        <div>
-          <p class="eyebrow">Operations</p>
-          <h2>Recent Incident Reports</h2>
-        </div>
-        <a class="link-button" href="/incidents"><i class="bi bi-collection-fill"></i> View all</a>
-      </div>
+	<div class="main-column">
+		<article class="panel">
+			<div class="panel-header">
+				<div>
+					<p class="eyebrow">Operations</p>
+					<h2>Recent Incident Reports</h2>
+				</div>
+				<a class="link-button" href="/incidents"><i class="bi bi-collection-fill"></i> View all</a>
+			</div>
 
-      <div class="table-responsive">
-        <table class="table operations-table align-middle">
-          <thead>
-            <tr>
-              <th>Incident ID</th>
-              <th><i class="bi bi-tag-fill"></i> Incident Type</th>
-              <th><i class="bi bi-geo-alt-fill"></i> Location</th>
-              <th><i class="bi bi-flag-fill"></i> Status</th>
-              <th><i class="bi bi-calendar-fill"></i> Date/Time</th>
-              <th><i class="bi bi-gear-fill"></i> Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% if (recentReports.length === 0) { %>
-              <tr>
-                <td colspan="6">
-                  <div class="table-empty-state">
-                    <i class="bi bi-inbox-fill"></i>
-                    <span>No incident reports have been saved yet.</span>
-                  </div>
-                </td>
-              </tr>
-            <% } %>
-            <% recentReports.forEach((report) => { %>
-                <tr>
-                  <td><strong><%= report.id %></strong></td>
-                  <td><%= report.type %></td>
-                  <td><%= report.location %></td>
-                  <td><span class="status-badge status-<%= statusKey(report.status) %>"><%= report.status %></span></td>
-                  <td><%= report.createdDate %></td>
-                  <td><a class="table-action" href="/incidents/<%= report.id %>"><i class="bi bi-eye-fill"></i> View</a></td>
-                </tr>
-            <% }) %>
-          </tbody>
-        </table>
-      </div>
-    </article>
+			<div class="table-responsive">
+				<table class="table operations-table align-middle">
+					<thead>
+						<tr>
+							<th>Incident ID</th>
+							<th><i class="bi bi-tag-fill"></i> Incident Type</th>
+							<th><i class="bi bi-geo-alt-fill"></i> Location</th>
+							<th><i class="bi bi-flag-fill"></i> Status</th>
+							<th><i class="bi bi-calendar-fill"></i> Date/Time</th>
+							<th><i class="bi bi-gear-fill"></i> Action</th>
+						</tr>
+					</thead>
+					<tbody>
+						<% if (recentReports.length===0) { %>
+							<tr>
+								<td colspan="6">
+									<div class="table-empty-state">
+										<i class="bi bi-inbox-fill"></i>
+										<span>No incident reports have been saved yet.</span>
+									</div>
+								</td>
+							</tr>
+							<% } %>
+								<% recentReports.forEach((report)=> { %>
+									<tr>
+										<td><strong>
+												<%= report.id %>
+											</strong></td>
+										<td>
+											<%= report.type %>
+										</td>
+										<td>
+											<%= report.location %>
+										</td>
+										<td><span class="status-badge status-<%= statusKey(report.status) %>">
+												<%= report.status %>
+											</span></td>
+										<td>
+											<%= report.createdDate %>
+										</td>
+										<td><a class="table-action" href="/incidents/<%= report.id %>"><i
+													class="bi bi-eye-fill"></i> View</a></td>
+									</tr>
+									<% }) %>
+					</tbody>
+				</table>
+			</div>
+		</article>
 
-    <article class="panel">
-      <div class="panel-header stacked-mobile">
-        <div>
-          <p class="eyebrow">Incident Map</p>
-          <h2>Singapore Incident Locations</h2>
-        </div>
-        <a class="link-button" href="/incidents"><i class="bi bi-map-fill"></i> View reports</a>
-      </div>
+		<article class="panel">
+			<div class="panel-header stacked-mobile">
+				<div>
+					<p class="eyebrow">Incident Map</p>
+					<h2>Singapore Incident Locations</h2>
+				</div>
+				<a class="link-button" href="/incidents"><i class="bi bi-map-fill"></i> View reports</a>
+			</div>
 
-      <div class="incident-map" id="incidentMap"></div>
-      <script type="application/json" id="incidentMapData"><%- incidentMapJson %></script>
+			<div class="incident-map" id="incidentMap"></div>
+			<script type="application/json" id="incidentMapData"><%- incidentMapJson %></script>
 
-      <% const unmappedIncidents = incidentMapData && Array.isArray(incidentMapData.unmapped) ? incidentMapData.unmapped : []; %>
-      <div class="unmapped-list" id="unmappedIncidentList" <%= unmappedIncidents.length > 0 ? '' : 'hidden' %>>
-        <p class="eyebrow">Unmapped Incidents</p>
-        <% unmappedIncidents.forEach((incident) => { %>
-          <a href="<%= incident.url || '#' %>" data-incident-id="<%= incident.id || incident.incident_id || 'Not specified' %>">
-            <span>
-              <strong><%= incident.id || incident.incident_id || 'Not specified' %></strong>
-              <small>Type: <%= incident.type || incident.incident_type || 'Not specified' %></small>
-              <small>Location: <%= incident.location || 'Not specified' %></small>
-              <small>Reason: <%= incident.reason || 'Missing coordinates or location not mapped.' %></small>
-            </span>
-            <span class="status-badge status-<%= statusKey(incident.status || incident.response_status) %>"><%= incident.status || incident.response_status || 'Not specified' %></span>
-          </a>
-        <% }) %>
-      </div>
-    </article>
-  </div>
+			<% const unmappedIncidents=incidentMapData && Array.isArray(incidentMapData.unmapped) ?
+				incidentMapData.unmapped : []; %>
+				<div class="unmapped-list" id="unmappedIncidentList" <%=unmappedIncidents.length> 0 ? '' : 'hidden' %>>
+					<p class="eyebrow">Unmapped Incidents</p>
+					<% unmappedIncidents.forEach((incident)=> { %>
+						<a href="<%= incident.url || '#' %>"
+							data-incident-id="<%= incident.id || incident.incident_id || 'Not specified' %>">
+							<span>
+								<strong>
+									<%= incident.id || incident.incident_id || 'Not specified' %>
+								</strong>
+								<small>Type: <%= incident.type || incident.incident_type || 'Not specified' %></small>
+								<small>Location: <%= incident.location || 'Not specified' %></small>
+								<small>Reason: <%= incident.reason || 'Missing coordinates or location not mapped.' %>
+								</small>
+							</span>
+							<span
+								class="status-badge status-<%= statusKey(incident.status || incident.response_status) %>">
+								<%= incident.status || incident.response_status || 'Not specified' %>
+							</span>
+						</a>
+						<% }) %>
+				</div>
+		</article>
+	</div>
 
-  <aside class="side-column">
-    <article class="panel compact-panel">
-      <div class="panel-header">
-        <div>
-          <p class="eyebrow">Officer Queue</p>
-          <h2>Pending Review</h2>
-        </div>
-      </div>
+	<aside class="side-column">
+		<article class="panel compact-panel">
+			<div class="panel-header">
+				<div>
+					<p class="eyebrow">Officer Queue</p>
+					<h2>Pending Review</h2>
+				</div>
+			</div>
 
-      <div class="review-list">
-        <% pendingReports.forEach((report) => { %>
-          <a href="/incidents/<%= report.id %>" class="review-item">
-            <span>
-              <strong><%= report.id %></strong>
-              <small><%= report.type %></small>
-            </span>
-            <i class="bi bi-chevron-right"></i>
-          </a>
-        <% }) %>
-        <% if (pendingReports.length === 0) { %>
-          <div class="review-item">
-            <span>
-              <strong>No pending reports</strong>
-              <small>Officer queue is clear</small>
-            </span>
-          </div>
-        <% } %>
-      </div>
-    </article>
+			<div class="review-list">
+				<% pendingReports.forEach((report)=> { %>
+					<a href="/incidents/<%= report.id %>" class="review-item">
+						<span>
+							<strong>
+								<%= report.id %>
+							</strong>
+							<small>
+								<%= report.type %>
+							</small>
+						</span>
+						<i class="bi bi-chevron-right"></i>
+					</a>
+					<% }) %>
+						<% if (pendingReports.length===0) { %>
+							<div class="review-item">
+								<span>
+									<strong>No pending reports</strong>
+									<small>Officer queue is clear</small>
+								</span>
+							</div>
+							<% } %>
+			</div>
+		</article>
 
-    <article class="panel compact-panel">
-      <div class="panel-header">
-        <div>
-          <p class="eyebrow">Incident Data</p>
-          <h2>Incident Type Breakdown</h2>
-        </div>
-      </div>
+		<article class="panel compact-panel">
+			<div class="panel-header">
+				<div>
+					<p class="eyebrow">Incident Data</p>
+					<h2>Incident Type Breakdown</h2>
+				</div>
+			</div>
 
-      <div class="progress-list">
-        <% typeBreakdown.forEach((type) => { %>
-          <div>
-            <div class="progress-label">
-              <span><%= type.label %></span>
-              <strong><%= type.count %> (<%= type.value %>%)</strong>
-            </div>
-            <div class="progress">
-              <div class="progress-bar" style="width: <%= type.value %>%"></div>
-            </div>
-          </div>
-        <% }) %>
-        <% if (typeBreakdown.length === 0) { %>
-          <div class="table-empty-state">
-            <i class="bi bi-inbox-fill"></i>
-            <span>No type data available yet.</span>
-          </div>
-        <% } %>
-      </div>
-    </article>
+			<div class="progress-list">
+				<% typeBreakdown.forEach((type)=> { %>
+					<div>
+						<div class="progress-label">
+							<span>
+								<%= type.label %>
+							</span>
+							<strong>
+								<%= type.count %> (<%= type.value %>%)
+							</strong>
+						</div>
+						<div class="progress">
+							<div class="progress-bar" style="width: <%= type.value %>%"></div>
+						</div>
+					</div>
+					<% }) %>
+						<% if (typeBreakdown.length===0) { %>
+							<div class="table-empty-state">
+								<i class="bi bi-inbox-fill"></i>
+								<span>No type data available yet.</span>
+							</div>
+							<% } %>
+			</div>
+		</article>
 
-    <article class="panel compact-panel">
-      <div class="panel-header">
-        <div>
-          <p class="eyebrow">Hotspots</p>
-          <h2>High-Frequency Locations</h2>
-        </div>
-      </div>
+		<article class="panel compact-panel">
+			<div class="panel-header">
+				<div>
+					<p class="eyebrow">Hotspots</p>
+					<h2>High-Frequency Locations</h2>
+				</div>
+			</div>
 
-      <div class="location-list">
-        <% locations.forEach((location) => { %>
-          <div>
-            <span><%= location.label %></span>
-            <strong><%= location.count %> reports</strong>
-          </div>
-        <% }) %>
-        <% if (locations.length === 0) { %>
-          <div>
-            <span>No locations yet</span>
-            <strong>0 reports</strong>
-          </div>
-        <% } %>
-      </div>
-    </article>
-  </aside>
+			<div class="location-list">
+				<% locations.forEach((location)=> { %>
+					<div>
+						<span>
+							<%= location.label %>
+						</span>
+						<strong>
+							<%= location.count %> reports
+						</strong>
+					</div>
+					<% }) %>
+						<% if (locations.length===0) { %>
+							<div>
+								<span>No locations yet</span>
+								<strong>0 reports</strong>
+							</div>
+							<% } %>
+			</div>
+		</article>
+	</aside>
 </section>
