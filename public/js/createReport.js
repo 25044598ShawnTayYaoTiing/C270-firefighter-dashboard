@@ -57,6 +57,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (loadedTranscript) {
       saveDraftSoon();
     }
+
+    return loadedTranscript;
   }
 
   // StudentID 25044598 ShawnTay
@@ -121,6 +123,13 @@ document.addEventListener('DOMContentLoaded', () => {
    * If one exists, the recovery controls are shown before new input can overwrite it.
    */
   function setupDraftRecovery() {
+    const params = new URLSearchParams(window.location.search);
+
+    // A transcript explicitly sent from Live Call Intake is newer than any recovery draft.
+    if ((params.get('transcript') === 'sent' || params.get('transcriptText')) && loadSentTranscript()) {
+      return;
+    }
+
     const savedDraft = readSavedDraft();
 
     if (!savedDraft) {
