@@ -1,50 +1,60 @@
+<!-- Done by Kong Ji Xun, 25026683 -->
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title><%= pageTitle %> | <%= appName %></title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.css" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css">
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>
+		<%= pageTitle %> | <%= appName %>
+	</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.css" rel="stylesheet">
+	<link rel="stylesheet" href="/css/style.css">
 </head>
+
 <body class="auth-page">
-  <main class="login-shell">
-    <section class="login-panel" aria-labelledby="loginTitle">
-      <div class="login-brand">
-        <img class="login-logo" src="/images/scdf-logo.png" alt="Civil Defence Singapore crest">
-        <div>
-          <h1 id="loginTitle">Incident Command</h1>
-          <p>Firefighter Dashboard</p>
-        </div>
-      </div>
+	<main class="login-shell">
+		<section class="login-panel" aria-labelledby="loginTitle">
+			<div class="login-brand">
+				<img class="login-logo" src="/images/scdf-logo.png" alt="Civil Defence Singapore crest">
+				<div>
+					<h1 id="loginTitle">Incident Command</h1>
+					<p>Firefighter Dashboard</p>
+				</div>
+			</div>
 
-      <% if (error) { %>
-        <div class="notice-strip notice-warning" role="alert">
-          <i class="bi bi-exclamation-triangle-fill"></i>
-          <span><%= error %></span>
-        </div>
-      <% } %>
+			<% if (error) { %>
+				<div class="notice-strip notice-warning" role="alert">
+					<i class="bi bi-exclamation-triangle-fill"></i>
+					<span>
+						<%= error %>
+					</span>
+				</div>
+				<% } %>
 
-      <form class="report-form" action="/login" method="POST">
-        <input type="hidden" name="next" value="<%= next %>">
-        <label>
-          <span>Username</span>
-          <input class="form-control" type="text" name="username" value="<%= username %>" autocomplete="username" required autofocus>
-        </label>
-        <label>
-          <span>Password</span>
-          <input class="form-control" type="password" name="password" autocomplete="current-password" required>
-        </label>
-        <button class="primary-button w-100" type="submit">
-          <i class="bi bi-box-arrow-in-right"></i>
-          Access Dashboard
-        </button>
-      </form>
-    </section>
-  </main>
+					<form class="report-form" action="/login" method="POST">
+						<input type="hidden" name="next" value="<%= next %>">
+						<label>
+							<span>Username</span>
+							<input class="form-control" type="text" name="username" value="<%= username %>"
+								autocomplete="username" required autofocus>
+						</label>
+						<label>
+							<span>Password</span>
+							<input class="form-control" type="password" name="password" autocomplete="current-password"
+								required>
+						</label>
+						<button class="primary-button w-100" type="submit">
+							<i class="bi bi-box-arrow-in-right"></i>
+							Access Dashboard
+						</button>
+					</form>
+		</section>
+	</main>
 </body>
+
 </html>

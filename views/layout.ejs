@@ -1,91 +1,106 @@
+<!-- Done by Kong Ji Xun, 25026683 -->
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title><%= pageTitle %> | <%= appName %></title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.css" rel="stylesheet">
-  <link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css">
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>
+		<%= pageTitle %> | <%= appName %>
+	</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.css" rel="stylesheet">
+	<link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet">
+	<link rel="stylesheet" href="/css/style.css">
 </head>
+
 <body>
-  <aside class="sidebar">
-    <a class="brand" href="/dashboard">
-      <span class="brand-mark logo-mark" aria-hidden="true">
-        <img class="brand-logo" src="/images/scdf-logo.png" alt="">
-      </span>
-      <span class="brand-title">Incident Command</span>
-    </a>
+	<aside class="sidebar">
+		<a class="brand" href="/dashboard">
+			<span class="brand-mark logo-mark" aria-hidden="true">
+				<img class="brand-logo" src="/images/scdf-logo.png" alt="">
+			</span>
+			<span class="brand-title">Incident Command</span>
+		</a>
 
-    <nav class="sidebar-nav" aria-label="Main navigation">
-      <p class="nav-section">Main</p>
-      <a class="nav-link <%= activePage === 'dashboard' ? 'active' : '' %>" href="/dashboard">
-        <i class="bi bi-speedometer2"></i>
-        Dashboard
-      </a>
-      <a class="nav-link <%= activePage === 'create-report' ? 'active' : '' %>" href="/create-report">
-        <i class="bi bi-pencil-square"></i>
-        Create Report
-      </a>
-      <a class="nav-link <%= activePage === 'transcription' ? 'active' : '' %>" href="/transcription">
-        <i class="bi bi-mic-fill"></i>
-        Live Call Intake
-      </a>
-      <a class="nav-link <%= activePage === 'incidents' ? 'active' : '' %>" href="/incidents">
-        <i class="bi bi-table"></i>
-        Incident Reports
-      </a>
-      <a class="nav-link <%= activePage === 'analytics' ? 'active' : '' %>" href="/analytics">
-        <i class="bi bi-bar-chart-fill"></i>
-        Analytics
-      </a>
+		<nav class="sidebar-nav" aria-label="Main navigation">
+			<p class="nav-section">Main</p>
+			<a class="nav-link <%= activePage === 'dashboard' ? 'active' : '' %>" href="/dashboard">
+				<i class="bi bi-speedometer2"></i>
+				Dashboard
+			</a>
+			<a class="nav-link <%= activePage === 'create-report' ? 'active' : '' %>" href="/create-report">
+				<i class="bi bi-pencil-square"></i>
+				Create Report
+			</a>
+			<a class="nav-link <%= activePage === 'transcription' ? 'active' : '' %>" href="/transcription">
+				<i class="bi bi-mic-fill"></i>
+				Live Call Intake
+			</a>
+			<a class="nav-link <%= activePage === 'incidents' ? 'active' : '' %>" href="/incidents">
+				<i class="bi bi-table"></i>
+				Incident Reports
+			</a>
+			<a class="nav-link <%= activePage === 'analytics' ? 'active' : '' %>" href="/analytics">
+				<i class="bi bi-bar-chart-fill"></i>
+				Analytics
+			</a>
 
 
-    </nav>
+		</nav>
 
-    <% if (currentOfficer) { %>
-      <div class="sidebar-account">
-        <div class="officer-avatar" aria-hidden="true"><%= currentOfficer.officer_name ? currentOfficer.officer_name.charAt(0) : 'O' %></div>
-        <div class="officer-meta">
-          <strong><%= currentOfficer.officer_name %></strong>
-          <span><%= currentOfficer.officer_role %></span>
-        </div>
-        <form class="logout-form" action="/logout" method="POST">
-          <button class="logout-button" type="submit">
-            <i class="bi bi-box-arrow-right"></i>
-            Logout
-          </button>
-        </form>
-      </div>
-    <% } %>
-  </aside>
+		<% if (currentOfficer) { %>
+			<div class="sidebar-account">
+				<div class="officer-avatar" aria-hidden="true">
+					<%= currentOfficer.officer_name ? currentOfficer.officer_name.charAt(0) : 'O' %>
+				</div>
+				<div class="officer-meta">
+					<strong>
+						<%= currentOfficer.officer_name %>
+					</strong>
+					<span>
+						<%= currentOfficer.officer_role %>
+					</span>
+				</div>
+				<form class="logout-form" action="/logout" method="POST">
+					<button class="logout-button" type="submit">
+						<i class="bi bi-box-arrow-right"></i>
+						Logout
+					</button>
+				</form>
+			</div>
+			<% } %>
+	</aside>
 
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="topbar-leading">
-        <button class="sidebar-toggle" type="button" id="sidebarToggle" aria-label="Toggle sidebar" aria-expanded="true">
-          <i class="bi bi-list"></i>
-        </button>
-        <h1><%= pageTitle %></h1>
-      </div>
-    </header>
+	<div class="app-shell">
+		<header class="topbar">
+			<div class="topbar-leading">
+				<button class="sidebar-toggle" type="button" id="sidebarToggle" aria-label="Toggle sidebar"
+					aria-expanded="true">
+					<i class="bi bi-list"></i>
+				</button>
+				<h1>
+					<%= pageTitle %>
+				</h1>
+			</div>
+		</header>
 
-    <main class="page-content">
-      <%- include(view) %>
-    </main>
-  </div>
+		<main class="page-content">
+			<%- include(view) %>
+		</main>
+	</div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/dashboard.js"></script>
-  <script src="/js/incidentMap.js"></script>
-  <script src="/js/transcription.js"></script>
-  <script src="/js/createReport.js"></script>
-  <script src="/js/reportCompletion.js"></script>
-  <script src="/js/sidebar.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+	<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+	<script src="/js/dashboard.js"></script>
+	<script src="/js/incidentMap.js"></script>
+	<script src="/js/transcription.js"></script>
+	<script src="/js/createReport.js"></script>
+	<script src="/js/reportCompletion.js"></script>
+	<script src="/js/sidebar.js"></script>
 </body>
+
 </html>
