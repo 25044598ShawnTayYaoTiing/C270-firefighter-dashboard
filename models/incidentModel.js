@@ -1,3 +1,5 @@
+// done by Thein 25040396
+// AI Features: incidentModel.js manages incident data, including schema enforcement, coordinate resolution, and CRUD operations for incident reports with proper access control.
 const db = require('../config/db');
 const {
   toNullableNumber

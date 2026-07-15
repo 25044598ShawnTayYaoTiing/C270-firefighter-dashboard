@@ -1,3 +1,5 @@
+// done by Thein 25040396
+// AI Features: authController.js manages user authentication, including login and logout processes, with session handling and access control.
 const authModel = require('../models/authModel');
 
 const INVALID_LOGIN_MESSAGE = 'Invalid username or password.';

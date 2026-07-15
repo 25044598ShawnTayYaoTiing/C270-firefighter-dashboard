@@ -1,3 +1,5 @@
+// done by Thein 25040396
+// AI Features: officerModel.js manages officer data, including schema enforcement, demo user seeding, and legacy account backfilling for authentication purposes.
 const bcrypt = require('bcrypt');
 const db = require('../config/db');
 

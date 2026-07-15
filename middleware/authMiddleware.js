@@ -1,3 +1,5 @@
+// done by Thein 25040396
+// AI Features: authMiddleware.js provides middleware functions for authentication, including session management and access control for protected routes.
 function getCurrentOfficer(session) {
   if (!session || !session.officer_id) return null;
 

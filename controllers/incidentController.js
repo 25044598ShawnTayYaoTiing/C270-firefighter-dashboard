@@ -1,3 +1,5 @@
+// done by Thein 25040396
+// AI Features: incidentController.js manages incident report operations, including creation, editing, viewing, and deletion, with proper access control and data normalization.
 const incidentModel = require('../models/incidentModel');
 const {
   calculateCompletion,

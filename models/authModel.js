@@ -1,3 +1,5 @@
+// done by Thein 25040396
+// AI Features: authModel.js handles officer credential verification, including password hashing and comparison for secure authentication.
 const bcrypt = require('bcrypt');
 const officerModel = require('./officerModel');
 

@@ -1,3 +1,5 @@
+// done by Thein 25040396
+// AI Features: authRoutes.js handles authentication routes for login and logout, ensuring proper access control for users.
 const express = require('express');
 const authController = require('../controllers/authController');
 const {

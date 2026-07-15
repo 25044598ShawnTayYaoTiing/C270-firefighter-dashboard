@@ -1,3 +1,5 @@
+// done by Thein 25040396
+// AI Features: incidentRoutes.js defines routes for incident management, including creating, editing, viewing, and deleting incident reports with proper access control.
 const express = require('express');
 const incidentController = require('../controllers/incidentController');
 
