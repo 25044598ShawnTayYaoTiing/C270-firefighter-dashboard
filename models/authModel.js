@@ -18,6 +18,7 @@ exports.verifyOfficerCredentials = async (username, password) => {
 
   return {
     id: officer.id,
+    username: officer.username,
     officer_name: officer.officer_name,
     officer_role: officer.officer_role
   };

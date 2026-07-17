@@ -8,6 +8,7 @@ const authRoutes = require('./routes/authRoutes');
 const pageRoutes = require('./routes/pageRoutes');
 const incidentRoutes = require('./routes/incidentRoutes');
 const aiRoutes = require('./routes/aiRoutes');
+const userRoutes = require('./routes/userRoutes');
 const {
   attachCurrentOfficer,
   requireAuth
@@ -42,6 +43,7 @@ app.use(requireAuth);
 app.use('/', pageRoutes);
 app.use('/', incidentRoutes);
 app.use('/', aiRoutes);
+app.use('/', userRoutes);
 
 app.use((req, res) => {
   res.status(404).send('Page not found');

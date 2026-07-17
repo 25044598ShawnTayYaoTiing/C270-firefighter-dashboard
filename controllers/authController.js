@@ -81,6 +81,7 @@ exports.login = async (req, res, next) => {
     await regenerateSession(req);
 
     req.session.officer_id = officer.id;
+    req.session.username = officer.username;
     req.session.officer_name = officer.officer_name;
     req.session.officer_role = officer.officer_role;
 

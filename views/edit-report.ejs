@@ -47,7 +47,8 @@
     <div class="form-row">
       <label>
         <span>Date and Time</span>
-        <input class="form-control" type="datetime-local" name="incidentDateTime" value="<%= report.dateInput %>" required>
+        <input class="form-control" type="datetime-local" name="incidentDateTime" value="<%= report.dateInput %>"
+          <% if (!canManageIncidentDateTime) { %>readonly data-server-controlled="true"<% } %> required>
       </label>
       <label>
         <span>Response Status</span>

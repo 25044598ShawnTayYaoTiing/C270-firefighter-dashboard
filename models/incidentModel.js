@@ -15,8 +15,15 @@ let incidentOfficerSchemaPromise;
 function toSqlDateTime(value) {
   if (!value) return null;
 
+  if (value instanceof Date) {
+    const pad = (part) => String(part).padStart(2, '0');
+    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
+      + ` ${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
+  }
+
   // datetime-local inputs arrive as YYYY-MM-DDTHH:mm; MySQL DATETIME expects a space.
-  return value.replace('T', ' ') + (value.length === 16 ? ':00' : '');
+  const text = String(value);
+  return text.replace('T', ' ') + (text.length === 16 ? ':00' : '');
 }
 
 async function hasTable(tableName) {

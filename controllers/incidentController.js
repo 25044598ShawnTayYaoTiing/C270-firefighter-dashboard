@@ -6,6 +6,10 @@ const {
   mapIncident,
   statusKey
 } = require('../helpers/incidentPresenter');
+const {
+  PERMISSIONS,
+  hasPermission
+} = require('../middleware/rolePermissions');
 
 const statuses = ['Draft', 'Pending Review', 'Completed', 'Escalated'];
 const incidentTypes = [
@@ -41,6 +45,33 @@ function getSessionOfficerId(req) {
   return toReportingOfficerId(req.session ? req.session.officer_id : null);
 }
 
+function canManageIncidentDateTime(req) {
+  return Boolean(req.currentOfficer && hasPermission(
+    req.currentOfficer.officer_role,
+    PERMISSIONS.MANAGE_INCIDENT_DATETIME
+  ));
+}
+
+function getServerDateTime() {
+  const date = new Date();
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+    + `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function getAuthorizedCreateDateTime(req) {
+  if (canManageIncidentDateTime(req) && isValidIncidentDateTime(req.body.incidentDateTime)) {
+    return req.body.incidentDateTime;
+  }
+  return getServerDateTime();
+}
+
+function isValidIncidentDateTime(value) {
+  const text = String(value || '').trim();
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(text)
+    && !Number.isNaN(new Date(text).getTime());
+}
+
 function readIncidentForm(body, options = {}) {
   const responseStatus = body.saveMode === 'draft'
     ? 'Draft'
@@ -53,7 +84,9 @@ function readIncidentForm(body, options = {}) {
       : toReportingOfficerId(body.reportingOfficerId),
     incidentLocation: body.incidentLocation ? body.incidentLocation.trim() : '',
     incidentType: body.incidentType ? body.incidentType.trim() : '',
-    incidentDateTime: body.incidentDateTime || '',
+    incidentDateTime: options.incidentDateTime !== undefined
+      ? options.incidentDateTime
+      : body.incidentDateTime || '',
     responseStatus: responseStatus || 'Pending Review',
     incidentSummary: body.incidentSummary ? body.incidentSummary.trim() : '',
     hazards: body.hazards ? body.hazards.trim() : '',
@@ -73,12 +106,16 @@ async function getMappedIncidents() {
 
 exports.showCreateReport = async (req, res, next) => {
   try {
+    const serverDateTime = getServerDateTime();
     return renderPage(res, 'create-report', {
       pageTitle: 'Create Report',
       activePage: 'create-report',
       incidentTypes,
+      canManageIncidentDateTime: canManageIncidentDateTime(req),
+      serverDateTime,
       completion: calculateCompletion({
-        reportingOfficer: getSessionOfficerId(req)
+        reportingOfficer: getSessionOfficerId(req),
+        dateTime: serverDateTime
       })
     });
   } catch (error) {
@@ -89,7 +126,8 @@ exports.showCreateReport = async (req, res, next) => {
 exports.createIncident = async (req, res, next) => {
   try {
     const incident = readIncidentForm(req.body, {
-      reportingOfficerId: getSessionOfficerId(req)
+      reportingOfficerId: getSessionOfficerId(req),
+      incidentDateTime: getAuthorizedCreateDateTime(req)
     });
     const incidentId = await incidentModel.createIncident(incident);
 
@@ -195,6 +233,7 @@ exports.showEditReport = async (req, res, next) => {
       pageTitle: 'Edit Report',
       activePage: 'incidents',
       incidentTypes,
+      canManageIncidentDateTime: canManageIncidentDateTime(req),
       report: mapIncident(incident)
     });
   } catch (error) {
@@ -204,7 +243,21 @@ exports.showEditReport = async (req, res, next) => {
 
 exports.updateIncident = async (req, res, next) => {
   try {
-    const incident = readIncidentForm(req.body);
+    const existingIncident = await incidentModel.getIncidentByIncidentId(req.params.incidentId);
+    if (!existingIncident) {
+      return renderPage(res.status(404), 'placeholder', {
+        pageTitle: 'Report Not Found',
+        activePage: 'incidents',
+        message: 'The requested incident report could not be found.'
+      });
+    }
+
+    const incident = readIncidentForm(req.body, {
+      reportingOfficerId: existingIncident.reporting_officer_id,
+      incidentDateTime: canManageIncidentDateTime(req) && isValidIncidentDateTime(req.body.incidentDateTime)
+        ? req.body.incidentDateTime
+        : existingIncident.incident_datetime
+    });
     const updated = await incidentModel.updateIncident(req.params.incidentId, incident);
 
     if (!updated) {

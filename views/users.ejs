@@ -1,0 +1,74 @@
+<section class="panel">
+  <div class="panel-header stacked-mobile">
+    <div>
+      <p class="eyebrow">Account Administration</p>
+      <h2>User Management</h2>
+    </div>
+    <a class="primary-button" href="/users/new">
+      <i class="bi bi-person-plus-fill"></i>
+      Add User
+    </a>
+  </div>
+
+  <% if (message) { %>
+    <div class="notice-strip" role="status">
+      <i class="bi bi-check-circle-fill"></i>
+      <span><%= message %></span>
+    </div>
+  <% } %>
+
+  <div class="table-responsive">
+    <table class="table operations-table align-middle">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Username</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Date Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (!users.length) { %>
+          <tr>
+            <td colspan="6">
+              <div class="table-empty-state">No user accounts found.</div>
+            </td>
+          </tr>
+        <% } %>
+        <% users.forEach((user) => { %>
+          <% const isAdmin = currentOfficer.officer_role === 'Higher Rank/Admin'; %>
+          <% const canEdit = isAdmin || user.officer_role === 'Duty Officer'; %>
+          <tr>
+            <td><strong><%= user.officer_name %></strong></td>
+            <td><%= user.username %></td>
+            <td><%= user.officer_role %></td>
+            <td>
+              <span class="status-badge <%= user.is_active ? 'status-completed' : 'status-draft' %>">
+                <%= user.is_active ? 'Active' : 'Inactive' %>
+              </span>
+            </td>
+            <td><%= user.created_at ? new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' }).format(new Date(user.created_at)) : 'Not recorded' %></td>
+            <td>
+              <div class="table-actions">
+                <% if (canEdit) { %>
+                  <a class="table-action" href="/users/<%= user.id %>/edit" aria-label="Edit <%= user.officer_name %>">
+                    <i class="bi bi-pencil-fill"></i> Edit
+                  </a>
+                <% } %>
+                <% if (isAdmin && user.is_active && user.id !== currentOfficer.officer_id) { %>
+                  <form action="/users/<%= user.id %>/deactivate" method="POST" onsubmit="return confirm('Deactivate this account? Existing incident history will be retained.');">
+                    <button class="icon-text-button danger" type="submit">
+                      <i class="bi bi-person-x-fill"></i> Deactivate
+                    </button>
+                  </form>
+                <% } %>
+              </div>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>

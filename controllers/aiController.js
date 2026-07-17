@@ -72,7 +72,11 @@ exports.generateReport = async (req, res) => {
 
     return res.json({
       success: true,
-      report
+      // Backdating is always an explicit human action; AI never selects the saved timestamp.
+      report: {
+        ...report,
+        incident_datetime: ''
+      }
     });
   } catch (error) {
     return res.json({

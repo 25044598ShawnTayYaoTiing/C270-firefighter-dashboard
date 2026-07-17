@@ -88,7 +88,14 @@
       <div class="form-row">
         <label>
           <span>Date and Time</span>
-          <input class="form-control" id="incidentDateTime" name="incidentDateTime" type="datetime-local" required>
+          <input class="form-control" id="incidentDateTime" name="incidentDateTime" type="datetime-local"
+            value="<%= serverDateTime.slice(0, 16) %>"
+            <% if (!canManageIncidentDateTime) { %>readonly data-server-controlled="true"<% } %> required>
+          <% if (!canManageIncidentDateTime) { %>
+            <small class="helper-text">Incident date and time is automatically recorded by the server for standard officers and HR.</small>
+          <% } else { %>
+            <small class="helper-text">Higher Rank/Admin may adjust this operational timestamp when required.</small>
+          <% } %>
         </label>
         <label>
           <span>Response Status</span>

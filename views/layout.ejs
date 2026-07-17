@@ -48,8 +48,13 @@
 				<i class="bi bi-bar-chart-fill"></i>
 				Analytics
 			</a>
-
-
+			<% if (hasPermission && hasPermission('manageUsers')) { %>
+				<p class="nav-section">Administration</p>
+				<a class="nav-link <%= activePage === 'users' ? 'active' : '' %>" href="/users">
+					<i class="bi bi-people-fill"></i>
+					User Management
+				</a>
+			<% } %>
 		</nav>
 
 		<% if (currentOfficer) { %>

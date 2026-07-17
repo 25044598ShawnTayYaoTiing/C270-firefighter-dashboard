@@ -240,7 +240,7 @@ Supporting table: `officers`
 | username | Unique officer login username |
 | password_hash | Bcrypt password hash |
 | officer_name | Reporting officer name |
-| officer_role | Role label shown in navigation and report details |
+| officer_role | Permission role: `Duty Officer`, `HR`, or `Higher Rank/Admin` |
 | is_active | Whether the officer can log in |
 | created_at | Record creation time |
 
@@ -402,8 +402,8 @@ This also seeds the demo officer logins:
 
 | Username | Password | Officer |
 |---|---|---|
-| `admin1` | `password123` | Admin Duty Officer 1, Duty Officer |
-| `admin2` | `password123` | Admin Duty Officer 2, Duty Officer |
+| `admin1` | `password123` | Admin Duty Officer 1, Higher Rank/Admin |
+| `admin2` | `password123` | Admin Duty Officer 2, HR |
 | `admin3` | `password123` | Admin Duty Officer 3, Duty Officer |
 | `admin4` | `password123` | Admin Duty Officer 4, Duty Officer |
 | `admin5` | `password123` | Admin Duty Officer 5, Duty Officer |
@@ -414,7 +414,36 @@ To refresh only the demo officer users:
 npm run seed:users
 ```
 
-For this prototype, officer accounts are seeded for demo login only. Full HR/admin account management is intentionally left as a future enhancement because the current project focuses on incident reporting, AI drafting, dashboard, map, analytics, and DevOps workflow.
+User accounts are managed internally at `/users`; there is no public self-registration route. HR can create and edit Duty Officer accounts. Higher Rank/Admin can create all approved roles, edit managed accounts, and deactivate accounts while preserving incident history.
+
+### Role-based permissions
+
+| Feature | Duty Officer | HR | Higher Rank/Admin |
+|---|---|---|---|
+| Dashboard and incident workflow | Yes | Yes | Yes |
+| User Management | No | Limited | Full |
+| Add Duty Officer accounts | No | Yes | Yes |
+| Add HR or Higher Rank/Admin accounts | No | No | Yes |
+| Edit Duty Officer account details | No | Yes | Yes |
+| Edit HR or Higher Rank/Admin accounts | No | No | Yes |
+| Deactivate accounts | No | No | Yes |
+| Backdate incident date/time | No | No | Yes |
+
+All checks are enforced in Express controllers/middleware and in account-model business rules. The sidebar is only a presentation convenience and is not the security boundary. Active account status and current roles are reloaded from MySQL on authenticated requests, so deactivation and permission changes also apply to existing sessions.
+
+The existing schema already includes the fields required by account management. For older installations, the application's schema setup adds equivalent missing columns automatically. The corresponding manual migration is:
+
+```sql
+ALTER TABLE officers ADD COLUMN officer_role VARCHAR(100) NULL AFTER officer_name;
+ALTER TABLE officers ADD COLUMN is_active BOOLEAN DEFAULT TRUE AFTER officer_role;
+ALTER TABLE officers ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+UPDATE officers
+SET officer_role = 'Duty Officer'
+WHERE officer_role IS NULL OR officer_role IN ('Officer', 'Normal Officer');
+```
+
+Run only the `ALTER TABLE` statements for columns that do not already exist. Passwords continue to use bcrypt hashes in `password_hash`; account forms never store plain-text passwords.
 
 ### 8. Run RealtimeSTT Only If Live Speech-to-Text Is Needed
 

@@ -1,0 +1,59 @@
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Account Administration</p>
+      <h2><%= mode === 'create' ? 'Add User' : 'Edit User' %></h2>
+    </div>
+  </div>
+
+  <% if (errors.length) { %>
+    <div class="notice-strip notice-warning" role="alert">
+      <i class="bi bi-exclamation-triangle-fill"></i>
+      <span><%= errors.join(' ') %></span>
+    </div>
+  <% } %>
+
+  <form class="report-form" action="<%= mode === 'create' ? '/users' : `/users/${account.id}` %>" method="POST">
+    <div class="form-row">
+      <label>
+        <span>Full Name</span>
+        <input class="form-control" type="text" name="officerName" maxlength="100" value="<%= account.officer_name || '' %>" required>
+      </label>
+      <label>
+        <span>Username or Email</span>
+        <input class="form-control" type="text" name="username" minlength="3" maxlength="50" value="<%= account.username || '' %>" required>
+      </label>
+    </div>
+
+    <div class="form-row">
+      <label>
+        <span>Password<%= mode === 'edit' ? ' (leave blank to keep current password)' : '' %></span>
+        <input class="form-control" type="password" name="password" minlength="8" maxlength="72" autocomplete="new-password" <%= mode === 'create' ? 'required' : '' %>>
+      </label>
+      <label>
+        <span>Role</span>
+        <select class="form-select" name="officerRole" required <%= mode === 'edit' && account.id === currentOfficer.officer_id ? 'disabled' : '' %>>
+          <% allowedRoles.forEach((role) => { %>
+            <option value="<%= role %>" <%= account.officer_role === role ? 'selected' : '' %>><%= role %></option>
+          <% }) %>
+        </select>
+        <% if (mode === 'edit' && account.id === currentOfficer.officer_id) { %>
+          <input type="hidden" name="officerRole" value="<%= account.officer_role %>">
+        <% } %>
+      </label>
+    </div>
+
+    <p class="helper-text">Passwords are bcrypt-hashed before storage. There is no public registration page.</p>
+
+    <div class="form-actions">
+      <button class="primary-button" type="submit">
+        <i class="bi bi-check2-circle"></i>
+        <%= mode === 'create' ? 'Create Account' : 'Save Changes' %>
+      </button>
+      <a class="ghost-button" href="/users">
+        <i class="bi bi-arrow-left"></i>
+        Back to Users
+      </a>
+    </div>
+  </form>
+</section>
