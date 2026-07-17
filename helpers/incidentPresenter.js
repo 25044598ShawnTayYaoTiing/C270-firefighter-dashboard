@@ -250,12 +250,9 @@ function safeJson(value) {
 }
 
 module.exports = {
-  COMPLETION_FIELDS,
   calculateCompletion,
-  hasMeaningfulValue,
   mapIncident,
   buildMapData,
   safeJson,
-  shouldShowOnLiveMap,
   statusKey: (status) => String(status || '').toLowerCase().replace(/\s+/g, '-')
 };

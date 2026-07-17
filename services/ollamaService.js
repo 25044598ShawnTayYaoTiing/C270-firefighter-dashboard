@@ -114,24 +114,6 @@ function normalizeReport(report) {
   });
 }
 
-function normalizeLocationExtraction(value) {
-  const confidence = ['Low', 'Medium', 'High'].includes(value.confidence)
-    ? value.confidence
-    : 'Low';
-
-  return {
-    cleaned_location: typeof value.cleaned_location === 'string' ? value.cleaned_location.trim() : '',
-    detected_area: typeof value.detected_area === 'string' ? value.detected_area.trim() : '',
-    block_number: typeof value.block_number === 'string' ? value.block_number.trim() : '',
-    street_name: typeof value.street_name === 'string' ? value.street_name.trim() : '',
-    unit_number: typeof value.unit_number === 'string' ? value.unit_number.trim() : '',
-    confidence,
-    missing_location_details: typeof value.missing_location_details === 'string'
-      ? value.missing_location_details.trim()
-      : ''
-  };
-}
-
 // Done BY SHAWN ID 25044598
 // AI Features: asks Ollama to clean transcript text without inventing incident details.
 exports.cleanTranscript = async (transcript) => {
@@ -183,37 +165,6 @@ exports.generateReport = async (transcript) => {
   ]);
 
   return normalizeReport(parseJsonObject(response));
-};
-
-exports.extractIncidentLocation = async ({ location, summary, transcript }, timeoutMs = 8000) => {
-  const response = await callOllama([
-    {
-      role: 'system',
-      content: [
-        'You extract and normalize Singapore incident location text for a firefighter dashboard.',
-        'Use only details found in the provided location, summary, or transcript.',
-        'Do not invent block numbers, street names, unit numbers, landmarks, areas, latitude, or longitude.',
-        'Never return coordinates.',
-        'If only a general area is found, return that area in detected_area.',
-        'If the location is unclear, set confidence to Low.',
-        'Return valid JSON only, with no markdown.'
-      ].join(' ')
-    },
-    {
-      role: 'user',
-      content: [
-        'Return JSON with exactly these keys:',
-        'cleaned_location, detected_area, block_number, street_name, unit_number, confidence, missing_location_details.',
-        'confidence must be Low, Medium, or High.',
-        '',
-        `Location field: ${location || ''}`,
-        `Report summary: ${summary || ''}`,
-        `Transcript: ${transcript || ''}`
-      ].join('\n')
-    }
-  ], timeoutMs);
-
-  return normalizeLocationExtraction(parseJsonObject(response));
 };
 
 // Done BY SHAWN ID 25044598

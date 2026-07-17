@@ -505,34 +505,5 @@ exports.deactivateManagedOfficer = async (officerId, actor) => {
   }
 };
 
-exports.getActiveOfficers = async () => {
-  await exports.ensureOfficerSchema();
-
-  const [rows] = await db.query(`
-    SELECT id, officer_name, officer_role
-    FROM officers
-    WHERE is_active = TRUE
-    ORDER BY officer_name ASC
-  `);
-
-  return rows;
-};
-
-exports.getOfficerById = async (officerId) => {
-  await exports.ensureOfficerSchema();
-
-  const [rows] = await db.query(
-    `
-      SELECT id, officer_name, officer_role
-      FROM officers
-      WHERE id = ?
-      LIMIT 1
-    `,
-    [officerId]
-  );
-
-  return rows[0] || null;
-};
-
 exports.DEMO_OFFICERS = DEMO_OFFICERS;
 exports.DEMO_PASSWORD = DEMO_PASSWORD;

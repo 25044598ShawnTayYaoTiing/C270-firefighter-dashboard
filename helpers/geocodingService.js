@@ -242,8 +242,5 @@ async function resolveIncidentCoordinates(incident) {
 }
 
 module.exports = {
-  clearCachedOneMapToken,
-  getOneMapToken,
-  resolveIncidentCoordinates,
-  searchOneMapLocation
+  resolveIncidentCoordinates
 };

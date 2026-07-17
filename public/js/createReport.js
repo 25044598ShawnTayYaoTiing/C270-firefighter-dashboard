@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDraftAutosave();
   generateButton.addEventListener('click', generateAiReport);
 
+  // SHAWN 25044598 - Transcript handoff: Loads transcript text sent from Live Call Intake.
   function loadSentTranscript() {
     const params = new URLSearchParams(window.location.search);
     const directTranscript = params.get('transcriptText');
@@ -112,6 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setFieldValue('officerNotes', report.officer_notes || '');
   }
 
+  // SHAWN 25044598 - Restore/Discard Draft: Detects an unfinished local draft before loading a sent transcript.
   function setupDraftRecovery() {
     const savedDraft = readSavedDraft();
 
@@ -123,6 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showDraftRecovery(savedDraft);
   }
 
+  // SHAWN 25044598 - Auto Save Draft: Keeps an unsaved report draft in browser storage.
   function setupDraftAutosave() {
     reportForm.addEventListener('input', saveDraftSoon);
     reportForm.addEventListener('change', saveDraftSoon);
@@ -146,6 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // SHAWN 25044598 - Restore/Discard Draft: Wires the recovery banner actions.
   function showDraftRecovery(savedDraft) {
     if (!draftRecoveryNotice || !draftRecoveryMessage || !restoreDraftButton || !discardDraftButton) return;
 
@@ -174,6 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
     draftRecoveryNotice.className = 'draft-recovery notice-strip notice-hidden';
   }
 
+  // SHAWN 25044598 - Restore Draft: Maps stored browser draft values back into the form.
   function restoreDraft(draft) {
     isRestoringDraft = true;
 
@@ -192,13 +197,12 @@ document.addEventListener('DOMContentLoaded', () => {
     setFieldValue('officerNotes', draft.officerNotes || '');
     syncCustomIncidentType();
 
-    if (window.updateReportCompletion) {
-      window.updateReportCompletion();
-    }
+    updateCompletionWidget();
 
     isRestoringDraft = false;
   }
 
+  // SHAWN 25044598 - Discard Draft: Clears only the temporary browser draft and visible form values.
   function discardCurrentDraftValues() {
     isDiscardingDraft = true;
     window.clearTimeout(draftSaveTimer);
@@ -219,13 +223,12 @@ document.addEventListener('DOMContentLoaded', () => {
     syncCustomIncidentType();
     removeSavedDraft();
 
-    if (window.updateReportCompletion) {
-      window.updateReportCompletion();
-    }
+    updateCompletionWidget();
 
     isDiscardingDraft = false;
   }
 
+  // SHAWN 25044598 - Restore Draft: Reads and validates the saved localStorage payload.
   function readSavedDraft() {
     const savedDraft = getStorageItem(CREATE_REPORT_DRAFT_KEY);
 
@@ -246,6 +249,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // SHAWN 25044598 - Auto Save Draft: Debounces browser draft writes.
   function saveDraftSoon() {
     if (isRestoringDraft || isDiscardingDraft || hasPendingDraftRecovery) return;
 
@@ -253,6 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
     draftSaveTimer = window.setTimeout(saveDraftNow, DRAFT_SAVE_DELAY_MS);
   }
 
+  // SHAWN 25044598 - Auto Save Draft: Stores meaningful draft data temporarily in localStorage.
   function saveDraftNow() {
     const draft = collectDraft();
 
@@ -267,6 +272,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }));
   }
 
+  // SHAWN 25044598 - Auto Save Draft: Collects the fields needed to rebuild the Create Report form.
   function collectDraft() {
     return {
       transcript: transcriptInput.value.trim(),
@@ -284,6 +290,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
+  // SHAWN 25044598 - Auto Save Draft: Avoids saving empty default forms.
   function hasMeaningfulDraft(draft) {
     const incidentType = draft.incidentType === OTHER_INCIDENT_TYPE_VALUE
       ? draft.customIncidentType
@@ -303,10 +310,12 @@ document.addEventListener('DOMContentLoaded', () => {
     return meaningfulValues.some((value) => String(value || '').trim().length > 0);
   }
 
+  // SHAWN 25044598 - Discard Draft: Removes the temporary browser draft.
   function removeSavedDraft() {
     removeStorageItem(CREATE_REPORT_DRAFT_KEY);
   }
 
+  // SHAWN 25044598 - Successful Save Cleanup: Clears local drafts after a report save redirect.
   function clearDraftAfterSuccessfulSave() {
     const params = new URLSearchParams(window.location.search);
 
@@ -372,31 +381,24 @@ document.addEventListener('DOMContentLoaded', () => {
     field.value = value;
     dispatchFieldUpdate(field);
 
-    if (window.updateReportCompletion) {
-      window.updateReportCompletion();
-    }
+    updateCompletionWidget();
   }
 
+  // SHAWN 25044598 - Custom Incident Type: Reveals the custom field only when "Other" is selected.
   function setupCustomIncidentType() {
     if (!reportForm || !incidentTypeSelect || !customIncidentTypeField || !customIncidentTypeInput) return;
 
     incidentTypeSelect.addEventListener('change', () => {
       syncCustomIncidentType();
-      if (window.updateReportCompletion) {
-        window.updateReportCompletion();
-      }
+      updateCompletionWidget();
     });
     customIncidentTypeInput.addEventListener('input', () => {
-      if (window.updateReportCompletion) {
-        window.updateReportCompletion();
-      }
+      updateCompletionWidget();
     });
     reportForm.addEventListener('reset', () => {
       window.setTimeout(() => {
         syncCustomIncidentType();
-        if (window.updateReportCompletion) {
-          window.updateReportCompletion();
-        }
+        updateCompletionWidget();
       }, 0);
     });
     reportForm.addEventListener('formdata', (event) => {
@@ -445,11 +447,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     dispatchFieldUpdate(incidentTypeSelect);
 
+    updateCompletionWidget();
+
+    return true;
+  }
+
+  function updateCompletionWidget() {
     if (window.updateReportCompletion) {
       window.updateReportCompletion();
     }
-
-    return true;
   }
 
   function dispatchFieldUpdate(field) {

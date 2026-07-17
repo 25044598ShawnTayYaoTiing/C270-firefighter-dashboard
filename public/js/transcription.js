@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
   const TRANSCRIPT_STORAGE_KEY = 'firefighter.transcriptDraft';
-  const TRANSCRIPT_DEBUG = false;
   const serviceWsUrl = 'ws://localhost:8010/ws/transcribe';
 
   const startButton = document.getElementById('startTranscriptionButton');
@@ -169,7 +168,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (shouldCommitLive) {
       commitLiveTranscript();
-      debugLog('stop transcription commit', fullTranscript);
     }
 
     isStreaming = false;
@@ -262,7 +260,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!nextTranscript) return;
 
     liveTranscript = nextTranscript;
-    debugLog('live transcript update', liveTranscript);
     updateTranscriptDisplays();
   }
 
@@ -279,14 +276,12 @@ document.addEventListener('DOMContentLoaded', () => {
       existingSegments[existingSegments.length - 1] = normalizedSegment;
       setFullTranscriptSegments(existingSegments);
       lastCommittedTranscript = normalizedSegment;
-      debugLog('final transcript replace', normalizedSegment);
       return true;
     }
 
     existingSegments.push(normalizedSegment);
     setFullTranscriptSegments(existingSegments);
     lastCommittedTranscript = normalizedSegment;
-    debugLog('final transcript append', normalizedSegment);
     return true;
   }
 
@@ -474,7 +469,6 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    debugLog('send raw transcript source', transcriptData.source);
     localStorage.setItem(TRANSCRIPT_STORAGE_KEY, transcriptData.text);
     window.location.href = '/create-report?transcript=sent';
   }
@@ -587,11 +581,6 @@ document.addEventListener('DOMContentLoaded', () => {
     cleanupNotice.querySelector('span').textContent = '';
   }
 
-  function debugLog(label, value) {
-    if (TRANSCRIPT_DEBUG) {
-      console.log(`[Transcript] ${label}:`, value);
-    }
-  }
 });
 
 // Done by: Khin (25036933)

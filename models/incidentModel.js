@@ -190,14 +190,6 @@ exports.getIncidentByIncidentId = async (incidentId) => {
   return rows[0] || null;
 };
 
-exports.getActiveOfficers = async () => {
-  return officerModel.getActiveOfficers();
-};
-
-exports.getOfficerById = async (officerId) => {
-  return officerModel.getOfficerById(officerId);
-};
-
 exports.createIncident = async (incident) => {
   await ensureOfficerSchema();
 
