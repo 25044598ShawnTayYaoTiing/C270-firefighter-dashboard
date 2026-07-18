@@ -1,4 +1,5 @@
 const http = require('http');
+const https = require('https');
 const incidentModel = require('../models/incidentModel');
 const db = require('../config/db');
 const ollamaService = require('../services/ollamaService');
@@ -10,6 +11,10 @@ const {
 } = require('../helpers/incidentPresenter');
 
 const statuses = ['Draft', 'Pending Review', 'Completed', 'Escalated'];
+const REALTIME_STT_HEALTH_URL = process.env.REALTIME_STT_HEALTH_URL || 'http://127.0.0.1:8010/health';
+// Leave the browser URL blank by default so the frontend can use the hostname
+// that the user used to open the dashboard (localhost or the laptop's LAN IP).
+const REALTIME_STT_WS_URL = process.env.REALTIME_STT_WS_URL || '';
 
 function renderPage(res, view, options) {
   res.render('layout', {
@@ -27,7 +32,28 @@ function renderPage(res, view, options) {
 // Check whether the external real-time transcription service is reachable before the UI shows it as available.
 function requestTranscriptionHealth() {
   return new Promise((resolve) => {
-    const request = http.get('http://127.0.0.1:8010/health', { timeout: 1500 }, (response) => {
+    let healthUrl;
+
+    try {
+      healthUrl = new URL(REALTIME_STT_HEALTH_URL);
+    } catch (error) {
+      resolve({
+        available: false,
+        error: 'RealtimeSTT health URL is invalid.'
+      });
+      return;
+    }
+
+    if (!['http:', 'https:'].includes(healthUrl.protocol)) {
+      resolve({
+        available: false,
+        error: 'RealtimeSTT health URL must use HTTP or HTTPS.'
+      });
+      return;
+    }
+
+    const client = healthUrl.protocol === 'https:' ? https : http;
+    const request = client.get(healthUrl, { timeout: 1500 }, (response) => {
       let body = '';
 
       response.on('data', (chunk) => {
@@ -313,7 +339,8 @@ exports.showAnalytics = async (req, res, next) => {
 exports.showTranscription = (req, res) => {
   renderPage(res, 'transcription', {
     pageTitle: 'Live Call Intake',
-    activePage: 'transcription'
+    activePage: 'transcription',
+    realtimeSttWsUrl: REALTIME_STT_WS_URL
   });
 };
 

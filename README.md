@@ -255,6 +255,7 @@ Follow these steps when setting up the project from zero on Windows.
 - Ollama installed for AI cleanup and report drafting
 - PowerShell on Windows
 - RealtimeSTT only if live speech-to-text is needed
+- Docker Desktop with Docker Compose for the containerised local stack
 
 ### 1. Open the Project Folder
 
@@ -391,6 +392,78 @@ http://localhost:3000
 ```
 
 RealtimeSTT is not required if you are using manual transcript input.
+
+### Run the Complete Local Stack with Docker Compose
+
+The dashboard Compose file runs the Node.js app, Ollama, the one-time Qwen model pull, and the external RealtimeSTT FastAPI service. Railway MySQL stays online and is not containerised.
+
+The RealtimeSTT source checkout must be next to this dashboard folder:
+
+```text
+Downloads/
+|-- firefighter-dashboard-prototype-fixed/
+|-- RealtimeSTT/
+```
+
+Copy `.env.example` to `.env`, then enter private Railway and session values only in `.env`. Never commit that file.
+
+Build and start the complete stack:
+
+```powershell
+docker compose down
+docker compose up -d --build
+docker compose ps
+```
+
+The `ollama-model` helper automatically pulls `qwen2.5:1.5b` after Ollama becomes healthy. These manual commands are also available:
+
+```powershell
+docker compose exec ollama ollama pull qwen2.5:1.5b
+docker compose exec ollama ollama list
+Invoke-RestMethod http://localhost:11434/api/tags
+```
+
+Open `http://localhost:3000`, sign in, test Clean Transcript on Live Call Intake, Generate AI Report on Create Report, and Start Transcription if the RealtimeSTT model is ready.
+
+Use these values for the supported execution modes:
+
+```env
+# Node.js running in Docker Compose
+OLLAMA_HOST=http://ollama:11434
+OLLAMA_MODEL=qwen2.5:1.5b
+REALTIME_STT_HEALTH_URL=http://realtimestt:8010/health
+# Blank makes the browser use the dashboard hostname on port 8010.
+REALTIME_STT_WS_URL=
+
+# Node.js running directly on the host
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:1.5b
+REALTIME_STT_HEALTH_URL=http://127.0.0.1:8010/health
+REALTIME_STT_WS_URL=
+```
+
+Inside Docker, Node.js reaches Ollama at `http://ollama:11434` and checks RealtimeSTT at `http://realtimestt:8010/health`. The browser cannot resolve Docker service names, so it connects to `ws://<dashboard-hostname>:8010/ws/transcribe` (or `wss://` when the dashboard uses HTTPS). This works with `localhost` and later with the laptop's LAN address without hard-coding an IP.
+
+Ollama stores downloaded model data under `/root/.ollama` in the named `ollama_data` volume. RealtimeSTT stores downloaded speech models under `/root/.cache` in `realtimestt_cache`. Normal container recreation retains both caches. `docker compose down -v` deliberately removes them and requires model downloads again.
+
+Useful checks:
+
+```powershell
+docker compose ps
+docker compose logs --tail 100 app ollama ollama-model realtimestt
+Invoke-RestMethod http://localhost:8010/health
+```
+
+Stop or restart without deleting model volumes:
+
+```powershell
+docker compose stop
+docker compose start
+docker compose restart
+docker compose down
+```
+
+If Ollama stops, cleanup preserves the original transcript and report generation supplies a conservative editable fallback. If RealtimeSTT stops, manual transcript entry remains available. The application and Railway-backed non-AI features continue running.
 
 ### 7. Seed Sample Reports
 
@@ -637,7 +710,7 @@ Open `http://localhost:3000/transcription` or choose Live Call Intake from the s
 
 1. To use live speech-to-text, start RealtimeSTT first and click Start Transcription.
 2. Allow microphone access, then speak into the microphone.
-3. RealtimeSTT converts speech to text through `ws://localhost:8010/ws/transcribe`.
+3. RealtimeSTT converts speech to text through port `8010` on the same hostname used to open the dashboard. For example, localhost uses `ws://localhost:8010/ws/transcribe`, while a LAN client uses the laptop hostname or LAN address.
 4. Live Transcript updates with the latest speech segment.
 5. Stop Transcription commits the latest text into Full Transcript.
 6. Click Clean Transcript to send the transcript to Ollama for cleanup.

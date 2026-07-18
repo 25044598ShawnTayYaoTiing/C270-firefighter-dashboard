@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 // Done BY SHAWN ID 25044598
 // AI Features: Ollama service configuration for transcript cleanup and incident draft generation.

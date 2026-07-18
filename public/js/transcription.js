@@ -1,6 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
   const TRANSCRIPT_STORAGE_KEY = 'firefighter.transcriptDraft';
-  const serviceWsUrl = 'ws://localhost:8010/ws/transcribe';
+  const transcriptionLayout = document.querySelector('.transcription-layout');
+  const configuredServiceWsUrl = transcriptionLayout
+    ? transcriptionLayout.dataset.realtimeSttWsUrl.trim()
+    : '';
+  const serviceWsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const serviceWsUrl = configuredServiceWsUrl
+    || `${serviceWsProtocol}//${window.location.hostname}:8010/ws/transcribe`;
 
   const startButton = document.getElementById('startTranscriptionButton');
   if (!startButton) return;

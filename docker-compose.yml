@@ -1,0 +1,79 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  ollama-model:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command: ["pull", "qwen2.5:1.5b"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  realtimestt:
+    build:
+      context: ../RealtimeSTT
+      dockerfile: Dockerfile.fastapi
+    ports:
+      - "8010:8010"
+    volumes:
+      - realtimestt_cache:/root/.cache
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8010/health', timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 5m
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b}
+      REALTIME_STT_HEALTH_URL: http://realtimestt:8010/health
+      REALTIME_STT_WS_URL: ""
+    ports:
+      - "3000:3000"
+    depends_on:
+      ollama:
+        condition: service_started
+      ollama-model:
+        condition: service_started
+      realtimestt:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://localhost:3000/login').then(response => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  realtimestt_cache:
