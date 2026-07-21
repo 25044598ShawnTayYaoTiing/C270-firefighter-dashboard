@@ -5,8 +5,16 @@ on:
     branches:
       - main
 
+env:
+  AWS_ACCOUNT_ID: "754895435122"
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+  ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+  ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+
 jobs:
-  build-and-test:
+  build-test-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -16,7 +24,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
@@ -25,4 +34,144 @@ jobs:
         run: npm test
 
       - name: Build Docker image
-        run: docker build -t firefighter-dashboard .
+        run: docker build -t "${ECR_REPOSITORY}:${GITHUB_SHA}" .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Install latest AWS CLI
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          sudo ./aws/install --update
+          aws --version
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag Docker image for Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+          LATEST_IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
+
+          docker tag "${ECR_REPOSITORY}:${GITHUB_SHA}" "${IMAGE_URI}"
+          docker tag "${ECR_REPOSITORY}:${GITHUB_SHA}" "${LATEST_IMAGE_URI}"
+
+          echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+
+      - name: Push Docker image to Amazon ECR
+        run: |
+          set -euo pipefail
+          docker push "${IMAGE_URI}"
+          docker push "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest"
+
+      - name: Create ECS task definition revision with new image
+        id: task-definition
+        run: |
+          set -euo pipefail
+          SERVICE_ARN="arn:aws:ecs:${AWS_REGION}:${AWS_ACCOUNT_ID}:service/${ECS_CLUSTER}/${ECS_SERVICE}"
+
+          CURRENT_TASK_DEFINITION_ARN="$(aws ecs describe-express-gateway-service \
+            --service-arn "${SERVICE_ARN}" \
+            --query "service.activeConfigurations[0].taskDefinitionArn" \
+            --output text)"
+
+          if [ -z "${CURRENT_TASK_DEFINITION_ARN}" ] || [ "${CURRENT_TASK_DEFINITION_ARN}" = "None" ]; then
+            echo "Could not find the active task definition ARN for ${SERVICE_ARN}." >&2
+            exit 1
+          fi
+
+          aws ecs describe-task-definition \
+            --task-definition "${CURRENT_TASK_DEFINITION_ARN}" \
+            --query "taskDefinition" \
+            --output json > current-task-definition.json
+
+          IMAGE_REPOSITORY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}"
+
+          if [ -n "${ECS_CONTAINER_NAME}" ]; then
+            CONTAINER_NAME="${ECS_CONTAINER_NAME}"
+          else
+            CONTAINER_NAME="$(jq -r --arg repo "${IMAGE_REPOSITORY}" '
+              [.containerDefinitions[] | select(.image | startswith($repo + ":") or startswith($repo + "@")) | .name]
+              | if length == 1 then .[0] else empty end
+            ' current-task-definition.json)"
+
+            if [ -z "${CONTAINER_NAME}" ]; then
+              CONTAINER_COUNT="$(jq '.containerDefinitions | length' current-task-definition.json)"
+              if [ "${CONTAINER_COUNT}" = "1" ]; then
+                CONTAINER_NAME="$(jq -r '.containerDefinitions[0].name' current-task-definition.json)"
+              else
+                echo "Could not determine which container image to update. Set repository variable ECS_CONTAINER_NAME." >&2
+                exit 1
+              fi
+            fi
+          fi
+
+          jq -e --arg name "${CONTAINER_NAME}" '
+            any(.containerDefinitions[]; .name == $name)
+          ' current-task-definition.json > /dev/null
+
+          jq --arg name "${CONTAINER_NAME}" --arg image "${IMAGE_URI}" '
+            del(
+              .taskDefinitionArn,
+              .revision,
+              .status,
+              .requiresAttributes,
+              .compatibilities,
+              .registeredAt,
+              .registeredBy,
+              .deregisteredAt
+            )
+            | .containerDefinitions = (
+              .containerDefinitions
+              | map(if .name == $name then .image = $image else . end)
+            )
+          ' current-task-definition.json > new-task-definition.json
+
+          NEW_TASK_DEFINITION_ARN="$(aws ecs register-task-definition \
+            --cli-input-json file://new-task-definition.json \
+            --query "taskDefinition.taskDefinitionArn" \
+            --output text)"
+
+          echo "SERVICE_ARN=${SERVICE_ARN}" >> "$GITHUB_ENV"
+          echo "TASK_DEFINITION_ARN=${NEW_TASK_DEFINITION_ARN}" >> "$GITHUB_ENV"
+          echo "task-definition-arn=${NEW_TASK_DEFINITION_ARN}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy ECS Express Mode service
+        run: |
+          set -euo pipefail
+          aws ecs update-express-gateway-service \
+            --service-arn "${SERVICE_ARN}" \
+            --task-definition-arn "${TASK_DEFINITION_ARN}" \
+            --monitor-resources DEPLOYMENT \
+            --monitor-mode TEXT-ONLY
+
+      - name: Verify ECS deployment
+        run: |
+          set -euo pipefail
+          SERVICE_STATUS="$(aws ecs describe-express-gateway-service \
+            --service-arn "${SERVICE_ARN}" \
+            --query "service.status.statusCode" \
+            --output text)"
+          ACTIVE_TASK_DEFINITION_MATCHES="$(aws ecs describe-express-gateway-service \
+            --service-arn "${SERVICE_ARN}" \
+            --query "length(service.activeConfigurations[?taskDefinitionArn=='${TASK_DEFINITION_ARN}'])" \
+            --output text)"
+
+          if [ "${SERVICE_STATUS}" != "ACTIVE" ] || [ "${ACTIVE_TASK_DEFINITION_MATCHES}" = "0" ]; then
+            echo "ECS Express service is not active on the expected task definition." >&2
+            echo "Status: ${SERVICE_STATUS}" >&2
+            echo "Expected: ${TASK_DEFINITION_ARN}" >&2
+            exit 1
+          fi
+
+          echo "ECS Express service is active on task definition ${TASK_DEFINITION_ARN}."
