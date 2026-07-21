@@ -7,7 +7,6 @@ $ProjectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $EnvPath = Join-Path $ProjectRoot ".env"
 $NodeModulesPath = Join-Path $ProjectRoot "node_modules"
 $DashboardUrl = "http://localhost:3000"
-$OllamaApiUrl = "http://localhost:11434/api/tags"
 $RealtimeSttUrl = "http://127.0.0.1:8010"
 $RealtimeVenvPath = Join-Path $RealtimeSttPath ".venv-fastapi"
 $RealtimeActivatePath = Join-Path $RealtimeVenvPath "Scripts\Activate.ps1"
@@ -149,22 +148,30 @@ else {
   Write-WarningMessage "MySQL does not appear reachable at $dbHost`:$dbPort. Start MySQL before using dashboard CRUD features."
 }
 
+$geminiApiKey = Get-DotEnvValue -Path $EnvPath -Name "GEMINI_API_KEY"
+$geminiModel = Get-DotEnvValue -Path $EnvPath -Name "GEMINI_MODEL"
+
+Write-Status "Checking Gemini AI configuration..."
+
+if ($geminiApiKey -and $geminiModel) {
+  Write-Status "Gemini AI is configured with model '$geminiModel'."
+}
+else {
+  if (-not $geminiApiKey) {
+    Write-WarningMessage "GEMINI_API_KEY is not configured. AI cleanup/report generation will use manual fallback responses."
+  }
+
+  if (-not $geminiModel) {
+    Write-WarningMessage "GEMINI_MODEL is not configured. Set it to a supported Flash model such as gemini-3.5-flash."
+  }
+}
+
 Write-Status "Starting dashboard..."
 $projectRootArgument = ConvertTo-PowerShellSingleQuotedString -Value $ProjectRoot
 Start-PowerShellWindow -Title "Firefighter Dashboard" -Command "Set-Location -LiteralPath $projectRootArgument; npm start"
 
 Write-Status "Opening dashboard in browser..."
 Start-Process $DashboardUrl
-
-
-Write-Status "Checking Ollama API..."
-
-if (Test-HttpEndpoint -Url $OllamaApiUrl) {
-  Write-Status "Ollama is reachable."
-}
-else {
-  Write-WarningMessage "Ollama is not currently reachable. AI cleanup/report generation may not work."
-}
 
 $realtimeReady = $true
 
@@ -198,11 +205,14 @@ else {
   Write-WarningMessage "RealtimeSTT was not started because setup is incomplete."
 }
 
+$displayGeminiModel = if ($geminiModel) { $geminiModel } else { "not configured" }
+
 Write-Host ""
 Write-Status "Demo services started."
 Write-Host "Dashboard:   $DashboardUrl"
 Write-Host "RealtimeSTT: $RealtimeSttUrl"
-Write-Host "Ollama API:  $OllamaApiUrl"
+Write-Host "AI Service:  Gemini AI"
+Write-Host "AI Model:    $displayGeminiModel"
 Write-Host ""
 Write-Host "Close the separate PowerShell windows to stop the dashboard and RealtimeSTT."
 Read-Host "Press Enter to close this launcher"

@@ -19,6 +19,7 @@ const PORT = process.env.PORT || 3000;
 const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'firefighter.sid';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'firefighter-dashboard-prototype-session-secret';
 
+app.set('trust proxy', 1);
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 

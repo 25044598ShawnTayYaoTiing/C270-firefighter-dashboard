@@ -2,7 +2,7 @@ const http = require('http');
 const https = require('https');
 const incidentModel = require('../models/incidentModel');
 const db = require('../config/db');
-const ollamaService = require('../services/ollamaService');
+const geminiService = require('../services/geminiService');
 const {
   buildMapData,
   mapIncident,
@@ -354,7 +354,7 @@ exports.checkTranscriptionHealth = async (req, res) => {
 exports.checkSystemStatus = async (req, res) => {
   const [transcriptionHealth, aiHealth, databaseHealth] = await Promise.all([
     requestTranscriptionHealth(),
-    ollamaService.checkHealth(),
+    geminiService.checkHealth(),
     checkDatabaseHealth()
   ]);
 
@@ -363,7 +363,9 @@ exports.checkSystemStatus = async (req, res) => {
       available: transcriptionHealth.available
     },
     ai: {
-      available: aiHealth.available
+      available: aiHealth.available,
+      provider: aiHealth.provider,
+      model: aiHealth.model
     },
     database: {
       connected: databaseHealth.connected

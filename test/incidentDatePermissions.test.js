@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const incidentModel = require('../models/incidentModel');
 const incidentController = require('../controllers/incidentController');
 const aiController = require('../controllers/aiController');
-const ollamaService = require('../services/ollamaService');
+const geminiService = require('../services/geminiService');
 const { ROLES } = require('../middleware/rolePermissions');
 
 const submittedBackdate = '2001-01-01T01:01';
@@ -137,9 +137,9 @@ test('admin edit accepts an explicitly supplied historical date', { concurrency:
 });
 
 test('AI draft responses cannot supply the incident timestamp', { concurrency: false }, async () => {
-  const originalGenerate = ollamaService.generateReport;
+  const originalGenerate = geminiService.generateReport;
   let responseBody;
-  ollamaService.generateReport = async () => ({
+  geminiService.generateReport = async () => ({
     incident_type: 'Test Incident',
     incident_datetime: submittedBackdate
   });
@@ -154,6 +154,6 @@ test('AI draft responses cannot supply the incident timestamp', { concurrency: f
     assert.equal(responseBody.success, true);
     assert.equal(responseBody.report.incident_datetime, '');
   } finally {
-    ollamaService.generateReport = originalGenerate;
+    geminiService.generateReport = originalGenerate;
   }
 });

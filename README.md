@@ -4,7 +4,7 @@
 
 The Firefighter Smart Incident Dashboard is an SCDF-inspired school prototype for emergency incident reporting. It helps users capture emergency call information, clean raw transcripts, generate AI-assisted incident report drafts, review and edit report details, save reports to MySQL, and monitor operational records through dashboard, reports, map, and analytics pages.
 
-The project uses Node.js, Express.js, EJS, CSS, JavaScript, MySQL, Ollama, RealtimeSTT, Leaflet, and OpenStreetMap.
+The project uses Node.js, Express.js, EJS, CSS, JavaScript, MySQL, Gemini Flash, RealtimeSTT, Leaflet, and OpenStreetMap.
 
 ## Problem Statement
 
@@ -24,7 +24,7 @@ This prototype reduces manual effort by supporting transcript intake, AI-assiste
 
 ![System Architecture](docs/images/system-architecture.png)
 
-The application uses a modular monolith structure. The Node.js / Express backend renders EJS pages, handles report routes, calls local AI services, and reads/writes incident records in MySQL.
+The application uses a modular monolith structure. The Node.js / Express backend renders EJS pages, handles report routes, calls the configured AI service, and reads/writes incident records in MySQL.
 
 ```text
 Prototype Users
@@ -35,7 +35,7 @@ Prototype Users
 
 Supporting services:
 
-- Ollama for AI transcript cleanup and AI-assisted incident draft generation
+- Gemini Flash for AI transcript cleanup and AI-assisted incident draft generation
 - RealtimeSTT for the live speech-to-text proof-of-concept
 - Leaflet and OpenStreetMap for live incident map visualisation
 - OneMap, when configured, for Singapore coordinate lookup
@@ -84,11 +84,11 @@ If RealtimeSTT is unavailable, users can paste transcript text manually.
 
 ### AI-Assisted Transcript Cleanup
 
-Ollama helps clean raw transcript text for readability and clarity. The browser calls the Express backend, and the backend calls Ollama; the browser never calls Ollama directly.
+Gemini Flash helps clean raw transcript text for readability and clarity. The browser calls the Express backend, and the backend calls Gemini; the browser never calls Gemini directly.
 
 ### AI-Assisted Incident Drafting
 
-Ollama helps generate editable incident fields from a transcript, including:
+Gemini Flash helps generate editable incident fields from a transcript, including:
 
 - Incident type
 - Location
@@ -99,7 +99,7 @@ Ollama helps generate editable incident fields from a transcript, including:
 - Officer notes
 - Response status
 
-AI drafts must be reviewed by duty officers before saving. If Ollama is unavailable, the app keeps manual editing available and can return a conservative fallback draft.
+AI drafts must be reviewed by duty officers before saving. If Gemini is unavailable, the app keeps manual editing available and can return a conservative fallback draft.
 
 ### Incident Report CRUD
 
@@ -201,7 +201,7 @@ GET /api/incidents?status=Completed&search=vehicle
 | Frontend | EJS, CSS, JavaScript |
 | Backend | Node.js, Express.js |
 | Database | MySQL |
-| AI | Ollama |
+| AI | Gemini Flash |
 | Speech-to-Text | RealtimeSTT |
 | Map | Leaflet + OpenStreetMap |
 | Version Control | GitHub |
@@ -252,7 +252,7 @@ Follow these steps when setting up the project from zero on Windows.
 
 - Node.js and npm
 - MySQL running locally or reachable from this machine
-- Ollama installed for AI cleanup and report drafting
+- Gemini API key for AI cleanup and report drafting
 - PowerShell on Windows
 - RealtimeSTT only if live speech-to-text is needed
 - Docker Desktop with Docker Compose for the containerised local stack
@@ -355,8 +355,8 @@ DB_NAME=firefighter_dashboard
 DB_PORT=3306
 SESSION_SECRET=replace_with_a_long_random_string
 
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:1.5b
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.5-flash
 
 ONEMAP_EMAIL=
 ONEMAP_PASSWORD=
@@ -366,17 +366,14 @@ GEOCODING_DEBUG=false
 
 Replace `your_password` with your local MySQL password and set `SESSION_SECRET` to a long random value for local sessions. OneMap credentials are optional; if they are blank, report creation, report editing, and coordinate backfill use the local Singapore fallback resolver. Do not commit `.env` or expose private credentials.
 
-### 5. Start Ollama
+### 5. Configure Gemini AI
 
-```powershell
-ollama pull qwen2.5:1.5b
-ollama list
-```
+Set `GEMINI_API_KEY` to your private Gemini API key and `GEMINI_MODEL` to the supported Flash model used by the deployment.
 
-Ollama should be available at:
+For the current cloud AI flow:
 
-```text
-http://localhost:11434/api/tags
+```env
+GEMINI_MODEL=gemini-3.5-flash
 ```
 
 ### 6. Start the Dashboard Only
@@ -395,7 +392,7 @@ RealtimeSTT is not required if you are using manual transcript input.
 
 ### Run the Complete Local Stack with Docker Compose
 
-The dashboard Compose file runs the Node.js app, Ollama, the one-time Qwen model pull, and the external RealtimeSTT FastAPI service. Railway MySQL stays online and is not containerised.
+The dashboard Compose file runs the Node.js app and the external RealtimeSTT FastAPI service. Railway MySQL stays online and is not containerised. The previous Ollama/Qwen services are retained under the optional `previous-local-ai` Compose profile, but they are not required by the active Gemini cloud flow.
 
 The RealtimeSTT source checkout must be next to this dashboard folder:
 
@@ -415,42 +412,34 @@ docker compose up -d --build
 docker compose ps
 ```
 
-The `ollama-model` helper automatically pulls `qwen2.5:1.5b` after Ollama becomes healthy. These manual commands are also available:
-
-```powershell
-docker compose exec ollama ollama pull qwen2.5:1.5b
-docker compose exec ollama ollama list
-Invoke-RestMethod http://localhost:11434/api/tags
-```
-
 Open `http://localhost:3000`, sign in, test Clean Transcript on Live Call Intake, Generate AI Report on Create Report, and Start Transcription if the RealtimeSTT model is ready.
 
 Use these values for the supported execution modes:
 
 ```env
 # Node.js running in Docker Compose
-OLLAMA_HOST=http://ollama:11434
-OLLAMA_MODEL=qwen2.5:1.5b
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.5-flash
 REALTIME_STT_HEALTH_URL=http://realtimestt:8010/health
 # Blank makes the browser use the dashboard hostname on port 8010.
 REALTIME_STT_WS_URL=
 
 # Node.js running directly on the host
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:1.5b
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.5-flash
 REALTIME_STT_HEALTH_URL=http://127.0.0.1:8010/health
 REALTIME_STT_WS_URL=
 ```
 
-Inside Docker, Node.js reaches Ollama at `http://ollama:11434` and checks RealtimeSTT at `http://realtimestt:8010/health`. The browser cannot resolve Docker service names, so it connects to `ws://<dashboard-hostname>:8010/ws/transcribe` (or `wss://` when the dashboard uses HTTPS). This works with `localhost` and later with the laptop's LAN address without hard-coding an IP.
+Inside Docker, Node.js calls Gemini through the Gemini API and checks RealtimeSTT at `http://realtimestt:8010/health`. The browser cannot resolve Docker service names, so it connects to `ws://<dashboard-hostname>:8010/ws/transcribe` (or `wss://` when the dashboard uses HTTPS). This works with `localhost` and later with the laptop's LAN address without hard-coding an IP.
 
-Ollama stores downloaded model data under `/root/.ollama` in the named `ollama_data` volume. RealtimeSTT stores downloaded speech models under `/root/.cache` in `realtimestt_cache`. Normal container recreation retains both caches. `docker compose down -v` deliberately removes them and requires model downloads again.
+RealtimeSTT stores downloaded speech models under `/root/.cache` in `realtimestt_cache`. The optional previous/local Ollama profile stores downloaded model data under `/root/.ollama` in the named `ollama_data` volume. `docker compose down -v` deliberately removes those caches and requires model downloads again.
 
 Useful checks:
 
 ```powershell
 docker compose ps
-docker compose logs --tail 100 app ollama ollama-model realtimestt
+docker compose logs --tail 100 app realtimestt
 Invoke-RestMethod http://localhost:8010/health
 ```
 
@@ -463,7 +452,7 @@ docker compose restart
 docker compose down
 ```
 
-If Ollama stops, cleanup preserves the original transcript and report generation supplies a conservative editable fallback. If RealtimeSTT stops, manual transcript entry remains available. The application and Railway-backed non-AI features continue running.
+If Gemini is unavailable or not configured, cleanup preserves the original transcript and report generation supplies a conservative editable fallback. If RealtimeSTT stops, manual transcript entry remains available. The application and Railway-backed non-AI features continue running.
 
 ### 7. Seed Sample Reports
 
@@ -532,7 +521,7 @@ python example_fastapi_server\server.py --host 127.0.0.1 --port 8010 --engine fa
 npm run demo
 ```
 
-The demo launcher opens the dashboard and RealtimeSTT in separate PowerShell windows, opens the dashboard in your browser, and checks Ollama. It does not start MySQL or Ollama.
+The demo launcher opens the dashboard and RealtimeSTT in separate PowerShell windows, opens the dashboard in your browser, and checks that Gemini AI is configured. It does not start MySQL.
 
 ## Environment Variables
 
@@ -546,8 +535,8 @@ The dashboard reads local configuration from `.env`. Keep this file in the proje
 | `DB_NAME` | Database name, `firefighter_dashboard` |
 | `DB_PORT` | MySQL port, usually `3306` |
 | `SESSION_SECRET` | Secret used by `express-session` to sign login cookies |
-| `OLLAMA_HOST` | Ollama server URL |
-| `OLLAMA_MODEL` | Local model used for cleanup and draft generation |
+| `GEMINI_API_KEY` | Private Gemini API key used by the backend only |
+| `GEMINI_MODEL` | Gemini Flash model used for cleanup and draft generation |
 | `ONEMAP_EMAIL` | Optional OneMap email |
 | `ONEMAP_PASSWORD` | Optional OneMap password |
 | `ONEMAP_BASE_URL` | OneMap API base URL |
@@ -555,7 +544,7 @@ The dashboard reads local configuration from `.env`. Keep this file in the proje
 
 ## Run the Full Local Demo
 
-Use this flow when you want the dashboard and RealtimeSTT running together for a prototype demo. Ollama usually runs automatically in the background on Windows, so the script checks whether it is reachable instead of starting it.
+Use this flow when you want the dashboard and RealtimeSTT running together for a prototype demo. The script checks whether `GEMINI_API_KEY` and `GEMINI_MODEL` are configured without printing the key.
 
 1. Start MySQL first.
 2. Confirm `.env` exists in the project root.
@@ -570,10 +559,10 @@ The demo uses:
 
 - Dashboard on `http://localhost:3000`
 - RealtimeSTT on `http://127.0.0.1:8010`
-- Ollama on `http://localhost:11434`
+- Gemini AI through the backend service
 - MySQL on `localhost:3306`
 
-The launcher opens separate PowerShell windows for the dashboard and RealtimeSTT, opens the dashboard in your browser, and checks the Ollama API at `http://localhost:11434/api/tags`. It does not start MySQL or Ollama.
+The launcher opens separate PowerShell windows for the dashboard and RealtimeSTT, opens the dashboard in your browser, and checks Gemini configuration. It does not start MySQL.
 
 By default, the script expects RealtimeSTT at:
 
@@ -590,7 +579,7 @@ To stop the demo, close the separate PowerShell windows for the dashboard and Re
 Use this flow to test the main prototype path end to end:
 
 1. Start MySQL.
-2. Start Ollama.
+2. Confirm `GEMINI_API_KEY` and `GEMINI_MODEL` are configured.
 3. Run `npm install`.
 4. Run `npm run seed`.
 5. Run `npm start` or `npm run demo`.
@@ -674,9 +663,13 @@ The demo launcher uses this RealtimeSTT command:
 python example_fastapi_server\server.py --host 127.0.0.1 --port 8010 --engine faster_whisper --model medium.en --realtime-model tiny.en --language en
 ```
 
-## Run Ollama
+## Previous Local Ollama/Qwen Setup
 
-The dashboard calls Ollama from the Node.js backend. The browser never calls Ollama directly.
+The active cloud AI flow uses Gemini Flash. The old Ollama + Qwen2.5:1.5B setup is retained only as previous/local reference material and is available through the optional Compose profile:
+
+```powershell
+docker compose --profile previous-local-ai up -d ollama ollama-model
+```
 
 1. Install Ollama from:
 
@@ -713,7 +706,7 @@ Open `http://localhost:3000/transcription` or choose Live Call Intake from the s
 3. RealtimeSTT converts speech to text through port `8010` on the same hostname used to open the dashboard. For example, localhost uses `ws://localhost:8010/ws/transcribe`, while a LAN client uses the laptop hostname or LAN address.
 4. Live Transcript updates with the latest speech segment.
 5. Stop Transcription commits the latest text into Full Transcript.
-6. Click Clean Transcript to send the transcript to Ollama for cleanup.
+6. Click Clean Transcript to send the transcript to Gemini for cleanup.
 7. Click Send Raw Transcript or Send Clean Transcript to open Create Report with the transcript loaded.
 
 If RealtimeSTT is unavailable, paste text into the manual transcript field and continue from the cleanup or send step.
@@ -724,7 +717,7 @@ Open Create Report from the sidebar or send a transcript from Live Call Intake.
 
 1. Confirm the Transcript field contains raw or cleaned call text.
 2. Click Generate AI Report.
-3. The backend sends the transcript to Ollama.
+3. The backend sends the transcript to Gemini.
 4. The form fills an editable AI-assisted incident draft.
 5. Review and edit the generated fields.
 6. Save the report with Save Draft or Save Report.
@@ -736,7 +729,7 @@ POST /api/ai/clean-transcript
 POST /api/reports/generate
 ```
 
-Both endpoints call Ollama at `OLLAMA_HOST` using `OLLAMA_MODEL`.
+Both endpoints call Gemini using `GEMINI_API_KEY` and `GEMINI_MODEL`. The browser never receives the Gemini API key.
 
 ### Incident CRUD Flow
 
@@ -820,22 +813,16 @@ SHOW TABLES;
 
 The demo script only checks whether MySQL is reachable; it does not start MySQL.
 
-### Ollama Not Responding
+### Gemini AI Not Configured or Unavailable
 
-Confirm Ollama is installed, the model is available, and the local service is running:
+Confirm `.env` or the cloud environment contains both required Gemini variables:
 
-```powershell
-ollama list
-ollama pull qwen2.5:1.5b
+```env
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.5-flash
 ```
 
-Then check:
-
-```text
-http://localhost:11434/api/tags
-```
-
-If Ollama is unavailable, transcript cleanup and AI report generation may fail, but manual report editing remains available.
+If Gemini is unavailable, transcript cleanup returns the original transcript and AI report generation returns a conservative editable fallback report. Manual report editing remains available.
 
 ### RealtimeSTT Not Responding
 

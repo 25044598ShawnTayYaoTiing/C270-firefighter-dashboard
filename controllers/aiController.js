@@ -1,7 +1,7 @@
-const ollamaService = require('../services/ollamaService');
+const geminiService = require('../services/geminiService');
 
 // Done BY SHAWN ID 25044598
-// AI Features: controller layer for transcript cleanup, report drafting, Ollama status, and fallback review support.
+// AI Features: controller layer for transcript cleanup, report drafting, AI status, and fallback review support.
 function getTranscript(req) {
   return req.body && typeof req.body.transcript === 'string'
     ? req.body.transcript.trim()
@@ -9,7 +9,7 @@ function getTranscript(req) {
 }
 
 // Done BY SHAWN ID 25044598
-// AI Features: conservative fallback report keeps officer review usable when Ollama is unavailable.
+// AI Features: conservative fallback report keeps officer review usable when Gemini AI is unavailable.
 function fallbackReport(transcript) {
   // Fallback data stays conservative so officers can manually complete missing details.
   return {
@@ -28,7 +28,7 @@ function fallbackReport(transcript) {
 }
 
 // Done BY SHAWN ID 25044598
-// AI Features: cleans raw emergency transcripts through the Ollama service before report drafting.
+// AI Features: cleans raw emergency transcripts through the Gemini service before report drafting.
 exports.cleanTranscript = async (req, res) => {
   const transcript = getTranscript(req);
 
@@ -40,7 +40,7 @@ exports.cleanTranscript = async (req, res) => {
   }
 
   try {
-    const cleanedTranscript = await ollamaService.cleanTranscript(transcript);
+    const cleanedTranscript = await geminiService.cleanTranscript(transcript);
 
     return res.json({
       success: true,
@@ -68,7 +68,7 @@ exports.generateReport = async (req, res) => {
   }
 
   try {
-    const report = await ollamaService.generateReport(transcript);
+    const report = await geminiService.generateReport(transcript);
 
     return res.json({
       success: true,
@@ -89,13 +89,13 @@ exports.generateReport = async (req, res) => {
 };
 
 // Done BY SHAWN ID 25044598
-// AI Features: exposes Ollama availability and config status to support the AI workflow UI.
-exports.getOllamaStatus = async (req, res) => {
-  const health = await ollamaService.checkHealth();
+// AI Features: exposes Gemini availability and config status to support the AI workflow UI.
+exports.getAiStatus = async (req, res) => {
+  const health = await geminiService.checkHealth();
 
   res.json({
     success: health.available,
     available: health.available,
-    ollama: ollamaService.getConfig()
+    ai: geminiService.getConfig()
   });
 };
