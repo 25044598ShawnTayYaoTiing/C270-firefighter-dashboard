@@ -162,7 +162,7 @@ else {
   }
 
   if (-not $geminiModel) {
-    Write-WarningMessage "GEMINI_MODEL is not configured. Set it to a supported Flash model such as gemini-3.5-flash."
+    Write-WarningMessage "GEMINI_MODEL is not configured. Set it to a supported Flash model such as gemini-3.5-flash-lite."
   }
 }
 

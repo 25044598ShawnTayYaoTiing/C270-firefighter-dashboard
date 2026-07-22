@@ -6,6 +6,7 @@ const incidentController = require('../controllers/incidentController');
 const router = express.Router();
 
 router.get('/api/incidents', incidentController.getIncidentsApi);
+router.post('/api/locations/verify', incidentController.verifyLocation);
 router.get('/create-report', incidentController.showCreateReport);
 router.post('/incidents', incidentController.createIncident);
 router.get('/incidents', incidentController.showIncidents);

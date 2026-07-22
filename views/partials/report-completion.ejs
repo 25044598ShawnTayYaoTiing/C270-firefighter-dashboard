@@ -11,7 +11,7 @@
   <div class="missing-fields">
     <span>Missing fields</span>
     <ul data-missing-fields>
-      <% const missingFields = completion ? completion.missingFields : ['Transcript', 'Reporting Officer', 'Incident Location', 'Incident Type', 'Date and Time', 'Incident Summary', 'Hazards', 'Injured or Trapped Persons', 'Response Status']; %>
+      <% const missingFields = completion ? completion.missingFields : ['Incident Location', 'Location Verification', 'Incident Type', 'Date and Time', 'Response Status', 'Incident Summary', 'Hazards', 'Injured or Trapped Persons']; %>
       <% if (missingFields.length === 0) { %>
         <li>None</li>
       <% } %>

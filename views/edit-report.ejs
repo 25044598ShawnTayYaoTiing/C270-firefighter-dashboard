@@ -1,5 +1,14 @@
 <%# Done By Thein 25040396 %>
 <%# AI Features: officer review form receives and edits AI-generated report draft fields before saving. %>
+<%
+  const form = typeof formData !== 'undefined' && formData ? formData : {};
+  const errors = typeof validationErrors !== 'undefined' && validationErrors ? validationErrors : {};
+  const selectedIncidentType = form.incidentType || report.type || '';
+  const selectedResponseStatus = form.responseStatus || report.status || 'Pending Review';
+  const locationVerified = form.locationVerified === 'true';
+  const fieldError = (name) => errors[name] || '';
+  const fieldClass = (name) => fieldError(name) ? ' is-invalid' : '';
+%>
 
 <section class="panel">
   <div class="panel-header stacked-mobile">
@@ -17,9 +26,26 @@
 
   <%- include('partials/report-completion', { completion: report.completion }) %>
 
-  <form class="report-form" id="reportForm" data-completion-form action="/incidents/<%= report.id %>" method="POST">
-    <input type="hidden" name="transcript" value="<%= report.transcriptInput %>">
-    <input type="hidden" name="reportingOfficerId" value="<%= report.reportingOfficerId || '' %>">
+  <form class="report-form" id="reportForm" data-completion-form data-incident-form action="/incidents/<%= report.id %>" method="POST" novalidate>
+    <input type="hidden" id="transcriptInput" name="transcript" value="<%= form.transcript || report.transcriptInput %>">
+    <input type="hidden" id="reportingOfficerId" name="reportingOfficerId" value="<%= form.reportingOfficerId || report.reportingOfficerId || '' %>">
+    <input type="hidden" id="incidentLatitude" name="latitude" value="<%= form.latitude || '' %>">
+    <input type="hidden" id="incidentLongitude" name="longitude" value="<%= form.longitude || '' %>">
+    <input type="hidden" id="locationVerified" name="locationVerified" value="<%= locationVerified ? 'true' : '' %>">
+    <input type="hidden" id="locationVerificationSource" name="locationVerificationSource" value="<%= form.locationVerificationSource || '' %>">
+    <input type="hidden" id="verifiedLocationLabel" name="verifiedLocationLabel" value="<%= form.verifiedLocationLabel || '' %>">
+
+    <% if (Object.keys(errors).length > 0) { %>
+      <div class="notice-strip notice-warning" data-form-error-summary>
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <span>Please correct the highlighted fields before saving this incident report.</span>
+      </div>
+    <% } else { %>
+      <div class="notice-strip notice-hidden" data-form-error-summary>
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <span></span>
+      </div>
+    <% } %>
 
     <div class="readonly-field">
       <span>Reporting Officer</span>
@@ -30,59 +56,95 @@
     </div>
 
     <div class="form-row">
+      <div class="location-field-group">
+        <label>
+          <span>Incident Location <b class="required-marker">*</b></span>
+          <input class="form-control<%= fieldClass('incidentLocation') %>" id="incidentLocation" type="text" name="incidentLocation" value="<%= form.incidentLocation || report.location %>" required aria-describedby="incidentLocationError locationVerificationMessage">
+        </label>
+        <small class="field-error" id="incidentLocationError" <%= fieldError('incidentLocation') ? '' : 'hidden' %>><%= fieldError('incidentLocation') %></small>
+        <div class="location-verification" data-location-verification data-initial-verified="<%= locationVerified ? 'true' : 'false' %>">
+          <div class="location-action-row">
+            <button class="secondary-button" id="verifyLocationButton" type="button">
+              <i class="bi bi-crosshair"></i>
+              Verify Location
+            </button>
+            <span class="location-status location-status-pending" id="locationVerificationStatus">
+              <i class="bi bi-dash-circle-fill"></i>
+              Not verified
+            </span>
+          </div>
+          <div class="location-feedback" id="locationVerificationMessage" aria-live="polite">
+            Verify the address before saving this report.
+          </div>
+          <div class="location-preview-map" id="locationPreviewMap" <%= locationVerified ? '' : 'hidden' %>></div>
+          <p class="helper-text location-coordinate-readout" id="locationCoordinateReadout" <%= locationVerified ? '' : 'hidden' %>>
+            Coordinates: <span><%= form.latitude || '' %>, <%= form.longitude || '' %></span>
+          </p>
+        </div>
+      </div>
       <label>
-        <span>Incident Location</span>
-        <input class="form-control" type="text" name="incidentLocation" value="<%= report.location %>" required>
-      </label>
-      <label>
-        <span>Incident Type</span>
-        <select class="form-select" name="incidentType" required>
+        <span>Incident Type <b class="required-marker">*</b></span>
+        <select class="form-select<%= fieldClass('incidentType') %>" id="incidentType" name="incidentType" required aria-describedby="incidentTypeError">
           <% incidentTypes.forEach((type) => { %>
-            <option <%= report.type === type ? 'selected' : '' %>><%= type %></option>
+            <option <%= selectedIncidentType === type ? 'selected' : '' %>><%= type %></option>
           <% }) %>
         </select>
+        <small class="field-error" id="incidentTypeError" <%= fieldError('incidentType') ? '' : 'hidden' %>><%= fieldError('incidentType') %></small>
       </label>
     </div>
 
     <div class="form-row">
       <label>
-        <span>Date and Time</span>
-        <input class="form-control" type="datetime-local" name="incidentDateTime" value="<%= report.dateInput %>"
-          <% if (!canManageIncidentDateTime) { %>readonly data-server-controlled="true"<% } %> required>
+        <span>Date and Time <b class="required-marker">*</b></span>
+        <input class="form-control<%= fieldClass('incidentDateTime') %>" id="incidentDateTime" type="datetime-local" name="incidentDateTime" value="<%= form.incidentDateTime || report.dateInput %>"
+          <% if (!canManageIncidentDateTime) { %>readonly data-server-controlled="true"<% } %> required aria-describedby="incidentDateTimeError">
+        <small class="field-error" id="incidentDateTimeError" <%= fieldError('incidentDateTime') ? '' : 'hidden' %>><%= fieldError('incidentDateTime') %></small>
       </label>
       <label>
-        <span>Response Status</span>
-        <select class="form-select" name="responseStatus" required>
+        <span>Response Status <b class="required-marker">*</b></span>
+        <select class="form-select<%= fieldClass('responseStatus') %>" id="responseStatus" name="responseStatus" required aria-describedby="responseStatusError">
           <% statuses.forEach((status) => { %>
-            <option <%= report.status === status ? 'selected' : '' %>><%= status %></option>
+            <option <%= selectedResponseStatus === status ? 'selected' : '' %>><%= status %></option>
           <% }) %>
         </select>
+        <small class="field-error" id="responseStatusError" <%= fieldError('responseStatus') ? '' : 'hidden' %>><%= fieldError('responseStatus') %></small>
       </label>
     </div>
 
     <label>
-      <span>Incident Summary</span>
-      <textarea class="form-control" name="incidentSummary" rows="4" required><%= report.summary %></textarea>
+      <span>Incident Summary <b class="required-marker">*</b></span>
+      <textarea class="form-control<%= fieldClass('incidentSummary') %>" id="incidentSummary" name="incidentSummary" rows="4" required aria-describedby="incidentSummaryError"><%= form.incidentSummary || report.summary %></textarea>
+      <small class="field-error" id="incidentSummaryError" <%= fieldError('incidentSummary') ? '' : 'hidden' %>><%= fieldError('incidentSummary') %></small>
     </label>
 
     <label>
       <span>Hazards</span>
-      <textarea class="form-control" name="hazards" rows="3"><%= report.hazards %></textarea>
+      <textarea class="form-control" id="hazards" name="hazards" rows="3"><%= form.hazards !== undefined ? form.hazards : report.hazards %></textarea>
+      <small class="field-error" id="hazardsError" <%= fieldError('hazards') ? '' : 'hidden' %>><%= fieldError('hazards') %></small>
+      <span class="conditional-confirmation">
+        <input type="checkbox" id="noHazardsReported" name="noHazardsReported" value="true">
+        <span>No hazards reported</span>
+      </span>
     </label>
 
     <label>
       <span>Injured or Trapped Persons</span>
-      <textarea class="form-control" name="injuredPersons" rows="3"><%= report.injured %></textarea>
+      <textarea class="form-control" id="injuredPersons" name="injuredPersons" rows="3"><%= form.injuredPersons !== undefined ? form.injuredPersons : report.injured %></textarea>
+      <small class="field-error" id="injuredPersonsError" <%= fieldError('injuredPersons') ? '' : 'hidden' %>><%= fieldError('injuredPersons') %></small>
+      <span class="conditional-confirmation">
+        <input type="checkbox" id="noInjuredPersonsReported" name="noInjuredPersonsReported" value="true">
+        <span>No injured or trapped persons reported</span>
+      </span>
     </label>
 
     <label>
       <span>Missing Information</span>
-      <textarea class="form-control" name="missingInfo" rows="3"><%= report.missingInfo %></textarea>
+      <textarea class="form-control" id="missingInfo" name="missingInfo" rows="3"><%= form.missingInfo || report.missingInfo %></textarea>
     </label>
 
     <label>
       <span>Officer Notes</span>
-      <textarea class="form-control" name="officerNotes" rows="3"><%= report.officerNotes %></textarea>
+      <textarea class="form-control" id="officerNotes" name="officerNotes" rows="3"><%= form.officerNotes || report.officerNotes %></textarea>
     </label>
 
     <div class="form-actions">

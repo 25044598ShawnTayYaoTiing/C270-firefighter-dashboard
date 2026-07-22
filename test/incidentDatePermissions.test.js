@@ -16,6 +16,11 @@ function requestFor(role, body = {}) {
       incidentDateTime: submittedBackdate,
       responseStatus: 'Pending Review',
       incidentSummary: 'Permission test',
+      hazards: 'No hazards reported',
+      injuredPersons: 'No injured or trapped persons reported',
+      latitude: '1.3404',
+      longitude: '103.7090',
+      locationVerified: 'true',
       ...body
     },
     currentOfficer: {
@@ -36,6 +41,23 @@ function redirectResponse() {
     redirectUrl: '',
     redirect(value) {
       this.redirectUrl = value;
+      return this;
+    }
+  };
+}
+
+function validationResponse() {
+  return {
+    statusCode: 200,
+    renderedView: '',
+    renderedData: null,
+    status(value) {
+      this.statusCode = value;
+      return this;
+    },
+    render(view, data) {
+      this.renderedView = data.view;
+      this.renderedData = data;
       return this;
     }
   };
@@ -155,5 +177,85 @@ test('AI draft responses cannot supply the incident timestamp', { concurrency: f
     assert.equal(responseBody.report.incident_datetime, '');
   } finally {
     geminiService.generateReport = originalGenerate;
+  }
+});
+
+test('create rejects whitespace-only mandatory fields before saving', { concurrency: false }, async () => {
+  const originalCreate = incidentModel.createIncident;
+  let createCalled = false;
+  incidentModel.createIncident = async () => {
+    createCalled = true;
+  };
+  const res = validationResponse();
+
+  try {
+    await incidentController.createIncident(requestFor(ROLES.NORMAL, {
+      incidentType: '   '
+    }), res, assert.fail);
+
+    assert.equal(createCalled, false);
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.renderedView, 'create-report');
+    assert.equal(res.renderedData.validationErrors.incidentType, 'Incident type is required.');
+  } finally {
+    incidentModel.createIncident = originalCreate;
+  }
+});
+
+test('create rejects unverified or invalid coordinates before saving', { concurrency: false }, async () => {
+  const originalCreate = incidentModel.createIncident;
+  let createCalled = false;
+  incidentModel.createIncident = async () => {
+    createCalled = true;
+  };
+  const res = validationResponse();
+
+  try {
+    await incidentController.createIncident(requestFor(ROLES.NORMAL, {
+      latitude: '95',
+      longitude: '103.7090',
+      locationVerified: 'true'
+    }), res, assert.fail);
+
+    assert.equal(createCalled, false);
+    assert.equal(res.statusCode, 400);
+    assert.match(res.renderedData.validationErrors.incidentLocation, /Latitude must be between -90 and 90/);
+  } finally {
+    incidentModel.createIncident = originalCreate;
+  }
+});
+
+test('edit rejects invalid admin incident dates before saving', { concurrency: false }, async () => {
+  const originalGet = incidentModel.getIncidentByIncidentId;
+  const originalUpdate = incidentModel.updateIncident;
+  let updateCalled = false;
+  incidentModel.getIncidentByIncidentId = async () => ({
+    incident_id: 'INC-TEST',
+    incident_type: 'Residential Fire',
+    location: 'Jurong West Street 42',
+    incident_datetime: new Date('2026-06-25T09:20:00'),
+    incident_summary: 'Stored summary',
+    response_status: 'Pending Review',
+    reporting_officer_id: 7,
+    latitude: 1.3404,
+    longitude: 103.709
+  });
+  incidentModel.updateIncident = async () => {
+    updateCalled = true;
+  };
+  const res = validationResponse();
+
+  try {
+    await incidentController.updateIncident(requestFor(ROLES.ADMIN, {
+      incidentDateTime: 'not-a-date'
+    }), res, assert.fail);
+
+    assert.equal(updateCalled, false);
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.renderedView, 'edit-report');
+    assert.equal(res.renderedData.validationErrors.incidentDateTime, 'Enter a valid incident date and time.');
+  } finally {
+    incidentModel.getIncidentByIncidentId = originalGet;
+    incidentModel.updateIncident = originalUpdate;
   }
 });

@@ -430,6 +430,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Done BY SHAWN ID 25044598
   // AI Features: sends raw transcript text to the AI cleanup endpoint and displays reviewed output.
   async function cleanTranscript() {
+    if (isCleaning) return;
+
     const transcript = getTranscriptForCleaning();
 
     if (!transcript) {
@@ -439,17 +441,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     isCleaning = true;
     updateTranscriptDisplays();
+    setButtonBusy(cleanButton, true, 'Cleaning...');
     showCleanupNotice('checking', 'Cleaning transcript for review.');
 
     try {
-      const response = await fetch('/api/ai/clean-transcript', {
+      const { data } = await fetchAiJson('/api/ai/clean-transcript', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ transcript })
       });
-      const data = await response.json();
 
       cleanedTranscriptInput.value = data.cleanedTranscript || transcript;
 
@@ -460,10 +462,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (error) {
       cleanedTranscriptInput.value = transcript;
-      showCleanupNotice('warning', 'Cleanup request failed. You can edit the transcript manually.');
+      showCleanupNotice('warning', error.message || 'Cleanup request failed. You can edit the transcript manually.');
     } finally {
       isCleaning = false;
       updateTranscriptDisplays();
+      setButtonBusy(cleanButton, false, 'Clean Transcript');
     }
   }
 
@@ -585,6 +588,49 @@ document.addEventListener('DOMContentLoaded', () => {
   function hideCleanupNotice() {
     cleanupNotice.className = 'notice-strip notice-hidden';
     cleanupNotice.querySelector('span').textContent = '';
+  }
+
+  async function fetchAiJson(url, options) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 110000);
+
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      const body = await response.text();
+      let data;
+
+      try {
+        data = body ? JSON.parse(body) : null;
+      } catch (error) {
+        throw new Error('The AI service returned an invalid response. Please try again.');
+      }
+
+      if (!data || typeof data !== 'object') {
+        throw new Error('The AI service returned an empty response. Please try again.');
+      }
+
+      return { response, data };
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error('The AI request timed out. Please try again in a moment.');
+      }
+
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
+  function setButtonBusy(button, isBusy, busyLabel) {
+    if (!button) return;
+
+    const labelNode = Array.from(button.childNodes)
+      .find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+
+    if (!labelNode) return;
+    if (!button.dataset.idleLabel) button.dataset.idleLabel = labelNode.textContent.trim();
+    labelNode.textContent = `\n      ${isBusy ? busyLabel : button.dataset.idleLabel}\n    `;
+    button.setAttribute('aria-busy', String(isBusy));
   }
 
 });

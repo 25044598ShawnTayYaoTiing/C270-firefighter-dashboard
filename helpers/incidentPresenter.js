@@ -8,15 +8,14 @@ const {
 } = require('./locationResolver');
 
 const COMPLETION_FIELDS = [
-  { key: 'transcript', label: 'Transcript', weight: 10 },
-  { key: 'reportingOfficer', label: 'Reporting Officer', weight: 10 },
-  { key: 'location', label: 'Incident Location', weight: 15 },
-  { key: 'type', label: 'Incident Type', weight: 15 },
-  { key: 'dateTime', label: 'Date and Time', weight: 10 },
-  { key: 'summary', label: 'Incident Summary', weight: 15 },
-  { key: 'hazards', label: 'Hazards', weight: 10 },
-  { key: 'injured', label: 'Injured or Trapped Persons', weight: 10 },
-  { key: 'status', label: 'Response Status', weight: 5 }
+  { key: 'location', label: 'Incident Location' },
+  { key: 'locationVerified', label: 'Location Verification' },
+  { key: 'type', label: 'Incident Type' },
+  { key: 'dateTime', label: 'Date and Time' },
+  { key: 'status', label: 'Response Status' },
+  { key: 'summary', label: 'Incident Summary' },
+  { key: 'hazards', label: 'Hazards' },
+  { key: 'injured', label: 'Injured or Trapped Persons' }
 ];
 
 const NON_MEANINGFUL_TEXT = new Set([
@@ -39,6 +38,14 @@ function normalizeCompletionText(value) {
 }
 
 function hasMeaningfulValue(fieldKey, value) {
+  if (fieldKey === 'dateTime') {
+    if (value instanceof Date) return !Number.isNaN(value.getTime());
+
+    const text = String(value || '').trim();
+    return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(text)
+      && !Number.isNaN(new Date(text).getTime());
+  }
+
   if (value instanceof Date) {
     return !Number.isNaN(value.getTime());
   }
@@ -46,17 +53,15 @@ function hasMeaningfulValue(fieldKey, value) {
   const normalized = normalizeCompletionText(value);
 
   if (!normalized) return false;
-  if (fieldKey === 'status') return normalized !== 'draft';
+  if (fieldKey === 'locationVerified') return normalized === 'true';
 
   return !NON_MEANINGFUL_TEXT.has(normalized);
 }
 
 function getCompletionMessage(percent) {
-  if (percent === 0) return 'No report drafted yet.';
-  if (percent < 50) return 'Critical details still missing.';
-  if (percent < 80) return 'Review required before submission.';
-  if (percent < 100) return 'Almost complete. Please verify remaining details.';
-  return 'Report appears complete.';
+  if (percent === 100) return 'Report is complete and ready for final review.';
+  if (percent < 50) return 'Critical incident details are still missing.';
+  return 'Almost complete. Review the remaining required information.';
 }
 
 function formatDateTime(value) {
@@ -93,11 +98,10 @@ function calculateCompletion(values = {}) {
   const missingFields = COMPLETION_FIELDS
     .filter((field) => !hasMeaningfulValue(field.key, values[field.key]))
     .map((field) => field.label);
-  const percent = COMPLETION_FIELDS.reduce((total, field) => {
-    return hasMeaningfulValue(field.key, values[field.key])
-      ? total + field.weight
-      : total;
-  }, 0);
+  const completedCount = COMPLETION_FIELDS.filter((field) => {
+    return hasMeaningfulValue(field.key, values[field.key]);
+  }).length;
+  const percent = Math.round((completedCount / COMPLETION_FIELDS.length) * 100);
 
   return {
     percent,
@@ -114,9 +118,11 @@ function mapIncident(row) {
   const reportingOfficerName = row.officer_name || '';
   const reportingOfficerRole = row.officer_role || '';
   const completion = calculateCompletion({
-    transcript: row.transcript,
-    reportingOfficer: reportingOfficerId || reportingOfficerName,
     location: row.location,
+    locationVerified: hasValidCoordinates({
+      latitude: row.latitude,
+      longitude: row.longitude
+    }),
     type: row.incident_type,
     dateTime: row.incident_datetime,
     summary: row.incident_summary,
@@ -171,6 +177,8 @@ function getTranscriptText(report) {
 }
 
 function getMapIncidentSnapshot(report) {
+  const dateInput = report.dateInput || '';
+
   return {
     id: report.id,
     database_id: report.database_id || report.databaseId || null,
@@ -178,6 +186,8 @@ function getMapIncidentSnapshot(report) {
     incident_type: report.incident_type || report.type,
     location: report.location || '',
     response_status: report.response_status || report.status,
+    incident_datetime: dateInput || null,
+    incident_date: dateInput ? dateInput.slice(0, 10) : '',
     incident_summary: report.incident_summary || report.summary || '',
     transcript: getTranscriptText(report),
     latitude: toNullableNumber(report.latitude),

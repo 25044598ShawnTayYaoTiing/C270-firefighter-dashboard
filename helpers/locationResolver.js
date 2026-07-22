@@ -1,8 +1,8 @@
 const SINGAPORE_BOUNDS = {
-  minLat: 1.15,
+  minLat: 1.10,
   maxLat: 1.50,
   minLng: 103.55,
-  maxLng: 104.15
+  maxLng: 104.45
 };
 
 // Done by Fatin ID: 25050557
@@ -54,6 +54,54 @@ function isSingaporeCoordinate(latitude, longitude) {
     && longitude <= SINGAPORE_BOUNDS.maxLng;
 }
 
+function isValidCoordinateRange(latitude, longitude) {
+  return Number.isFinite(latitude)
+    && Number.isFinite(longitude)
+    && latitude >= -90
+    && latitude <= 90
+    && longitude >= -180
+    && longitude <= 180;
+}
+
+function validateCoordinatePair(latitudeValue, longitudeValue, options = {}) {
+  const latitude = toNullableNumber(latitudeValue);
+  const longitude = toNullableNumber(longitudeValue);
+
+  if (latitude === null || longitude === null) {
+    return {
+      valid: false,
+      latitude,
+      longitude,
+      message: 'Verified latitude and longitude are required.'
+    };
+  }
+
+  if (!isValidCoordinateRange(latitude, longitude)) {
+    return {
+      valid: false,
+      latitude,
+      longitude,
+      message: 'Latitude must be between -90 and 90, and longitude must be between -180 and 180.'
+    };
+  }
+
+  if (options.requireSingapore !== false && !isSingaporeCoordinate(latitude, longitude)) {
+    return {
+      valid: false,
+      latitude,
+      longitude,
+      message: 'The verified coordinates must be within the Singapore operational map boundary.'
+    };
+  }
+
+  return {
+    valid: true,
+    latitude,
+    longitude,
+    message: ''
+  };
+}
+
 function normalizeText(value) {
   return String(value || '')
     .toLowerCase()
@@ -89,6 +137,7 @@ function getDatabaseCoordinates(latitudeValue, longitudeValue) {
   const longitude = toNullableNumber(longitudeValue);
 
   if (latitude === null || longitude === null) return null;
+  if (!isValidCoordinateRange(latitude, longitude)) return null;
 
   return {
     lat: latitude,
@@ -128,11 +177,11 @@ function isCompletedLikeStatus(status) {
 }
 
 function hasValidCoordinates(incident) {
-  const latitude = Number(incident && incident.latitude);
-  const longitude = Number(incident && incident.longitude);
-
-  return Number.isFinite(latitude)
-    && Number.isFinite(longitude);
+  return validateCoordinatePair(
+    incident && incident.latitude,
+    incident && incident.longitude,
+    { requireSingapore: false }
+  ).valid;
 }
 
 function shouldShowOnLiveMap(incident) {
@@ -182,7 +231,9 @@ module.exports = {
   hasValidCoordinates,
   isCompletedLikeStatus,
   isSingaporeCoordinate,
+  isValidCoordinateRange,
   resolveIncidentCoordinates,
   shouldShowOnLiveMap,
-  toNullableNumber
+  toNullableNumber,
+  validateCoordinatePair
 };

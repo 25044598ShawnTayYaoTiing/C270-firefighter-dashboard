@@ -8,6 +8,37 @@ function getTranscript(req) {
     : '';
 }
 
+function getAiErrorMessage(error, operation) {
+  if (error && error.message === 'Gemini AI is not configured.') {
+    return 'Gemini AI is not configured. Set GEMINI_API_KEY and GEMINI_MODEL on the server.';
+  }
+
+  if (error && error.message === 'Gemini model is not configured.') {
+    return 'Gemini AI is not configured. Set GEMINI_MODEL on the server.';
+  }
+
+  if (error && error.retryable) {
+    return 'The AI service is temporarily busy. Please try again in a moment.';
+  }
+
+  if (operation === 'cleanup') {
+    return 'Gemini returned an unexpected cleanup response. Please try again or edit the transcript manually.';
+  }
+
+  return 'Gemini returned an unexpected report response. Please try again or complete the report manually.';
+}
+
+function getAiErrorStatus(error) {
+  if (error && error.message && error.message.includes('not configured')) return 503;
+  if (error && error.retryable) return 503;
+  return 502;
+}
+
+function sendError(res, status, payload) {
+  const response = typeof res.status === 'function' ? res.status(status) : res;
+  return response.json(payload);
+}
+
 // Done BY SHAWN ID 25044598
 // AI Features: conservative fallback report keeps officer review usable when Gemini AI is unavailable.
 function fallbackReport(transcript) {
@@ -47,9 +78,9 @@ exports.cleanTranscript = async (req, res) => {
       cleanedTranscript
     });
   } catch (error) {
-    return res.json({
+    return sendError(res, getAiErrorStatus(error), {
       success: false,
-      error: 'Transcript cleanup service is unavailable. Review the transcript manually.',
+      error: getAiErrorMessage(error, 'cleanup'),
       cleanedTranscript: transcript
     });
   }
@@ -79,10 +110,10 @@ exports.generateReport = async (req, res) => {
       }
     });
   } catch (error) {
-    return res.json({
+    return sendError(res, getAiErrorStatus(error), {
       success: false,
       fallback: true,
-      error: 'Report drafting service is unavailable. A manual draft was prepared for review.',
+      error: getAiErrorMessage(error, 'report'),
       report: fallbackReport(transcript)
     });
   }
@@ -96,6 +127,7 @@ exports.getAiStatus = async (req, res) => {
   res.json({
     success: health.available,
     available: health.available,
-    ai: geminiService.getConfig()
+    ai: geminiService.getConfig(),
+    lastRequest: health.lastRequest
   });
 };

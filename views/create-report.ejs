@@ -1,3 +1,14 @@
+<%
+  const form = typeof formData !== 'undefined' && formData ? formData : {};
+  const errors = typeof validationErrors !== 'undefined' && validationErrors ? validationErrors : {};
+  const selectedIncidentType = form.incidentType || '';
+  const useCustomIncidentType = selectedIncidentType && !incidentTypes.includes(selectedIncidentType);
+  const selectedResponseStatus = form.responseStatus || 'Pending Review';
+  const fieldError = (name) => errors[name] || '';
+  const fieldClass = (name) => fieldError(name) ? ' is-invalid' : '';
+  const locationVerified = form.locationVerified === 'true';
+%>
+
 <section class="form-grid">
   <article class="panel transcript-panel">
     <div class="panel-header">
@@ -11,7 +22,7 @@
     <%# AI Features: transcript input supplies text for Gemini-based incident draft generation. %>
     <div class="mb-3">
       <label class="form-label" for="transcriptInput">Transcript</label>
-      <textarea class="form-control" id="transcriptInput" name="transcript" form="reportForm" rows="16" placeholder="Paste an incident call transcript here..."></textarea>
+      <textarea class="form-control" id="transcriptInput" name="transcript" form="reportForm" rows="16" placeholder="Paste an incident call transcript here..."><%= form.transcript || '' %></textarea>
     </div>
 
     <%# Done BY SHAWN ID 25044598 %>
@@ -51,8 +62,30 @@
 
     <%# Done BY SHAWN ID 25044598 %>
     <%# AI Features: officer review form receives and edits AI-generated report draft fields before saving. %>
-    <form class="report-form" id="reportForm" data-completion-form action="/incidents" method="POST">
+    <form class="report-form" id="reportForm" data-completion-form data-incident-form action="/incidents" method="POST" novalidate>
       <input type="hidden" id="reportingOfficerId" name="reportingOfficerId" value="<%= currentOfficer ? currentOfficer.officer_id : '' %>">
+      <input type="hidden" id="incidentLatitude" name="latitude" value="<%= form.latitude || '' %>">
+      <input type="hidden" id="incidentLongitude" name="longitude" value="<%= form.longitude || '' %>">
+      <input type="hidden" id="locationVerified" name="locationVerified" value="<%= locationVerified ? 'true' : '' %>">
+      <input type="hidden" id="locationVerificationSource" name="locationVerificationSource" value="<%= form.locationVerificationSource || '' %>">
+      <input type="hidden" id="verifiedLocationLabel" name="verifiedLocationLabel" value="<%= form.verifiedLocationLabel || '' %>">
+
+      <% if (Object.keys(errors).length > 0) { %>
+        <div class="notice-strip notice-warning" data-form-error-summary>
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <span>Please correct the highlighted fields before saving this incident report.</span>
+        </div>
+      <% } else { %>
+        <div class="notice-strip notice-hidden" data-form-error-summary>
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <span></span>
+        </div>
+      <% } %>
+
+      <div class="notice-strip notice-hidden" id="aiReviewNotice">
+        <i class="bi bi-pencil-square"></i>
+        <span>AI-filled fields require officer review. Verify the location before saving.</span>
+      </div>
 
       <div class="readonly-field">
         <span>Reporting Officer</span>
@@ -63,73 +96,109 @@
       </div>
 
       <div class="form-row">
-        <label>
-          <span>Incident Location</span>
-          <input class="form-control" id="incidentLocation" name="incidentLocation" type="text" required>
-        </label>
+        <div class="location-field-group">
+          <label>
+            <span>Incident Location <b class="required-marker">*</b></span>
+            <input class="form-control<%= fieldClass('incidentLocation') %>" id="incidentLocation" name="incidentLocation" type="text" value="<%= form.incidentLocation || '' %>" required aria-describedby="incidentLocationError locationVerificationMessage">
+          </label>
+          <small class="field-error" id="incidentLocationError" <%= fieldError('incidentLocation') ? '' : 'hidden' %>><%= fieldError('incidentLocation') %></small>
+          <div class="location-verification" data-location-verification data-initial-verified="<%= locationVerified ? 'true' : 'false' %>">
+            <div class="location-action-row">
+              <button class="secondary-button" id="verifyLocationButton" type="button">
+                <i class="bi bi-crosshair"></i>
+                Verify Location
+              </button>
+              <span class="location-status location-status-pending" id="locationVerificationStatus">
+                <i class="bi bi-dash-circle-fill"></i>
+                Not verified
+              </span>
+            </div>
+            <div class="location-feedback" id="locationVerificationMessage" aria-live="polite">
+              Verify the address before saving this report.
+            </div>
+            <div class="location-preview-map" id="locationPreviewMap" <%= locationVerified ? '' : 'hidden' %>></div>
+            <p class="helper-text location-coordinate-readout" id="locationCoordinateReadout" <%= locationVerified ? '' : 'hidden' %>>
+              Coordinates: <span><%= form.latitude || '' %>, <%= form.longitude || '' %></span>
+            </p>
+          </div>
+        </div>
         <div>
           <label>
-            <span>Incident Type</span>
-            <select class="form-select" id="incidentType" name="incidentType" required>
+            <span>Incident Type <b class="required-marker">*</b></span>
+            <select class="form-select<%= fieldClass('incidentType') %>" id="incidentType" name="incidentType" required aria-describedby="incidentTypeError">
               <option value="">Select type</option>
               <% incidentTypes.forEach((type) => { %>
-                <option><%= type %></option>
+                <option <%= selectedIncidentType === type ? 'selected' : '' %>><%= type %></option>
               <% }) %>
-              <option value="__other_special_incident__">Other / Special Incident</option>
+              <option value="__other_special_incident__" <%= useCustomIncidentType ? 'selected' : '' %>>Other / Special Incident</option>
             </select>
           </label>
-          <label id="customIncidentTypeField" hidden>
-            <span>Custom Incident Type</span>
-            <input class="form-control" id="customIncidentType" name="customIncidentType" type="text">
+          <small class="field-error" id="incidentTypeError" <%= fieldError('incidentType') ? '' : 'hidden' %>><%= fieldError('incidentType') %></small>
+          <label id="customIncidentTypeField" <%= useCustomIncidentType ? '' : 'hidden' %>>
+            <span>Custom Incident Type <b class="required-marker">*</b></span>
+            <input class="form-control" id="customIncidentType" name="customIncidentType" type="text" value="<%= useCustomIncidentType ? selectedIncidentType : form.customIncidentType || '' %>">
           </label>
         </div>
       </div>
 
       <div class="form-row">
         <label>
-          <span>Date and Time</span>
-          <input class="form-control" id="incidentDateTime" name="incidentDateTime" type="datetime-local"
-            value="<%= serverDateTime.slice(0, 16) %>"
-            <% if (!canManageIncidentDateTime) { %>readonly data-server-controlled="true"<% } %> required>
+          <span>Date and Time <b class="required-marker">*</b></span>
+          <input class="form-control<%= fieldClass('incidentDateTime') %>" id="incidentDateTime" name="incidentDateTime" type="datetime-local"
+            value="<%= (form.incidentDateTime || serverDateTime).slice(0, 16) %>"
+            <% if (!canManageIncidentDateTime) { %>readonly data-server-controlled="true"<% } %> required aria-describedby="incidentDateTimeError">
           <% if (!canManageIncidentDateTime) { %>
             <small class="helper-text">Incident date and time is automatically recorded by the server for standard officers and HR.</small>
           <% } else { %>
             <small class="helper-text">Higher Rank/Admin may adjust this operational timestamp when required.</small>
           <% } %>
+          <small class="field-error" id="incidentDateTimeError" <%= fieldError('incidentDateTime') ? '' : 'hidden' %>><%= fieldError('incidentDateTime') %></small>
         </label>
         <label>
-          <span>Response Status</span>
-          <select class="form-select" id="responseStatus" name="responseStatus" required>
+          <span>Response Status <b class="required-marker">*</b></span>
+          <select class="form-select<%= fieldClass('responseStatus') %>" id="responseStatus" name="responseStatus" required aria-describedby="responseStatusError">
             <% statuses.forEach((status) => { %>
-              <option><%= status %></option>
+              <option <%= selectedResponseStatus === status ? 'selected' : '' %>><%= status %></option>
             <% }) %>
           </select>
+          <small class="field-error" id="responseStatusError" <%= fieldError('responseStatus') ? '' : 'hidden' %>><%= fieldError('responseStatus') %></small>
         </label>
       </div>
 
       <label>
-        <span>Incident Summary</span>
-        <textarea class="form-control" id="incidentSummary" name="incidentSummary" rows="4" required></textarea>
+        <span>Incident Summary <b class="required-marker">*</b></span>
+        <textarea class="form-control<%= fieldClass('incidentSummary') %>" id="incidentSummary" name="incidentSummary" rows="4" required aria-describedby="incidentSummaryError"><%= form.incidentSummary || '' %></textarea>
+        <small class="field-error" id="incidentSummaryError" <%= fieldError('incidentSummary') ? '' : 'hidden' %>><%= fieldError('incidentSummary') %></small>
       </label>
 
       <label>
         <span>Hazards</span>
-        <textarea class="form-control" id="hazards" name="hazards" rows="3"></textarea>
+        <textarea class="form-control" id="hazards" name="hazards" rows="3"><%= form.hazards || '' %></textarea>
+        <small class="field-error" id="hazardsError" <%= fieldError('hazards') ? '' : 'hidden' %>><%= fieldError('hazards') %></small>
+        <span class="conditional-confirmation">
+          <input type="checkbox" id="noHazardsReported" name="noHazardsReported" value="true">
+          <span>No hazards reported</span>
+        </span>
       </label>
 
       <label>
         <span>Injured or Trapped Persons</span>
-        <textarea class="form-control" id="injuredPersons" name="injuredPersons" rows="3"></textarea>
+        <textarea class="form-control" id="injuredPersons" name="injuredPersons" rows="3"><%= form.injuredPersons || '' %></textarea>
+        <small class="field-error" id="injuredPersonsError" <%= fieldError('injuredPersons') ? '' : 'hidden' %>><%= fieldError('injuredPersons') %></small>
+        <span class="conditional-confirmation">
+          <input type="checkbox" id="noInjuredPersonsReported" name="noInjuredPersonsReported" value="true">
+          <span>No injured or trapped persons reported</span>
+        </span>
       </label>
 
       <label>
         <span>Missing Information</span>
-        <textarea class="form-control" id="missingInfo" name="missingInfo" rows="3"></textarea>
+        <textarea class="form-control" id="missingInfo" name="missingInfo" rows="3"><%= form.missingInfo || '' %></textarea>
       </label>
 
       <label>
         <span>Officer Notes</span>
-        <textarea class="form-control" id="officerNotes" name="officerNotes" rows="3"></textarea>
+        <textarea class="form-control" id="officerNotes" name="officerNotes" rows="3"><%= form.officerNotes || '' %></textarea>
       </label>
 
       <div class="form-actions">

@@ -1,65 +1,46 @@
 services:
-  ollama:
-    image: ollama/ollama:latest
-    profiles:
-      - previous-local-ai
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 10s
-    restart: unless-stopped
-
-  ollama-model:
-    image: ollama/ollama:latest
-    profiles:
-      - previous-local-ai
-    environment:
-      OLLAMA_HOST: http://ollama:11434
-    command: ["pull", "qwen2.5:1.5b"]
-    depends_on:
-      ollama:
-        condition: service_healthy
-
-  realtimestt:
+  frontend:
     build:
-      context: ../RealtimeSTT
-      dockerfile: Dockerfile.fastapi
+      context: .
+      dockerfile: frontend/Dockerfile
+    environment:
+      # The browser reaches the backend through this same-origin UI gateway.
+      BACKEND_URL: ${BACKEND_URL:-http://backend:3000}
     ports:
-      - "8010:8010"
-    volumes:
-      - realtimestt_cache:/root/.cache
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
     healthcheck:
       test:
         - CMD
-        - python
-        - -c
-        - import urllib.request; urllib.request.urlopen('http://localhost:8010/health', timeout=3)
+        - wget
+        - --spider
+        - --quiet
+        - http://127.0.0.1/login
       interval: 15s
       timeout: 5s
-      retries: 20
-      start_period: 5m
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
 
-  app:
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
     env_file:
       - .env
     environment:
-      REALTIME_STT_HEALTH_URL: http://realtimestt:8010/health
-      REALTIME_STT_WS_URL: ""
-    ports:
-      - "3000:3000"
-    depends_on:
-      realtimestt:
-        condition: service_started
+      PORT: 3000
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET must be set in .env}
+      # RealtimeSTT remains an optional external dependency. On Docker Desktop,
+      # host.docker.internal reaches the existing host-side service.
+      REALTIME_STT_HEALTH_URL: ${REALTIME_STT_HEALTH_URL:-http://host.docker.internal:8010/health}
+      REALTIME_STT_WS_URL: ${REALTIME_STT_WS_URL:-}
+    expose:
+      - "3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test:
         - CMD
@@ -71,7 +52,3 @@ services:
       retries: 10
       start_period: 20s
     restart: unless-stopped
-
-volumes:
-  ollama_data:
-  realtimestt_cache:

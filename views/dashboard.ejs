@@ -90,6 +90,59 @@
 				<a class="link-button" href="/incidents"><i class="bi bi-map-fill"></i> View reports</a>
 			</div>
 
+			<div class="map-intelligence-toolbar" id="incidentMapControls" hidden>
+				<div class="map-view-toggle" role="group" aria-label="Incident map view">
+					<button class="map-view-button active" type="button" data-map-view="markers" aria-pressed="true">
+						<i class="bi bi-geo-alt-fill"></i>
+						<span>Markers</span>
+					</button>
+					<button class="map-view-button" type="button" data-map-view="heatmap" aria-pressed="false">
+						<i class="bi bi-fire"></i>
+						<span>Heatmap</span>
+					</button>
+				</div>
+
+				<label>
+					<span>Incident Type</span>
+					<select class="form-select" id="incidentTypeFilter"></select>
+				</label>
+
+				<label>
+					<span>Severity / Status</span>
+					<select class="form-select" id="incidentSeverityFilter"></select>
+				</label>
+
+				<label>
+					<span>From</span>
+					<input class="form-control" id="incidentDateFromFilter" type="date">
+				</label>
+
+				<label>
+					<span>To</span>
+					<input class="form-control" id="incidentDateToFilter" type="date">
+				</label>
+
+				<button class="secondary-button" id="resetIncidentMapFilters" type="button">
+					<i class="bi bi-arrow-counterclockwise"></i>
+					Reset
+				</button>
+			</div>
+
+			<div class="hotspot-summary" id="incidentHotspotSummary" aria-live="polite">
+				<div>
+					<span>Total incidents displayed</span>
+					<strong id="hotspotTotalIncidents">0</strong>
+				</div>
+				<div>
+					<span>Highest concentration</span>
+					<strong id="hotspotTopLocation">Not available</strong>
+				</div>
+				<div>
+					<span>Most common type</span>
+					<strong id="hotspotTopType">Not available</strong>
+				</div>
+			</div>
+
 			<div class="incident-map" id="incidentMap"></div>
 			<script type="application/json" id="incidentMapData"><%- incidentMapJson %></script>
 

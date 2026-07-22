@@ -24,14 +24,19 @@ This prototype reduces manual effort by supporting transcript intake, AI-assiste
 
 ![System Architecture](docs/images/system-architecture.png)
 
-The application uses a modular monolith structure. The Node.js / Express backend renders EJS pages, handles report routes, calls the configured AI service, and reads/writes incident records in MySQL.
+The application keeps its existing server-rendered EJS architecture, with a small two-container boundary for local Compose. An Nginx UI gateway serves public assets and proxies same-origin page/API requests to the Node.js backend. The backend renders the existing EJS pages, handles authentication and report routes, calls Gemini, and reads/writes incident records in Railway MySQL.
 
 ```text
 Prototype Users
--> Frontend Web Application using EJS, CSS, and JavaScript
--> Backend Application using Node.js and Express.js
--> MySQL Database using firefighter_dashboard, incidents table, and officers table
+-> Frontend/UI container using Nginx, CSS, JavaScript, and same-origin proxying
+-> Backend/API container using Node.js, Express.js, and EJS
+-> Railway MySQL using incidents and officers tables
+
+Backend/API container -> Gemini API
+Backend/API container -> optional external RealtimeSTT service
 ```
+
+The UI gateway is intentionally a reverse proxy rather than a new SPA. Existing EJS views, form actions, browser API calls, sessions, map assets, AI flows, and report-completion behavior stay intact while the sensitive database and Gemini configuration remains in the backend container.
 
 Supporting services:
 
@@ -356,7 +361,7 @@ DB_PORT=3306
 SESSION_SECRET=replace_with_a_long_random_string
 
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash
+GEMINI_MODEL=gemini-3.5-flash-lite
 
 ONEMAP_EMAIL=
 ONEMAP_PASSWORD=
@@ -373,7 +378,7 @@ Set `GEMINI_API_KEY` to your private Gemini API key and `GEMINI_MODEL` to the su
 For the current cloud AI flow:
 
 ```env
-GEMINI_MODEL=gemini-3.5-flash
+GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
 ### 6. Start the Dashboard Only
@@ -392,15 +397,7 @@ RealtimeSTT is not required if you are using manual transcript input.
 
 ### Run the Complete Local Stack with Docker Compose
 
-The dashboard Compose file runs the Node.js app and the external RealtimeSTT FastAPI service. Railway MySQL stays online and is not containerised. The previous Ollama/Qwen services are retained under the optional `previous-local-ai` Compose profile, but they are not required by the active Gemini cloud flow.
-
-The RealtimeSTT source checkout must be next to this dashboard folder:
-
-```text
-Downloads/
-|-- firefighter-dashboard-prototype-fixed/
-|-- RealtimeSTT/
-```
+The dashboard Compose file runs exactly two application containers: `frontend` (Nginx UI gateway) and `backend` (Node.js/Express). Railway MySQL and Gemini stay external and are not containerised. RealtimeSTT also remains an optional external service so this refactor does not add a third application container or remove live transcription support.
 
 Copy `.env.example` to `.env`, then enter private Railway and session values only in `.env`. Never commit that file.
 
@@ -412,34 +409,32 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Open `http://localhost:3000`, sign in, test Clean Transcript on Live Call Intake, Generate AI Report on Create Report, and Start Transcription if the RealtimeSTT model is ready.
+Open `http://localhost:3000`, sign in, test Clean Transcript on Live Call Intake, Generate AI Report on Create Report, and Start Transcription if an external RealtimeSTT service is ready.
 
 Use these values for the supported execution modes:
 
 ```env
-# Node.js running in Docker Compose
+# Backend container running in Docker Compose
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash
-REALTIME_STT_HEALTH_URL=http://realtimestt:8010/health
+GEMINI_MODEL=gemini-3.5-flash-lite
+REALTIME_STT_HEALTH_URL=http://host.docker.internal:8010/health
 # Blank makes the browser use the dashboard hostname on port 8010.
 REALTIME_STT_WS_URL=
 
 # Node.js running directly on the host
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash
+GEMINI_MODEL=gemini-3.5-flash-lite
 REALTIME_STT_HEALTH_URL=http://127.0.0.1:8010/health
 REALTIME_STT_WS_URL=
 ```
 
-Inside Docker, Node.js calls Gemini through the Gemini API and checks RealtimeSTT at `http://realtimestt:8010/health`. The browser cannot resolve Docker service names, so it connects to `ws://<dashboard-hostname>:8010/ws/transcribe` (or `wss://` when the dashboard uses HTTPS). This works with `localhost` and later with the laptop's LAN address without hard-coding an IP.
-
-RealtimeSTT stores downloaded speech models under `/root/.cache` in `realtimestt_cache`. The optional previous/local Ollama profile stores downloaded model data under `/root/.ollama` in the named `ollama_data` volume. `docker compose down -v` deliberately removes those caches and requires model downloads again.
+Inside Docker, Node.js calls Gemini through the Gemini API and checks an externally run RealtimeSTT service at `http://host.docker.internal:8010/health` by default. The browser cannot resolve Docker service names, so it connects to `ws://<dashboard-hostname>:8010/ws/transcribe` (or `wss://` when the dashboard uses HTTPS). This works with `localhost` and later with the laptop's LAN address without hard-coding an IP. Start RealtimeSTT separately when live speech-to-text is needed; manual transcript entry remains available without it.
 
 Useful checks:
 
 ```powershell
 docker compose ps
-docker compose logs --tail 100 app realtimestt
+docker compose logs --tail 100 frontend backend
 Invoke-RestMethod http://localhost:8010/health
 ```
 
@@ -529,7 +524,9 @@ The dashboard reads local configuration from `.env`. Keep this file in the proje
 
 | Variable | Purpose |
 |---|---|
-| `DB_HOST` | MySQL host, usually `localhost` |
+| `FRONTEND_PORT` | Host port for the Nginx UI container; defaults to `3000` |
+| `BACKEND_URL` | Internal UI-gateway URL for the backend; defaults to `http://backend:3000` |
+| `DB_HOST` | Railway MySQL host |
 | `DB_USER` | MySQL username |
 | `DB_PASSWORD` | Local MySQL password |
 | `DB_NAME` | Database name, `firefighter_dashboard` |
@@ -537,10 +534,13 @@ The dashboard reads local configuration from `.env`. Keep this file in the proje
 | `SESSION_SECRET` | Secret used by `express-session` to sign login cookies |
 | `GEMINI_API_KEY` | Private Gemini API key used by the backend only |
 | `GEMINI_MODEL` | Gemini Flash model used for cleanup and draft generation |
+| `GEMINI_TIMEOUT_MS` | Optional per-attempt Gemini timeout in milliseconds; defaults to `30000` |
 | `ONEMAP_EMAIL` | Optional OneMap email |
 | `ONEMAP_PASSWORD` | Optional OneMap password |
 | `ONEMAP_BASE_URL` | OneMap API base URL |
 | `GEOCODING_DEBUG` | Enables backend map payload logging when `true` |
+| `REALTIME_STT_HEALTH_URL` | Backend health URL for the optional external RealtimeSTT service |
+| `REALTIME_STT_WS_URL` | Optional browser WebSocket URL; blank uses the dashboard hostname on port `8010` |
 
 ## Run the Full Local Demo
 
@@ -662,38 +662,6 @@ The demo launcher uses this RealtimeSTT command:
 ```powershell
 python example_fastapi_server\server.py --host 127.0.0.1 --port 8010 --engine faster_whisper --model medium.en --realtime-model tiny.en --language en
 ```
-
-## Previous Local Ollama/Qwen Setup
-
-The active cloud AI flow uses Gemini Flash. The old Ollama + Qwen2.5:1.5B setup is retained only as previous/local reference material and is available through the optional Compose profile:
-
-```powershell
-docker compose --profile previous-local-ai up -d ollama ollama-model
-```
-
-1. Install Ollama from:
-
-   ```text
-   https://ollama.com
-   ```
-
-2. Pull the local model:
-
-   ```powershell
-   ollama pull qwen2.5:1.5b
-   ```
-
-3. Confirm Ollama is running:
-
-   ```powershell
-   ollama list
-   ```
-
-4. Ollama should be available at:
-
-   ```text
-   http://localhost:11434/api/tags
-   ```
 
 ## How Each Feature Works
 
@@ -819,7 +787,7 @@ Confirm `.env` or the cloud environment contains both required Gemini variables:
 
 ```env
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash
+GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
 If Gemini is unavailable, transcript cleanup returns the original transcript and AI report generation returns a conservative editable fallback report. Manual report editing remains available.

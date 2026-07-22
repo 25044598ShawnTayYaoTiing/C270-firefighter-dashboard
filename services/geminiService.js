@@ -4,6 +4,10 @@ const { GoogleGenAI, Type } = require('@google/genai');
 
 // AI Features: Gemini Flash service configuration for transcript cleanup and incident draft generation.
 const PROVIDER_NAME = 'Gemini AI';
+const MAX_ATTEMPTS = 3;
+const DEFAULT_TIMEOUT_MS = 30000;
+const DEFAULT_RETRY_DELAYS_MS = [1000, 2500];
+const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const REPORT_FIELDS = [
   'incident_type',
   'location',
@@ -50,6 +54,13 @@ const REPORT_SYSTEM_INSTRUCTION = [
 let clientFactory = (apiKey) => new GoogleGenAI({ apiKey });
 let cachedApiKey = '';
 let cachedClient = null;
+let retryDelaysMs = DEFAULT_RETRY_DELAYS_MS.slice();
+let lastRequest = {
+  operation: '',
+  status: 'not_started',
+  httpStatus: null,
+  at: null
+};
 
 function getApiKey() {
   return String(process.env.GEMINI_API_KEY || '').trim();
@@ -57,6 +68,11 @@ function getApiKey() {
 
 function getModel() {
   return String(process.env.GEMINI_MODEL || '').trim();
+}
+
+function getTimeoutMs() {
+  const configured = Number.parseInt(process.env.GEMINI_TIMEOUT_MS || '', 10);
+  return Number.isFinite(configured) && configured >= 1000 ? configured : DEFAULT_TIMEOUT_MS;
 }
 
 function assertConfigured() {
@@ -78,7 +94,13 @@ function getClient() {
 
   if (!cachedClient || cachedApiKey !== apiKey) {
     cachedApiKey = apiKey;
-    cachedClient = clientFactory(apiKey);
+    cachedClient = clientFactory(apiKey, {
+      httpOptions: {
+        timeout: getTimeoutMs(),
+        // The service owns retry behavior so each request has at most three attempts.
+        retryOptions: { attempts: 1 }
+      }
+    });
   }
 
   return cachedClient;
@@ -109,21 +131,102 @@ function extractResponseText(response) {
   return '';
 }
 
-async function callGemini(contents, config) {
+function getHttpStatus(error) {
+  const status = error && (error.status || error.statusCode || (error.response && error.response.status));
+  const numericStatus = Number(status);
+  return Number.isInteger(numericStatus) && numericStatus > 0 ? numericStatus : null;
+}
+
+function isNetworkError(error) {
+  const code = String(error && error.code || '').toUpperCase();
+  const message = String(error && error.message || '').toLowerCase();
+
+  return ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ENETUNREACH', 'ECONNREFUSED', 'ENOTFOUND'].includes(code)
+    || message.includes('fetch failed')
+    || message.includes('network')
+    || message.includes('timed out')
+    || message.includes('timeout');
+}
+
+function isRetryableError(error, status) {
+  return RETRYABLE_STATUS_CODES.has(status) || (!status && isNetworkError(error));
+}
+
+function buildGeminiError(error, operation, status, retryable) {
+  if (error && error.name === 'GeminiServiceError') return error;
+
+  const wrapped = new Error(`Gemini ${operation} failed.`);
+  wrapped.name = 'GeminiServiceError';
+  wrapped.operation = operation;
+  wrapped.status = status;
+  wrapped.retryable = retryable;
+  wrapped.cause = error;
+  return wrapped;
+}
+
+function recordRequest(operation, status, httpStatus = null) {
+  lastRequest = {
+    operation,
+    status,
+    httpStatus,
+    at: new Date().toISOString()
+  };
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function callGemini(contents, config, operation) {
   assertConfigured();
 
-  const response = await getClient().models.generateContent({
-    model: getModel(),
-    contents,
-    config
-  });
-  const text = extractResponseText(response);
+  let lastError;
 
-  if (!text) {
-    throw new Error('Gemini returned an empty response.');
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await getClient().models.generateContent({
+        model: getModel(),
+        contents,
+        config
+      });
+      const text = extractResponseText(response);
+
+      if (!text) {
+        const emptyResponseError = new Error('Gemini returned an empty response.');
+        emptyResponseError.code = 'EMPTY_RESPONSE';
+        throw emptyResponseError;
+      }
+
+      recordRequest(operation, 'success');
+      return text;
+    } catch (error) {
+      const status = getHttpStatus(error);
+      const retryable = isRetryableError(error, status) || error.code === 'EMPTY_RESPONSE';
+      lastError = buildGeminiError(error, operation, status, retryable);
+
+      if (!retryable || attempt === MAX_ATTEMPTS) {
+        recordRequest(operation, 'failed', status);
+        console.error('[Gemini] request failed', {
+          operation,
+          status,
+          attempt,
+          maxAttempts: MAX_ATTEMPTS
+        });
+        throw lastError;
+      }
+
+      recordRequest(operation, 'retrying', status);
+      console.warn('[Gemini] transient request failure; retrying', {
+        operation,
+        status,
+        attempt,
+        maxAttempts: MAX_ATTEMPTS
+      });
+      await wait(retryDelaysMs[attempt - 1] || retryDelaysMs[retryDelaysMs.length - 1] || 0);
+    }
   }
 
-  return text;
+  throw lastError;
 }
 
 function stripMarkdownFence(value) {
@@ -134,7 +237,7 @@ function stripMarkdownFence(value) {
 }
 
 function parseJsonObject(value) {
-  const unfenced = stripMarkdownFence(value);
+  const unfenced = stripMarkdownFence(value).replace(/^\s*json\s*/i, '');
   const start = unfenced.indexOf('{');
   const end = unfenced.lastIndexOf('}');
 
@@ -142,13 +245,24 @@ function parseJsonObject(value) {
     throw new Error('Gemini did not return a JSON object.');
   }
 
-  return JSON.parse(unfenced.slice(start, end + 1));
+  const parsed = JSON.parse(unfenced.slice(start, end + 1));
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Gemini did not return a JSON object.');
+  }
+
+  return parsed;
 }
 
 function normalizeReport(report) {
   return REPORT_FIELDS.reduce((normalized, field) => {
     const value = report && report[field];
-    normalized[field] = typeof value === 'string' ? value.trim() : value ? String(value) : '';
+    if (value !== undefined && value !== null && !['string', 'number', 'boolean'].includes(typeof value)) {
+      throw new Error(`Gemini returned an invalid value for ${field}.`);
+    }
+
+    const fallback = field === 'response_status' ? 'Pending Review' : '';
+    normalized[field] = typeof value === 'string' ? value.trim() : value === undefined || value === null ? fallback : String(value);
     return normalized;
   }, {
     response_status: 'Pending Review'
@@ -162,7 +276,8 @@ exports.cleanTranscript = async (transcript) => {
     {
       systemInstruction: CLEAN_TRANSCRIPT_SYSTEM_INSTRUCTION,
       temperature: 0.1
-    }
+    },
+    'transcript cleanup'
   );
 };
 
@@ -181,10 +296,19 @@ exports.generateReport = async (transcript) => {
       temperature: 0.1,
       responseMimeType: 'application/json',
       responseSchema: REPORT_SCHEMA
-    }
+    },
+    'report drafting'
   );
 
-  return normalizeReport(parseJsonObject(response));
+  try {
+    return normalizeReport(parseJsonObject(response));
+  } catch (error) {
+    recordRequest('report drafting', 'invalid_response');
+    console.error('[Gemini] report response parsing failed', {
+      operation: 'report drafting'
+    });
+    throw buildGeminiError(error, 'report drafting', null, false);
+  }
 };
 
 // AI Features: exposes non-secret Gemini configuration used by the active AI backend flow.
@@ -203,7 +327,8 @@ exports.checkHealth = async () => {
     available: config.apiKeyConfigured && config.modelConfigured,
     configured: config.apiKeyConfigured && config.modelConfigured,
     provider: config.provider,
-    model: config.model
+    model: config.model,
+    lastRequest
   };
 };
 
@@ -215,9 +340,13 @@ exports._private = {
     cachedApiKey = '';
     cachedClient = null;
   },
+  setRetryDelays(delays) {
+    retryDelaysMs = Array.isArray(delays) ? delays.map((delay) => Math.max(0, Number(delay) || 0)) : DEFAULT_RETRY_DELAYS_MS.slice();
+  },
   resetClientFactory() {
     clientFactory = (apiKey) => new GoogleGenAI({ apiKey });
     cachedApiKey = '';
     cachedClient = null;
+    retryDelaysMs = DEFAULT_RETRY_DELAYS_MS.slice();
   }
 };

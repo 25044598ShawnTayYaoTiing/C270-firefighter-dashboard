@@ -17,15 +17,22 @@ const {
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'firefighter.sid';
-const SESSION_SECRET = process.env.SESSION_SECRET || 'firefighter-dashboard-prototype-session-secret';
+const SESSION_SECRET = String(process.env.SESSION_SECRET || '').trim();
+
+if (!SESSION_SECRET) {
+  throw new Error('SESSION_SECRET must be configured before starting the application.');
+}
 
 app.set('trust proxy', 1);
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.use('/vendor/leaflet.heat', express.static(path.join(__dirname, 'node_modules', 'leaflet.heat', 'dist')));
+app.use('/vendor/leaflet.markercluster', express.static(path.join(__dirname, 'node_modules', 'leaflet.markercluster', 'dist')));
+// Allow long manual transcripts to reach the backend without changing database behavior.
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+app.use(express.json({ limit: '1mb' }));
 app.use(session({
   name: SESSION_COOKIE_NAME,
   secret: SESSION_SECRET,

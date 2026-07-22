@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const transcriptInput = document.getElementById('transcriptInput');
   const generateButton = document.getElementById('generateDraftButton');
   const aiReportNotice = document.getElementById('aiReportNotice');
+  const aiReviewNotice = document.getElementById('aiReviewNotice');
   const reportForm = document.getElementById('reportForm');
   const incidentTypeSelect = document.getElementById('incidentType');
   const customIncidentTypeField = document.getElementById('customIncidentTypeField');
@@ -18,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let isRestoringDraft = false;
   let isDiscardingDraft = false;
   let isSubmittingReport = false;
+  let isGeneratingReport = false;
   let hasPendingDraftRecovery = false;
   const initialReportingOfficerId = getFieldValue('reportingOfficerId');
 
@@ -61,6 +63,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Done BY SHAWN ID 25044598
   // AI Features: calls the backend AI report endpoint to draft incident fields from transcript text.
   async function generateAiReport() {
+    if (isGeneratingReport) return;
+
     const transcript = transcriptInput.value.trim();
 
     if (!transcript) {
@@ -68,18 +72,19 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    isGeneratingReport = true;
     generateButton.disabled = true;
+    setButtonBusy(generateButton, true, 'Generating Report...');
     showNotice('checking', 'Generating report draft.');
 
     try {
-      const response = await fetch('/api/reports/generate', {
+      const { data } = await fetchAiJson('/api/reports/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ transcript })
       });
-      const data = await response.json();
 
       if (data.report) {
         fillReportForm(data.report);
@@ -94,9 +99,11 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (error) {
       fillReportForm(buildClientFallbackReport(transcript));
       saveDraftSoon();
-      showNotice('warning', 'Report drafting service is unavailable. A manual draft was loaded for editing.');
+      showNotice('warning', error.message || 'Report drafting service is unavailable. A manual draft was loaded for editing.');
     } finally {
+      isGeneratingReport = false;
       generateButton.disabled = false;
+      setButtonBusy(generateButton, false, 'Generate Draft');
     }
   }
 
@@ -111,6 +118,10 @@ document.addEventListener('DOMContentLoaded', () => {
     setFieldValue('injuredPersons', report.injured_or_trapped_persons || '');
     setFieldValue('missingInfo', report.missing_information || '');
     setFieldValue('officerNotes', report.officer_notes || '');
+
+    if (aiReviewNotice) {
+      aiReviewNotice.className = 'notice-strip';
+    }
   }
 
   // SHAWN 25044598 - Restore/Discard Draft: Detects an unfinished local draft before loading a sent transcript.
@@ -478,9 +489,54 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function showNotice(state, message) {
+    if (!aiReportNotice) return;
+
     aiReportNotice.className = state === 'warning'
       ? 'notice-strip notice-warning'
       : 'notice-strip';
     aiReportNotice.querySelector('span').textContent = message;
+  }
+
+  async function fetchAiJson(url, options) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 110000);
+
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      const body = await response.text();
+      let data;
+
+      try {
+        data = body ? JSON.parse(body) : null;
+      } catch (error) {
+        throw new Error('The AI service returned an invalid response. Please try again.');
+      }
+
+      if (!data || typeof data !== 'object') {
+        throw new Error('The AI service returned an empty response. Please try again.');
+      }
+
+      return { response, data };
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error('The AI request timed out. Please try again in a moment.');
+      }
+
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
+  function setButtonBusy(button, isBusy, busyLabel) {
+    if (!button) return;
+
+    const labelNode = Array.from(button.childNodes)
+      .find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+
+    if (!labelNode) return;
+    if (!button.dataset.idleLabel) button.dataset.idleLabel = labelNode.textContent.trim();
+    labelNode.textContent = `\n      ${isBusy ? busyLabel : button.dataset.idleLabel}\n    `;
+    button.setAttribute('aria-busy', String(isBusy));
   }
 });

@@ -365,7 +365,8 @@ exports.checkSystemStatus = async (req, res) => {
     ai: {
       available: aiHealth.available,
       provider: aiHealth.provider,
-      model: aiHealth.model
+      model: aiHealth.model,
+      lastRequest: aiHealth.lastRequest
     },
     database: {
       connected: databaseHealth.connected
