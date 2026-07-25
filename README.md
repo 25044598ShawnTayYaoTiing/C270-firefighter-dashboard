@@ -276,7 +276,7 @@ npm install
 
 ### 3. Set Up MySQL
 
-Open MySQL, then create and select the project database:
+Use the existing Railway MySQL database. No database container is created by Compose. For a fresh MySQL database, the application and seed scripts create or upgrade the required tables.
 
 ```sql
 CREATE DATABASE IF NOT EXISTS firefighter_dashboard;
@@ -525,10 +525,13 @@ The dashboard reads local configuration from `.env`. Keep this file in the proje
 | Variable | Purpose |
 |---|---|
 | `FRONTEND_PORT` | Host port for the Nginx UI container; defaults to `3000` |
+| `BACKEND_PORT` | Host port for the backend container; defaults to `3001` |
 | `BACKEND_URL` | Internal UI-gateway URL for the backend; defaults to `http://backend:3000` |
+| `BACKEND_PUBLIC_URL` | Browser-visible backend URL; defaults to `http://localhost:3001` |
+| `CORS_ORIGIN` | Allowed frontend origin for browser API calls; defaults to `http://localhost:3000` |
 | `DB_HOST` | Railway MySQL host |
 | `DB_USER` | MySQL username |
-| `DB_PASSWORD` | Local MySQL password |
+| `DB_PASSWORD` | MySQL password |
 | `DB_NAME` | Database name, `firefighter_dashboard` |
 | `DB_PORT` | MySQL port, usually `3306` |
 | `SESSION_SECRET` | Secret used by `express-session` to sign login cookies |
@@ -546,7 +549,7 @@ The dashboard reads local configuration from `.env`. Keep this file in the proje
 
 Use this flow when you want the dashboard and RealtimeSTT running together for a prototype demo. The script checks whether `GEMINI_API_KEY` and `GEMINI_MODEL` are configured without printing the key.
 
-1. Start MySQL first.
+1. Start or confirm MySQL is reachable.
 2. Confirm `.env` exists in the project root.
 3. Run `npm install` if `node_modules` is missing.
 4. Run the demo launcher:
@@ -560,7 +563,7 @@ The demo uses:
 - Dashboard on `http://localhost:3000`
 - RealtimeSTT on `http://127.0.0.1:8010`
 - Gemini AI through the backend service
-- MySQL on `localhost:3306`
+- MySQL from the configured Railway connection
 
 The launcher opens separate PowerShell windows for the dashboard and RealtimeSTT, opens the dashboard in your browser, and checks Gemini configuration. It does not start MySQL.
 
@@ -578,7 +581,7 @@ To stop the demo, close the separate PowerShell windows for the dashboard and Re
 
 Use this flow to test the main prototype path end to end:
 
-1. Start MySQL.
+1. Confirm MySQL connectivity through the `DB_*` values.
 2. Confirm `GEMINI_API_KEY` and `GEMINI_MODEL` are configured.
 3. Run `npm install`.
 4. Run `npm run seed`.
@@ -605,7 +608,7 @@ The dashboard and analytics read from the MySQL `incidents` table. To load reali
 npm run seed
 ```
 
-The seed script creates or upgrades the `officers` table, stores bcrypt password hashes for demo users, adds `reporting_officer_id` to `incidents` when missing, and inserts or refreshes 10 sample reports with IDs `INC-1001` through `INC-1010`. The sample reports include residential fires, kitchen fire, road traffic accident, lift rescues, gas leak, electrical fire, rubbish chute fire, and vehicle fire. The script uses `ON DUPLICATE KEY UPDATE`, so running it again refreshes those same sample records instead of creating duplicates.
+The seed script creates or upgrades the `officers` table, stores bcrypt password hashes for demo users, adds `reporting_officer_id` to `incidents` when missing, and inserts or refreshes 10 sample reports with IDs `INC-1001` through `INC-1010`. The sample reports include residential fires, kitchen fire, road traffic accident, lift rescues, gas leak, electrical fire, rubbish chute fire, and vehicle fire. The script uses MySQL `ON DUPLICATE KEY UPDATE`, so running it again refreshes those same sample records instead of creating duplicates.
 
 After seeding, open `http://localhost:3000/dashboard` and `http://localhost:3000/analytics` to confirm totals, charts, and percentages update.
 
@@ -769,7 +772,7 @@ node scripts/backfillIncidentCoordinates.js
 
 ### Dashboard Does Not Connect to MySQL
 
-Confirm MySQL is running and that `.env` contains the correct `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and `DB_PORT`.
+Confirm MySQL is running and that `.env` contains the correct `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and `DB_PORT` values.
 
 In MySQL, check the database and tables:
 

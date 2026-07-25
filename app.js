@@ -1,5 +1,6 @@
 require('dotenv').config({ quiet: true });
 
+const crypto = require('crypto');
 const express = require('express');
 const path = require('path');
 const session = require('express-session');
@@ -17,15 +18,44 @@ const {
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'firefighter.sid';
-const SESSION_SECRET = String(process.env.SESSION_SECRET || '').trim();
+const configuredSessionSecret = String(process.env.SESSION_SECRET || '').trim();
 
-if (!SESSION_SECRET) {
+if (process.env.NODE_ENV === 'production' && !configuredSessionSecret) {
   throw new Error('SESSION_SECRET must be configured before starting the application.');
+}
+
+const SESSION_SECRET = configuredSessionSecret || crypto.randomBytes(32).toString('hex');
+
+if (!configuredSessionSecret) {
+  console.warn('[auth] SESSION_SECRET is not set; using a temporary development-only session secret.');
 }
 
 app.set('trust proxy', 1);
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
+
+const allowedCorsOrigins = String(process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && allowedCorsOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    res.setHeader('Vary', 'Origin');
+  }
+
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  return next();
+});
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/vendor/leaflet.heat', express.static(path.join(__dirname, 'node_modules', 'leaflet.heat', 'dist')));

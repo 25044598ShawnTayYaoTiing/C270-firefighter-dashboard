@@ -95,6 +95,29 @@ test('completion distinguishes an entered location from location verification', 
   assert.deepEqual(completion.missingFields, ['Location Verification']);
 });
 
+test('completion uses deterministic status messages for each progress band', () => {
+  const partiallyComplete = calculateCompletion({
+    location: 'Block 10, Example Street',
+    type: 'Residential Fire',
+    dateTime: '2026-07-22T10:00',
+    status: 'Pending Review'
+  });
+  const almostComplete = calculateCompletion({
+    location: 'Block 10, Example Street',
+    locationVerified: true,
+    type: 'Residential Fire',
+    dateTime: '2026-07-22T10:00',
+    status: 'Pending Review',
+    summary: 'Smoke reported from a residential unit.',
+    hazards: 'Smoke'
+  });
+
+  assert.equal(partiallyComplete.percent, 50);
+  assert.match(partiallyComplete.message, /partially complete/i);
+  assert.equal(almostComplete.percent, 88);
+  assert.match(almostComplete.message, /almost complete/i);
+});
+
 test('conditional hazard and casualty fields accept actual details', () => {
   const completion = calculateCompletion(completeReport({
     hazards: 'Gas cylinder leaking near the kitchen.',
@@ -154,6 +177,31 @@ test('Save Report rejects unresolved conditional fields before saving', { concur
     assert.equal(res.statusCode, 400);
     assert.equal(res.renderedData.validationErrors.hazards, 'Confirm that no hazards were reported or enter the hazard details.');
     assert.equal(res.renderedData.validationErrors.injuredPersons, 'Confirm that no injured or trapped persons were reported or enter the details.');
+  } finally {
+    incidentModel.createIncident = originalCreate;
+  }
+});
+
+test('Save Report treats explicit no-report checkboxes as completed conditional fields', { concurrency: false }, async () => {
+  const originalCreate = incidentModel.createIncident;
+  let savedIncident;
+  incidentModel.createIncident = async (incident) => {
+    savedIncident = incident;
+    return 'INC-CHECKED';
+  };
+
+  try {
+    const res = response();
+    await incidentController.createIncident(requestFor({
+      hazards: '',
+      injuredPersons: '',
+      noHazardsReported: 'true',
+      noInjuredPersonsReported: 'true'
+    }), res, assert.fail);
+
+    assert.equal(res.redirectUrl, '/incidents/INC-CHECKED?reportSaved=1');
+    assert.equal(savedIncident.hazards, 'No hazards reported');
+    assert.equal(savedIncident.injuredPersons, 'No injured or trapped persons reported');
   } finally {
     incidentModel.createIncident = originalCreate;
   }

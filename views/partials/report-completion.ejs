@@ -10,14 +10,14 @@
   </div>
   <div class="missing-fields">
     <span>Missing fields</span>
-    <ul data-missing-fields>
+    <ul data-missing-fields <%= completion && completion.missingFields.length === 0 ? 'hidden' : '' %>>
       <% const missingFields = completion ? completion.missingFields : ['Incident Location', 'Location Verification', 'Incident Type', 'Date and Time', 'Response Status', 'Incident Summary', 'Hazards', 'Injured or Trapped Persons']; %>
-      <% if (missingFields.length === 0) { %>
-        <li>None</li>
-      <% } %>
       <% missingFields.forEach((field) => { %>
         <li><%= field %></li>
       <% }) %>
     </ul>
+    <p class="completion-complete-message" data-no-missing-fields <%= completion && completion.missingFields.length === 0 ? '' : 'hidden' %>>
+      All required incident information has been completed.
+    </p>
   </div>
 </section>

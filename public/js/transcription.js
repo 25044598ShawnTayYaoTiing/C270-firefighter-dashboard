@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Check whether the live transcription and AI services are available before the user starts streaming.
   async function checkSystemStatus() {
     try {
-      const response = await fetch('/system/status', { cache: 'no-store' });
+      const response = await fetch(window.apiUrl('/system/status'), { cache: 'no-store', credentials: 'include' });
       const status = await response.json();
 
       setStatusBadge(realtimeServiceStatus, status.realtimeStt && status.realtimeStt.available, 'Online', 'Offline');
@@ -595,7 +595,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const timeout = window.setTimeout(() => controller.abort(), 110000);
 
     try {
-      const response = await fetch(url, { ...options, signal: controller.signal });
+      const response = await fetch(window.apiUrl(url), { ...options, credentials: 'include', signal: controller.signal });
       const body = await response.text();
       let data;
 

@@ -14,8 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
     { key: 'dateTime', name: 'incidentDateTime', label: 'Date and Time' },
     { key: 'status', name: 'responseStatus', label: 'Response Status' },
     { key: 'summary', name: 'incidentSummary', label: 'Incident Summary' },
-    { key: 'hazards', name: 'hazards', label: 'Hazards' },
-    { key: 'injured', name: 'injuredPersons', label: 'Injured or Trapped Persons' }
+    { key: 'hazards', name: 'hazards', checkboxId: 'noHazardsReported', label: 'Hazards' },
+    { key: 'injured', name: 'injuredPersons', checkboxId: 'noInjuredPersonsReported', label: 'Injured or Trapped Persons' }
   ];
   const nonMeaningfulText = new Set([
     'null',
@@ -56,13 +56,17 @@ document.addEventListener('DOMContentLoaded', () => {
     currentCompletion = { percent, missing };
 
     const missingList = widget.querySelector('[data-missing-fields]');
+    const completeMessage = widget.querySelector('[data-no-missing-fields]');
     missingList.innerHTML = '';
 
     if (missing.length === 0) {
-      missingList.appendChild(createMissingItem('None'));
+      missingList.hidden = true;
+      if (completeMessage) completeMessage.hidden = false;
       return;
     }
 
+    missingList.hidden = false;
+    if (completeMessage) completeMessage.hidden = true;
     missing.forEach((field) => {
       missingList.appendChild(createMissingItem(field.label));
     });
@@ -71,6 +75,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function hasMeaningfulFieldValue(field) {
     const input = form.elements[field.name];
     if (!input) return false;
+
+    const confirmation = field.checkboxId && document.getElementById(field.checkboxId);
+    if (confirmation && confirmation.checked) return true;
 
     const value = field.key === 'type' && input.value === OTHER_INCIDENT_TYPE_VALUE
       ? (form.elements.customIncidentType ? form.elements.customIncidentType.value : '')
@@ -94,7 +101,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function getCompletionMessage(percent) {
     if (percent === 100) return 'Report is complete and ready for final review.';
     if (percent < 50) return 'Critical incident details are still missing.';
-    return 'Almost complete. Review the remaining required information.';
+    if (percent < 75) return 'Report is partially complete. Additional information is required.';
+    return 'Report is almost complete. Review the remaining required fields.';
   }
 
   function setupConditionalConfirmations() {

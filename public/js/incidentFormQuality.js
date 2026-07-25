@@ -32,7 +32,6 @@ document.addEventListener('DOMContentLoaded', () => {
     previewMap: document.getElementById('locationPreviewMap'),
     coordinateReadout: document.getElementById('locationCoordinateReadout'),
     errorSummary: form.querySelector('[data-form-error-summary]'),
-    aiReviewNotice: document.getElementById('aiReviewNotice')
   };
   let verifiedAddress = normalizeText(controls.locationInput ? controls.locationInput.value : '');
   let locationMap = null;
@@ -135,8 +134,9 @@ document.addEventListener('DOMContentLoaded', () => {
     setLocationMessage('Checking the location against the configured geocoding service.');
 
     try {
-      const response = await fetch('/api/locations/verify', {
+      const response = await fetch(window.apiUrl('/api/locations/verify'), {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json'
         },
@@ -186,6 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
     controls.locationVerifiedInput.value = 'true';
     controls.locationSourceInput.value = result.source || 'verified';
     controls.verifiedLocationLabelInput.value = result.label || controls.locationInput.value;
+    dispatchLocationVerificationUpdate();
 
     setLocationStatus('verified', message || 'Location verified');
     setLocationMessage(`${controls.verifiedLocationLabelInput.value}`);
@@ -199,6 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (controls.verifiedLocationLabelInput) controls.verifiedLocationLabelInput.value = '';
     if (controls.latitudeInput) controls.latitudeInput.value = '';
     if (controls.longitudeInput) controls.longitudeInput.value = '';
+    dispatchLocationVerificationUpdate();
     if (controls.coordinateReadout) controls.coordinateReadout.hidden = true;
     if (controls.previewMap) controls.previewMap.hidden = true;
 
@@ -425,7 +427,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function showErrorSummary(message) {
-    if (!controls.errorSummary) return;
+    if (!controls.errorSummary) {
+      controls.errorSummary = document.createElement('div');
+      controls.errorSummary.dataset.formErrorSummary = '';
+      controls.errorSummary.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i><span></span>';
+      const firstContent = form.querySelector('.readonly-field');
+      form.insertBefore(controls.errorSummary, firstContent || form.firstChild);
+    }
 
     controls.errorSummary.className = 'notice-strip notice-warning';
     controls.errorSummary.querySelector('span').textContent = message;
@@ -434,7 +442,14 @@ document.addEventListener('DOMContentLoaded', () => {
   function hideErrorSummary() {
     if (!controls.errorSummary) return;
 
-    controls.errorSummary.className = 'notice-strip notice-hidden';
+    controls.errorSummary.remove();
+    controls.errorSummary = null;
+  }
+
+  function dispatchLocationVerificationUpdate() {
+    if (!controls.locationVerifiedInput) return;
+
+    controls.locationVerifiedInput.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   function setLocationStatus(state, text) {

@@ -61,7 +61,8 @@ function hasMeaningfulValue(fieldKey, value) {
 function getCompletionMessage(percent) {
   if (percent === 100) return 'Report is complete and ready for final review.';
   if (percent < 50) return 'Critical incident details are still missing.';
-  return 'Almost complete. Review the remaining required information.';
+  if (percent < 75) return 'Report is partially complete. Additional information is required.';
+  return 'Report is almost complete. Review the remaining required fields.';
 }
 
 function formatDateTime(value) {
@@ -94,6 +95,8 @@ function toDateInput(value) {
   ].join('-') + `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+// Equal-weight scoring: each of the eight report requirements contributes 1/8
+// of the score (12.5 percentage points), rounded to the nearest whole percent.
 function calculateCompletion(values = {}) {
   const missingFields = COMPLETION_FIELDS
     .filter((field) => !hasMeaningfulValue(field.key, values[field.key]))
@@ -261,6 +264,7 @@ function safeJson(value) {
 
 module.exports = {
   calculateCompletion,
+  hasMeaningfulValue,
   mapIncident,
   buildMapData,
   safeJson,

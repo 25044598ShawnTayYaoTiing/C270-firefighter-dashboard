@@ -32,10 +32,6 @@
       Generate Draft
     </button>
     <p class="helper-text">Creates an editable draft from the transcript. Nothing is saved until an officer reviews and submits the report.</p>
-    <div class="notice-strip notice-hidden" id="aiReportNotice">
-      <i class="bi bi-info-circle-fill"></i>
-      <span></span>
-    </div>
   </article>
 
   <article class="panel report-draft-panel">
@@ -75,17 +71,7 @@
           <i class="bi bi-exclamation-triangle-fill"></i>
           <span>Please correct the highlighted fields before saving this incident report.</span>
         </div>
-      <% } else { %>
-        <div class="notice-strip notice-hidden" data-form-error-summary>
-          <i class="bi bi-exclamation-triangle-fill"></i>
-          <span></span>
-        </div>
       <% } %>
-
-      <div class="notice-strip notice-hidden" id="aiReviewNotice">
-        <i class="bi bi-pencil-square"></i>
-        <span>AI-filled fields require officer review. Verify the location before saving.</span>
-      </div>
 
       <div class="readonly-field">
         <span>Reporting Officer</span>

@@ -6,6 +6,7 @@ const {
 } = require('../helpers/geocodingService');
 const {
   calculateCompletion,
+  hasMeaningfulValue,
   mapIncident,
   statusKey
 } = require('../helpers/incidentPresenter');
@@ -85,24 +86,20 @@ function getAuthorizedCreateDateTime(req) {
   return getServerDateTime();
 }
 
-function isValidIncidentDateTime(value) {
-  if (value instanceof Date) {
-    return !Number.isNaN(value.getTime());
-  }
-
-  const text = String(value || '').trim();
-  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(text)
-    && !Number.isNaN(new Date(text).getTime());
-}
-
-function hasText(value) {
-  return String(value || '').trim().length > 0;
+function isChecked(value) {
+  return value === true || ['true', 'on', '1'].includes(String(value || '').trim().toLowerCase());
 }
 
 function readIncidentForm(body, options = {}) {
   const responseStatus = body.saveMode === 'draft'
     ? 'Draft'
     : body.responseStatus;
+  const hazards = isChecked(body.noHazardsReported)
+    ? 'No hazards reported'
+    : body.hazards ? body.hazards.trim() : '';
+  const injuredPersons = isChecked(body.noInjuredPersonsReported)
+    ? 'No injured or trapped persons reported'
+    : body.injuredPersons ? body.injuredPersons.trim() : '';
 
   // The controller normalizes form field names before handing data to the model.
   return {
@@ -116,8 +113,8 @@ function readIncidentForm(body, options = {}) {
       : body.incidentDateTime || '',
     responseStatus: responseStatus || 'Pending Review',
     incidentSummary: body.incidentSummary ? body.incidentSummary.trim() : '',
-    hazards: body.hazards ? body.hazards.trim() : '',
-    injuredPersons: body.injuredPersons ? body.injuredPersons.trim() : '',
+    hazards,
+    injuredPersons,
     missingInfo: body.missingInfo ? body.missingInfo.trim() : '',
     officerNotes: body.officerNotes ? body.officerNotes.trim() : '',
     transcript: body.transcript ? body.transcript.trim() : '',
@@ -205,19 +202,19 @@ function validateIncident(incident, options = {}) {
 
   if (options.allowIncomplete) return errors;
 
-  if (!hasText(incident.incidentType)) {
+  if (!hasMeaningfulValue('type', incident.incidentType)) {
     errors.incidentType = 'Incident type is required.';
   }
 
-  if (!hasText(incident.incidentLocation)) {
+  if (!hasMeaningfulValue('location', incident.incidentLocation)) {
     errors.incidentLocation = 'Please enter the incident location.';
   }
 
-  if (!isValidIncidentDateTime(incident.incidentDateTime)) {
+  if (!hasMeaningfulValue('dateTime', incident.incidentDateTime)) {
     errors.incidentDateTime = 'Enter a valid incident date and time.';
   }
 
-  if (!hasText(incident.incidentSummary)) {
+  if (!hasMeaningfulValue('summary', incident.incidentSummary)) {
     errors.incidentSummary = 'Incident description cannot be empty.';
   }
 

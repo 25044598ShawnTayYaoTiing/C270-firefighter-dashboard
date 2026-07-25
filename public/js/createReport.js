@@ -5,8 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const OTHER_INCIDENT_TYPE_VALUE = '__other_special_incident__';
   const transcriptInput = document.getElementById('transcriptInput');
   const generateButton = document.getElementById('generateDraftButton');
-  const aiReportNotice = document.getElementById('aiReportNotice');
-  const aiReviewNotice = document.getElementById('aiReviewNotice');
+  let aiReportNotice = document.getElementById('aiReportNotice');
+  let aiReviewNotice = document.getElementById('aiReviewNotice');
   const reportForm = document.getElementById('reportForm');
   const incidentTypeSelect = document.getElementById('incidentType');
   const customIncidentTypeField = document.getElementById('customIncidentTypeField');
@@ -119,9 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setFieldValue('missingInfo', report.missing_information || '');
     setFieldValue('officerNotes', report.officer_notes || '');
 
-    if (aiReviewNotice) {
-      aiReviewNotice.className = 'notice-strip';
-    }
+    aiReviewNotice = ensureNotice(aiReviewNotice, 'aiReviewNotice', 'bi-pencil-square', 'AI-filled fields require officer review. Verify the location before saving.');
   }
 
   // SHAWN 25044598 - Restore/Discard Draft: Detects an unfinished local draft before loading a sent transcript.
@@ -489,7 +487,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function showNotice(state, message) {
-    if (!aiReportNotice) return;
+    aiReportNotice = ensureNotice(aiReportNotice, 'aiReportNotice', 'bi-info-circle-fill');
 
     aiReportNotice.className = state === 'warning'
       ? 'notice-strip notice-warning'
@@ -497,12 +495,31 @@ document.addEventListener('DOMContentLoaded', () => {
     aiReportNotice.querySelector('span').textContent = message;
   }
 
+  function ensureNotice(notice, id, iconClass, initialMessage = '') {
+    if (notice) return notice;
+
+    notice = document.createElement('div');
+    notice.id = id;
+    notice.className = 'notice-strip';
+    notice.innerHTML = `<i class="bi ${iconClass}"></i><span>${initialMessage}</span>`;
+
+    if (id === 'aiReportNotice') {
+      const helper = generateButton.parentElement.querySelector('.helper-text');
+      (helper || generateButton).insertAdjacentElement('afterend', notice);
+    } else {
+      const firstContent = reportForm.querySelector('.readonly-field');
+      reportForm.insertBefore(notice, firstContent || reportForm.firstChild);
+    }
+
+    return notice;
+  }
+
   async function fetchAiJson(url, options) {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 110000);
 
     try {
-      const response = await fetch(url, { ...options, signal: controller.signal });
+      const response = await fetch(window.apiUrl(url), { ...options, credentials: 'include', signal: controller.signal });
       const body = await response.text();
       let data;
 
