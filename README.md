@@ -449,6 +449,23 @@ docker compose down
 
 If Gemini is unavailable or not configured, cleanup preserves the original transcript and report generation supplies a conservative editable fallback. If RealtimeSTT stops, manual transcript entry remains available. The application and Railway-backed non-AI features continue running.
 
+## DevSecOps pipeline
+
+GitHub Actions now uses a fail-closed pipeline: automated tests, Gitleaks repository/history scanning, production dependency audit, Semgrep SAST, and Trivy HIGH/CRITICAL image scanning all run before AWS authentication, ECR push, or ECS deployment. Pull requests to `main` build and scan but never deploy. Pushes to `main` deploy the exact SHA-tagged backend image that Trivy scanned, then verify ECS and the public health/smoke endpoints.
+
+Run the core checks locally:
+
+```powershell
+npm ci
+npm test
+npm audit --omit=dev --audit-level=high
+docker build -t firefighter-dashboard-backend:local .
+docker build -f frontend/Dockerfile -t firefighter-dashboard-frontend:local .
+docker compose config
+```
+
+See [FA L4 DevSecOps evidence](docs/FA-L4-DEVSECOPS.md) for the full gate design, AWS OIDC setup, proof steps, rollback procedure, and required GitHub configuration. See [SECURITY.md](SECURITY.md) for vulnerability reporting and secret-handling rules.
+
 ### 7. Seed Sample Reports
 
 ```powershell
@@ -527,7 +544,6 @@ The dashboard reads local configuration from `.env`. Keep this file in the proje
 | `FRONTEND_PORT` | Host port for the Nginx UI container; defaults to `3000` |
 | `BACKEND_PORT` | Host port for the backend container; defaults to `3001` |
 | `BACKEND_URL` | Internal UI-gateway URL for the backend; defaults to `http://backend:3000` |
-| `BACKEND_PUBLIC_URL` | Browser-visible backend URL; defaults to `http://localhost:3001` |
 | `CORS_ORIGIN` | Allowed frontend origin for browser API calls; defaults to `http://localhost:3000` |
 | `DB_HOST` | Railway MySQL host |
 | `DB_USER` | MySQL username |

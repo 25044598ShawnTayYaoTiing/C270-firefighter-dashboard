@@ -1,26 +1,37 @@
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3 AS dependencies
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev
+
+FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:a2723a2817c5b01b8e7b98d567bc8b5a6b0e713e25bfb0a82b6ade4b9db06f50 AS runtime
+
+WORKDIR /app
+
+ENV NODE_ENV=production \
+    PORT=3000
+
+COPY --from=dependencies --chown=65532:65532 /app/node_modules ./node_modules
 
 # Keep documentation, tests, and the frontend build files out of the backend image.
 # Copy directories separately so their runtime-relative paths remain intact.
-COPY --chown=node:node app.js ./app.js
-COPY --chown=node:node config ./config
-COPY --chown=node:node controllers ./controllers
-COPY --chown=node:node helpers ./helpers
-COPY --chown=node:node middleware ./middleware
-COPY --chown=node:node models ./models
-COPY --chown=node:node public ./public
-COPY --chown=node:node routes ./routes
-COPY --chown=node:node services ./services
-COPY --chown=node:node views ./views
+COPY --chown=65532:65532 app.js ./app.js
+COPY --chown=65532:65532 config ./config
+COPY --chown=65532:65532 controllers ./controllers
+COPY --chown=65532:65532 helpers ./helpers
+COPY --chown=65532:65532 middleware ./middleware
+COPY --chown=65532:65532 models ./models
+COPY --chown=65532:65532 public ./public
+COPY --chown=65532:65532 routes ./routes
+COPY --chown=65532:65532 services ./services
+COPY --chown=65532:65532 views ./views
 
-ENV PORT=3000
 EXPOSE 3000
 
-USER node
+USER 65532
 
-CMD ["npm", "start"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD ["/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:3000/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))"]
+
+CMD ["app.js"]
