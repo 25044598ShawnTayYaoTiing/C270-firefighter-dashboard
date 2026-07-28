@@ -25,8 +25,8 @@ server {
 
   location = /health {
     access_log off;
-    default_type text/plain;
-    return 200 "ok";
+    default_type application/json;
+    return 200 '{"status":"ok"}';
   }
 
   location ~* \.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|map)$ {

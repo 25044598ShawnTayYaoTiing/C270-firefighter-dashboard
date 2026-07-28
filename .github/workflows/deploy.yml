@@ -1,126 +1,371 @@
-name: Firefighter Dashboard CI/CD
+name: DevSecOps CI/CD
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy after all security gates pass (manual runs default to scan-only)
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firefighter-dashboard-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
-  AWS_ACCOUNT_ID: "754895435122"
+  NODE_VERSION: '22'
+  BACKEND_IMAGE: firefighter-dashboard-backend:${{ github.sha }}
+  FRONTEND_IMAGE: firefighter-dashboard-frontend:${{ github.sha }}
   AWS_REGION: ${{ vars.AWS_REGION }}
   ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
   ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
   ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+  ECS_SERVICE_ARN: ${{ vars.ECS_SERVICE_ARN }}
   ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+  APP_HEALTH_URL: ${{ vars.APP_HEALTH_URL }}
+  APP_SMOKE_URL: ${{ vars.APP_SMOKE_URL }}
 
 jobs:
-  build-test-and-deploy:
+  quality:
+    name: Test and dependency security gate
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
     steps:
-      - name: Checkout code
+      - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: npm ci
 
-      - name: Run tests
+      - name: Run automated tests
         run: npm test
 
-      - name: Build Docker image
-        run: docker build -t "${ECR_REPOSITORY}:${GITHUB_SHA}" .
+      - name: Block HIGH or CRITICAL production dependency vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+  secret-scan:
+    name: Secret scanning gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out complete Git history
+        uses: actions/checkout@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ vars.AWS_REGION }}
+          fetch-depth: 0
 
-      - name: Install latest AWS CLI
+      - name: Scan repository and history with Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITLEAKS_ENABLE_COMMENTS: 'false'
+          GITLEAKS_ENABLE_SUMMARY: 'true'
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'true'
+
+  sast:
+    name: Source security gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep JavaScript and OWASP rules
         run: |
           set -euo pipefail
-          curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip -q awscliv2.zip
-          sudo ./aws/install --update
-          aws --version
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/src" \
+            -w /src \
+            semgrep/semgrep:1.159.0 \
+            semgrep scan \
+              --metrics off \
+              --config p/javascript \
+              --config p/owasp-top-ten \
+              --severity ERROR \
+              --error \
+              --sarif \
+              --output semgrep.sarif \
+              .
 
-      - name: Login to Amazon ECR
-        id: login-ecr
+      - name: Upload Semgrep report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-sarif
+          path: semgrep.sarif
+          if-no-files-found: warn
+          retention-days: 30
+
+  build-and-scan:
+    name: Build and container security gate
+    needs:
+      - quality
+      - secret-scan
+      - sast
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      backend_image: ${{ steps.image-metadata.outputs.backend_image }}
+      backend_image_tar_sha256: ${{ steps.image-artifact.outputs.sha256 }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build the backend image to be deployed
+        run: |
+          set -euo pipefail
+          docker build --pull --tag "${BACKEND_IMAGE}" .
+
+      - name: Build the frontend image
+        run: |
+          set -euo pipefail
+          docker build --pull --file frontend/Dockerfile --tag "${FRONTEND_IMAGE}" .
+
+      - name: Record immutable image metadata
+        id: image-metadata
+        run: |
+          set -euo pipefail
+          docker image inspect "${BACKEND_IMAGE}" > backend-image-inspect.json
+          docker image inspect "${FRONTEND_IMAGE}" > frontend-image-inspect.json
+          echo "backend_image=${BACKEND_IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned Trivy
+        uses: aquasecurity/setup-trivy@v0.2.0
+        with:
+          version: v0.72.0
+          cache: true
+
+      - name: Generate human-readable Trivy reports
+        run: |
+          set -euo pipefail
+          trivy image --scanners vuln --pkg-types os,library --severity HIGH,CRITICAL --format table "${BACKEND_IMAGE}"
+          trivy image --scanners vuln --pkg-types os,library --severity HIGH,CRITICAL --format table "${FRONTEND_IMAGE}"
+
+      - name: Generate Trivy SARIF reports
+        run: |
+          set -euo pipefail
+          trivy image --scanners vuln --pkg-types os,library --severity HIGH,CRITICAL --format sarif --output trivy-backend.sarif "${BACKEND_IMAGE}"
+          trivy image --scanners vuln --pkg-types os,library --severity HIGH,CRITICAL --format sarif --output trivy-frontend.sarif "${FRONTEND_IMAGE}"
+
+      - name: Block HIGH or CRITICAL backend image vulnerabilities
+        run: |
+          set -euo pipefail
+          trivy image --scanners vuln --pkg-types os,library --severity HIGH,CRITICAL --exit-code 1 --format table "${BACKEND_IMAGE}"
+
+      - name: Block HIGH or CRITICAL frontend image vulnerabilities
+        run: |
+          set -euo pipefail
+          trivy image --scanners vuln --pkg-types os,library --severity HIGH,CRITICAL --exit-code 1 --format table "${FRONTEND_IMAGE}"
+
+      - name: Export the exact scanned backend image
+        id: image-artifact
+        run: |
+          set -euo pipefail
+          docker save --output backend-image.tar "${BACKEND_IMAGE}"
+          sha256sum backend-image.tar > backend-image.tar.sha256
+          echo "sha256=$(awk '{print $1}' backend-image.tar.sha256)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Trivy and image metadata reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-security-reports
+          path: |
+            trivy-backend.sarif
+            trivy-frontend.sarif
+            backend-image-inspect.json
+            frontend-image-inspect.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload exact scanned backend image
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-image
+          path: |
+            backend-image.tar
+            backend-image.tar.sha256
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Summarise gated build
+        run: |
+          {
+            echo '## Security gate passed'
+            echo
+            echo "- Backend image: \`${BACKEND_IMAGE}\`"
+            echo "- Frontend image: \`${FRONTEND_IMAGE}\`"
+            echo '- Tests, Gitleaks, npm audit, Semgrep, and Trivy passed before any AWS authentication.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Push, deploy, verify, and smoke test
+    needs:
+      - quality
+      - secret-scan
+      - sast
+      - build-and-scan
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Validate deployment configuration
+        run: |
+          set -euo pipefail
+          required=(AWS_REGION AWS_ROLE_TO_ASSUME ECR_REPOSITORY APP_HEALTH_URL APP_SMOKE_URL)
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              echo "Repository variable ${name} must be configured before deployment." >&2
+              exit 1
+            fi
+          done
+
+          if [ -z "${ECS_SERVICE_ARN:-}" ] && { [ -z "${ECS_CLUSTER:-}" ] || [ -z "${ECS_SERVICE:-}" ]; }; then
+            echo 'Configure ECS_SERVICE_ARN, or both ECS_CLUSTER and ECS_SERVICE, before deployment.' >&2
+            exit 1
+          fi
+
+          if [ "${ECR_REPOSITORY}" != 'firefighter-dashboard' ]; then
+            echo 'ECR_REPOSITORY must name the existing firefighter-dashboard repository.' >&2
+            exit 1
+          fi
+
+          case "${APP_HEALTH_URL}" in
+            */health)
+              ;;
+            *)
+              echo 'APP_HEALTH_URL must point to the public /health endpoint.' >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Download the exact scanned backend image
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-image
+
+      - name: Verify artifact integrity and load the scanned image
+        run: |
+          set -euo pipefail
+          expected_sha256="${{ needs.build-and-scan.outputs.backend_image_tar_sha256 }}"
+          actual_sha256="$(awk '{print $1}' backend-image.tar.sha256)"
+          [ "${actual_sha256}" = "${expected_sha256}" ]
+          [ "$(sha256sum backend-image.tar | awk '{print $1}')" = "${expected_sha256}" ]
+          docker load --input backend-image.tar
+          docker image inspect "${BACKEND_IMAGE}" > /dev/null
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          role-session-name: firefighter-dashboard-github-actions
+
+      - name: Reject root credentials and capture account identity
+        run: |
+          set -euo pipefail
+          caller_arn="$(aws sts get-caller-identity --query Arn --output text)"
+          case "${caller_arn}" in
+            arn:aws:iam::*:root)
+              echo 'AWS root credentials are not permitted for deployment.' >&2
+              exit 1
+              ;;
+          esac
+          case "${caller_arn}" in
+            arn:aws:sts::*:assumed-role/GitHubActionsDeployRole/*)
+              ;;
+            *)
+              echo 'OIDC did not assume the expected GitHubActionsDeployRole.' >&2
+              exit 1
+              ;;
+          esac
+          echo "AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" >> "$GITHUB_ENV"
+
+      - name: Log in to Amazon ECR
+        id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Tag Docker image for Amazon ECR
+      - name: Tag and push the exact scanned image
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
         run: |
           set -euo pipefail
-          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
-          LATEST_IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
+          image_uri="${ECR_REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+          latest_image_uri="${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
+          docker tag "${BACKEND_IMAGE}" "${image_uri}"
+          docker tag "${BACKEND_IMAGE}" "${latest_image_uri}"
+          docker push "${image_uri}"
+          docker push "${latest_image_uri}"
+          echo "IMAGE_URI=${image_uri}" >> "$GITHUB_ENV"
+          echo "ECR_REGISTRY=${ECR_REGISTRY}" >> "$GITHUB_ENV"
 
-          docker tag "${ECR_REPOSITORY}:${GITHUB_SHA}" "${IMAGE_URI}"
-          docker tag "${ECR_REPOSITORY}:${GITHUB_SHA}" "${LATEST_IMAGE_URI}"
-
-          echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
-
-      - name: Push Docker image to Amazon ECR
+      - name: Create task definition revision for the immutable image
         run: |
           set -euo pipefail
-          docker push "${IMAGE_URI}"
-          docker push "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest"
+          if [ -n "${ECS_SERVICE_ARN:-}" ]; then
+            service_arn="${ECS_SERVICE_ARN}"
+          else
+            service_arn="arn:aws:ecs:${AWS_REGION}:${AWS_ACCOUNT_ID}:service/${ECS_CLUSTER}/${ECS_SERVICE}"
+          fi
 
-      - name: Create ECS task definition revision with new image
-        id: task-definition
-        run: |
-          set -euo pipefail
-          SERVICE_ARN="arn:aws:ecs:${AWS_REGION}:${AWS_ACCOUNT_ID}:service/${ECS_CLUSTER}/${ECS_SERVICE}"
-
-          CURRENT_TASK_DEFINITION_ARN="$(aws ecs describe-express-gateway-service \
-            --service-arn "${SERVICE_ARN}" \
-            --query "service.activeConfigurations[0].taskDefinitionArn" \
+          previous_task_definition_arn="$(aws ecs describe-express-gateway-service \
+            --service-arn "${service_arn}" \
+            --query 'service.activeConfigurations[0].taskDefinitionArn' \
             --output text)"
 
-          if [ -z "${CURRENT_TASK_DEFINITION_ARN}" ] || [ "${CURRENT_TASK_DEFINITION_ARN}" = "None" ]; then
-            echo "Could not find the active task definition ARN for ${SERVICE_ARN}." >&2
+          if [ -z "${previous_task_definition_arn}" ] || [ "${previous_task_definition_arn}" = 'None' ]; then
+            echo 'Could not find the active ECS task definition.' >&2
             exit 1
           fi
 
           aws ecs describe-task-definition \
-            --task-definition "${CURRENT_TASK_DEFINITION_ARN}" \
-            --query "taskDefinition" \
+            --task-definition "${previous_task_definition_arn}" \
+            --query taskDefinition \
             --output json > current-task-definition.json
 
-          IMAGE_REPOSITORY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}"
-
-          if [ -n "${ECS_CONTAINER_NAME}" ]; then
-            CONTAINER_NAME="${ECS_CONTAINER_NAME}"
+          image_repository="${ECR_REGISTRY}/${ECR_REPOSITORY}"
+          if [ -n "${ECS_CONTAINER_NAME:-}" ]; then
+            container_name="${ECS_CONTAINER_NAME}"
           else
-            CONTAINER_NAME="$(jq -r --arg repo "${IMAGE_REPOSITORY}" '
+            container_name="$(jq -r --arg repo "${image_repository}" '
               [.containerDefinitions[] | select(.image | startswith($repo + ":") or startswith($repo + "@")) | .name]
               | if length == 1 then .[0] else empty end
             ' current-task-definition.json)"
 
-            if [ -z "${CONTAINER_NAME}" ]; then
-              CONTAINER_COUNT="$(jq '.containerDefinitions | length' current-task-definition.json)"
-              if [ "${CONTAINER_COUNT}" = "1" ]; then
-                CONTAINER_NAME="$(jq -r '.containerDefinitions[0].name' current-task-definition.json)"
+            if [ -z "${container_name}" ]; then
+              container_count="$(jq '.containerDefinitions | length' current-task-definition.json)"
+              if [ "${container_count}" = '1' ]; then
+                container_name="$(jq -r '.containerDefinitions[0].name' current-task-definition.json)"
               else
-                echo "Could not determine which container image to update. Set repository variable ECS_CONTAINER_NAME." >&2
+                echo 'Could not determine the deployment container. Set ECS_CONTAINER_NAME.' >&2
                 exit 1
               fi
             fi
           fi
 
-          jq -e --arg name "${CONTAINER_NAME}" '
-            any(.containerDefinitions[]; .name == $name)
-          ' current-task-definition.json > /dev/null
+          jq -e --arg name "${container_name}" 'any(.containerDefinitions[]; .name == $name)' current-task-definition.json > /dev/null
 
-          jq --arg name "${CONTAINER_NAME}" --arg image "${IMAGE_URI}" '
+          jq --arg name "${container_name}" --arg image "${IMAGE_URI}" '
             del(
               .taskDefinitionArn,
               .revision,
@@ -137,41 +382,100 @@ jobs:
             )
           ' current-task-definition.json > new-task-definition.json
 
-          NEW_TASK_DEFINITION_ARN="$(aws ecs register-task-definition \
+          task_definition_arn="$(aws ecs register-task-definition \
             --cli-input-json file://new-task-definition.json \
-            --query "taskDefinition.taskDefinitionArn" \
+            --query 'taskDefinition.taskDefinitionArn' \
             --output text)"
 
-          echo "SERVICE_ARN=${SERVICE_ARN}" >> "$GITHUB_ENV"
-          echo "TASK_DEFINITION_ARN=${NEW_TASK_DEFINITION_ARN}" >> "$GITHUB_ENV"
-          echo "task-definition-arn=${NEW_TASK_DEFINITION_ARN}" >> "$GITHUB_OUTPUT"
+          {
+            echo "SERVICE_ARN=${service_arn}"
+            echo "PREVIOUS_TASK_DEFINITION_ARN=${previous_task_definition_arn}"
+            echo "TASK_DEFINITION_ARN=${task_definition_arn}"
+          } >> "$GITHUB_ENV"
 
-      - name: Deploy ECS Express Mode service
+      - name: Deploy, verify, smoke test, and roll back on failure
         run: |
           set -euo pipefail
+          deployment_started=false
+
+          rollback() {
+            echo 'Deployment validation failed; restoring the previous task definition.' >&2
+            aws ecs update-express-gateway-service \
+              --service-arn "${SERVICE_ARN}" \
+              --task-definition-arn "${PREVIOUS_TASK_DEFINITION_ARN}" \
+              --monitor-resources DEPLOYMENT \
+              --monitor-mode TEXT-ONLY
+          }
+
+          on_exit() {
+            exit_code=$?
+            if [ "${exit_code}" -ne 0 ] && [ "${deployment_started}" = true ]; then
+              rollback || echo 'Automatic rollback command failed; follow the documented manual rollback procedure.' >&2
+            fi
+            exit "${exit_code}"
+          }
+
+          trap on_exit EXIT
+          trap 'exit 143' INT TERM
+
+          deployment_started=true
           aws ecs update-express-gateway-service \
             --service-arn "${SERVICE_ARN}" \
             --task-definition-arn "${TASK_DEFINITION_ARN}" \
             --monitor-resources DEPLOYMENT \
             --monitor-mode TEXT-ONLY
 
-      - name: Verify ECS deployment
-        run: |
-          set -euo pipefail
-          SERVICE_STATUS="$(aws ecs describe-express-gateway-service \
+          service_status="$(aws ecs describe-express-gateway-service \
             --service-arn "${SERVICE_ARN}" \
-            --query "service.status.statusCode" \
+            --query 'service.status.statusCode' \
             --output text)"
-          ACTIVE_TASK_DEFINITION_MATCHES="$(aws ecs describe-express-gateway-service \
+          active_task_definition_matches="$(aws ecs describe-express-gateway-service \
             --service-arn "${SERVICE_ARN}" \
             --query "length(service.activeConfigurations[?taskDefinitionArn=='${TASK_DEFINITION_ARN}'])" \
             --output text)"
 
-          if [ "${SERVICE_STATUS}" != "ACTIVE" ] || [ "${ACTIVE_TASK_DEFINITION_MATCHES}" = "0" ]; then
-            echo "ECS Express service is not active on the expected task definition." >&2
-            echo "Status: ${SERVICE_STATUS}" >&2
-            echo "Expected: ${TASK_DEFINITION_ARN}" >&2
+          if [ "${service_status}" != 'ACTIVE' ] || [ "${active_task_definition_matches}" = '0' ]; then
+            echo 'ECS Express service is not active on the expected task definition.' >&2
             exit 1
           fi
 
-          echo "ECS Express service is active on task definition ${TASK_DEFINITION_ARN}."
+          health_ready=false
+          for attempt in $(seq 1 18); do
+            if health_body="$(curl --fail --silent --show-error --max-time 10 "${APP_HEALTH_URL}")" \
+              && printf '%s' "${health_body}" | jq -e '.status == "ok"' > /dev/null; then
+              health_ready=true
+              break
+            fi
+            echo "Health endpoint is not ready yet (attempt ${attempt}/18)." >&2
+            sleep 10
+          done
+
+          if [ "${health_ready}" != true ]; then
+            echo 'Application health endpoint did not return {"status":"ok"} before timeout.' >&2
+            exit 1
+          fi
+
+          smoke_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 10 "${APP_SMOKE_URL}")"
+          case "${smoke_status}" in
+            200|301|302|303|307|308)
+              ;;
+            *)
+              echo "Application smoke test returned unexpected HTTP status ${smoke_status}." >&2
+              exit 1
+              ;;
+          esac
+
+          trap - EXIT INT TERM
+
+      - name: Write deployment summary
+        run: |
+          {
+            echo '## Deployment summary'
+            echo
+            echo "- Immutable image deployed: \`${IMAGE_URI}\`"
+            echo "- Previous task definition: \`${PREVIOUS_TASK_DEFINITION_ARN}\`"
+            echo "- Active task definition: \`${TASK_DEFINITION_ARN}\`"
+            echo '- ECS verification: active on the expected revision.'
+            echo '- HTTP health check: passed.'
+            echo '- Application smoke test: passed (200 or intentional authentication redirect).'
+          } >> "$GITHUB_STEP_SUMMARY"
