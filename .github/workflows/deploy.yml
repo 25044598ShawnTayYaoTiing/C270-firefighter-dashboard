@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: firefighter-dashboard-${{ github.workflow }}-${{ github.ref }}
