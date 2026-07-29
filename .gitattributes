@@ -1,0 +1,20 @@
+# Force LF line endings for files that run inside Linux containers.
+# Prevents "not found" / "bad interpreter" errors when Windows checks out
+# files with CRLF and Docker tries to execute them as Linux shell scripts.
+*.sh text eol=lf
+
+# Keep Docker-related config consistent too, since they're read by Linux
+# containers (Nginx, Node) regardless of what OS builds the image.
+Dockerfile text eol=lf
+*.conf text eol=lf
+*.template text eol=lf
+
+# Good general hygiene: let Git auto-handle line endings for common text
+# files based on OS, without forcing LF (these aren't executed in containers).
+*.js text
+*.json text
+*.md text
+*.ejs text
+*.css text
+*.yml text
+*.yaml text
