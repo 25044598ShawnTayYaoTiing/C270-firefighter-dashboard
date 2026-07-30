@@ -1,0 +1,32 @@
+---
+- name: Restore previous backend ECS Express revision when this run changed it
+  ansible.builtin.command:
+    argv:
+      - aws
+      - ecs
+      - update-express-gateway-service
+      - --region
+      - '{{ ecs_express_deploy_aws_region }}'
+      - --service-arn
+      - '{{ ecs_express_deploy_backend_service_arn }}'
+      - --task-definition-arn
+      - '{{ ecs_express_deploy_previous_backend_task_definition_arn }}'
+  when: ecs_express_deploy_backend_update_required | default(false) | bool
+  changed_when: true
+  failed_when: false
+
+- name: Restore previous frontend ECS Express revision when this run changed it
+  ansible.builtin.command:
+    argv:
+      - aws
+      - ecs
+      - update-express-gateway-service
+      - --region
+      - '{{ ecs_express_deploy_aws_region }}'
+      - --service-arn
+      - '{{ ecs_express_deploy_frontend_service_arn }}'
+      - --task-definition-arn
+      - '{{ ecs_express_deploy_previous_frontend_task_definition_arn }}'
+  when: ecs_express_deploy_frontend_update_required | default(false) | bool
+  changed_when: true
+  failed_when: false

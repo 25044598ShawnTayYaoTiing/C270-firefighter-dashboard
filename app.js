@@ -11,6 +11,7 @@ const pageRoutes = require('./routes/pageRoutes');
 const incidentRoutes = require('./routes/incidentRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const transcriptionRoutes = require('./routes/transcriptionRoutes');
+const transcriptionController = require('./controllers/transcriptionController');
 const userRoutes = require('./routes/userRoutes');
 const {
   attachCurrentOfficer,
@@ -58,6 +59,8 @@ app.use((req, res, next) => {
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
+
+app.get('/health/speech', transcriptionController.speechHealth);
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/vendor/leaflet.heat', express.static(path.join(__dirname, 'node_modules', 'leaflet.heat', 'dist')));

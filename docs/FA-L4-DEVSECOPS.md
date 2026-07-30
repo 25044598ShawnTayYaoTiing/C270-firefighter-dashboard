@@ -18,8 +18,8 @@ flowchart LR
   D --> E[Build backend and frontend images]
   E --> F[Trivy HIGH/CRITICAL image scan]
   F --> G[ECR push of exact scanned backend and frontend images]
-  G --> H[ECS Express Mode deployment]
-  H --> I[ECS service verification]
+  G --> H[Ansible ECS Express deployment]
+  H --> I[Backend-first ECS service verification]
   I --> J[HTTP health and smoke test]
   J --> K[Deployment summary]
 ```
@@ -41,9 +41,9 @@ The workflow is in [`.github/workflows/deploy.yml`](../.github/workflows/deploy.
 11. Authenticate to AWS only through the required `GitHubActionsDeployRole` OIDC role.
 12. Push the same SHA-tagged backend and frontend images to their separate ECR repositories.
 13. Register a new ECS task-definition revision that changes only the selected backend and frontend container images.
-14. Update and verify the existing ECS Express Gateway service.
-15. Retry the JSON `/health` endpoint, then request the configured application URL while accepting an intentional login redirect.
-16. Write the deployment summary. A failed deployment, verification, or smoke test triggers a restore to the saved previous task definition.
+14. Invoke Ansible on the GitHub Actions runner to update and verify the existing ECS Express Gateway services backend first.
+15. Ansible retries the backend JSON `/health` endpoint before deploying the frontend, then verifies the configured frontend URL while accepting an intentional login redirect.
+16. Write the deployment summary. A failed Ansible deployment or verification requests restoration of the saved previous task definition for every changed service.
 
 | Pipeline stage | Tool | What it checks | Failure threshold | How it blocks deployment | Evidence for assessor |
 |---|---|---|---|---|---|
@@ -55,8 +55,8 @@ The workflow is in [`.github/workflows/deploy.yml`](../.github/workflows/deploy.
 | Image scan | Trivy | OS and application dependencies in both images | HIGH or CRITICAL | Trivy exits with code 1 before image export | Table output and `container-security-reports` SARIF artifact |
 | AWS identity | AWS CLI | Rejects root credentials | Root identity or credential failure | Deployment job fails before ECR push | Identity guard log without credentials |
 | ECR push | Docker/ECR | Transfers exact scanned backend and frontend artifacts to separate repositories | Push failure | No task-definition update occurs | Both SHA image URIs in summary |
-| ECS verification | AWS CLI | Active ECS Express service uses expected revision | Not `ACTIVE` or wrong revision | Deployment job fails and runs rollback | ECS CLI log and summary |
-| App smoke test | curl and jq | JSON health plus reachable app/login redirect | No `{ "status": "ok" }` or unexpected status | Deployment job fails and runs rollback | Health/smoke log and summary |
+| ECS verification | Ansible and AWS CLI | Backend then frontend ECS Express service uses expected revision | Not `ACTIVE` or wrong revision | Deployment job fails and requests rollback | Ansible log and summary |
+| App smoke test | Ansible `uri` | JSON backend health plus reachable frontend/login redirect | No `{ "status": "ok" }` or unexpected status | Deployment job fails and requests rollback | Ansible log and summary |
 
 ## 4. L4 rubric mapping
 
@@ -108,16 +108,14 @@ The build summary states that tests, Gitleaks, npm audit, Semgrep, and Trivy pas
 
 ## 7. Rollback
 
-The workflow saves `PREVIOUS_TASK_DEFINITION_ARN` before registering a new revision. If the update, ECS verification, health retry, or smoke test fails after the new update begins, the same existing ECS Express Mode command is called with that saved revision.
+The workflow saves the previous backend and frontend task-definition ARNs before registering a new revision. If Ansible detects an update, ECS verification, backend health, or frontend validation failure after either service changes, it requests the corresponding saved revision through the same ECS Express Mode API.
 
 If automatic rollback itself fails, run the following manually for each affected service with values from the failed workflow log or Actions summary:
 
 ```bash
 aws ecs update-express-gateway-service \
   --service-arn "$BACKEND_SERVICE_ARN" \
-  --task-definition-arn "$PREVIOUS_BACKEND_TASK_DEFINITION_ARN" \
-  --monitor-resources DEPLOYMENT \
-  --monitor-mode TEXT-ONLY
+  --task-definition-arn "$PREVIOUS_BACKEND_TASK_DEFINITION_ARN"
 ```
 
 Then confirm the expected revision:
@@ -166,7 +164,7 @@ Runtime application values such as MySQL credentials, `SESSION_SECRET`, and `GEM
 
 When deployment resources or permissions change, update `GitHubActionsDeployRole` directly in AWS IAM. This repository does not create or update that role through CloudFormation, and no AWS access keys are used by the workflow. The `AWS_ROLE_TO_ASSUME` GitHub repository variable must contain the existing role ARN. Existing legacy GitHub AWS secrets are not used by this workflow and should remain untouched until that deployment has been independently confirmed.
 
-The ECS Express deployment command uses `--monitor-resources DEPLOYMENT --monitor-mode TEXT-ONLY`. Keep monitoring enabled and add the following scoped read permissions to the live `GitHubActionsDeployRole` policy. Replace `AWS_REGION`, `AWS_ACCOUNT_ID`, and each cluster name with the values from the two existing service ARNs; do not replace these resources with `*`.
+ECS Express deployment monitoring is performed by the backend-first Ansible stability loop rather than the AWS CLI monitor flags. Keep the following scoped read permissions on the live `GitHubActionsDeployRole`; they allow AWS to report deployment and revision state. Replace `AWS_REGION`, `AWS_ACCOUNT_ID`, and each cluster name with the values from the two existing service ARNs; do not replace these resources with `*`.
 
 ```json
 {

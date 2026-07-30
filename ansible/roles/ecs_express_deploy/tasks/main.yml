@@ -1,0 +1,24 @@
+---
+- name: Run deployment preflight checks
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [preflight, deploy]
+
+- name: Deploy backend, verify it, then deploy frontend
+  block:
+    - name: Deploy and verify backend
+      ansible.builtin.import_tasks: backend.yml
+      tags: [backend, verify, deploy]
+
+    - name: Deploy and verify frontend
+      ansible.builtin.import_tasks: frontend.yml
+      tags: [frontend, verify, deploy]
+  rescue:
+    - name: Restore prior task definitions after a deployment failure
+      ansible.builtin.import_tasks: rollback.yml
+      tags: [deploy, rollback]
+
+    - name: Fail after rollback has been requested
+      ansible.builtin.fail:
+        msg: >-
+          Deployment validation failed. The previous task definitions were requested
+          for every service changed by this playbook; inspect ECS service events.

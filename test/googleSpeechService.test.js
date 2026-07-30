@@ -4,6 +4,7 @@ const { EventEmitter } = require('node:events');
 const googleSpeechService = require('../services/googleSpeechService');
 const ORIGINAL_AUTH_MODE = process.env.GOOGLE_AUTH_MODE;
 const ORIGINAL_AWS_REGION = process.env.AWS_REGION;
+const ORIGINAL_AWS_CONTAINER_CREDENTIALS_RELATIVE_URI = process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI;
 const transcriptionController = require('../controllers/transcriptionController');
 
 function createResponse() {
@@ -20,6 +21,8 @@ test.afterEach(() => {
   else process.env.GOOGLE_AUTH_MODE = ORIGINAL_AUTH_MODE;
   if (ORIGINAL_AWS_REGION === undefined) delete process.env.AWS_REGION;
   else process.env.AWS_REGION = ORIGINAL_AWS_REGION;
+  if (ORIGINAL_AWS_CONTAINER_CREDENTIALS_RELATIVE_URI === undefined) delete process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI;
+  else process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI = ORIGINAL_AWS_CONTAINER_CREDENTIALS_RELATIVE_URI;
   delete process.env.AWS_ACCESS_KEY_ID;
   delete process.env.AWS_SECRET_ACCESS_KEY;
   delete process.env.AWS_SESSION_TOKEN;
@@ -126,8 +129,12 @@ test('aws-wif mode uses the ECS credential provider and Google AwsClient without
   let awsOptions;
   process.env.GOOGLE_AUTH_MODE = 'aws-wif';
   process.env.AWS_REGION = 'ap-southeast-1';
+  process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI = '/v2/credentials/test-task';
   googleSpeechService._private.setAwsCredentialProviderFactory(() => async () => ({
     accessKeyId: 'temporary-access-key', secretAccessKey: 'temporary-secret', sessionToken: 'temporary-session-token'
+  }));
+  googleSpeechService._private.setStsClientFactory(() => ({
+    send: async () => ({ Arn: 'arn:aws:sts::123456789012:assumed-role/FirefighterBackendTaskRole/test-task' })
   }));
   googleSpeechService._private.setAwsClientFactory((options) => { awsOptions = options; return { getProjectId: async () => 'project-1e4380d5-44ee-49d4-b26' }; });
   googleSpeechService._private.setClientFactory((options) => {
@@ -143,14 +150,30 @@ test('aws-wif mode uses the ECS credential provider and Google AwsClient without
   assert.equal(await awsOptions.aws_security_credentials_supplier.getAwsRegion(), 'ap-southeast-1');
   assert.equal(credentials.sessionToken, 'temporary-session-token');
   assert.ok(speechOptions.auth);
+  assert.equal(speechOptions.auth.getProjectId instanceof Function, true);
 });
 
-test('aws-wif mode fails safely when the ECS region or task credentials are unavailable', async () => {
+test('aws-wif mode uses the configured ECS region when AWS region variables are unavailable', async () => {
+  let awsOptions;
   process.env.GOOGLE_AUTH_MODE = 'aws-wif';
   delete process.env.AWS_REGION;
+  googleSpeechService._private.setAwsCredentialProviderFactory(() => async () => ({
+    accessKeyId: 'temporary-access-key', secretAccessKey: 'temporary-secret', sessionToken: 'temporary-session-token'
+  }));
+  googleSpeechService._private.setStsClientFactory(() => ({
+    send: async () => ({ Arn: 'arn:aws:sts::123456789012:assumed-role/FirefighterBackendTaskRole/test-task' })
+  }));
+  googleSpeechService._private.setAwsClientFactory((options) => {
+    awsOptions = options;
+    return {
+      getAccessToken: async () => ({ token: 'test-token' }),
+      getProjectId: async () => 'project-1e4380d5-44ee-49d4-b26'
+    };
+  });
+  googleSpeechService._private.setClientFactory((options) => ({ auth: options.auth }));
   const health = await googleSpeechService.checkHealth();
-  assert.equal(health.available, false);
-  assert.match(health.error, /Workload Identity Federation/);
+  assert.equal(health.available, true);
+  assert.equal(await awsOptions.aws_security_credentials_supplier.getAwsRegion(), 'ap-southeast-1');
 });
 
 test('aws-wif mode masks task-role and federation failures', async () => {
@@ -158,13 +181,41 @@ test('aws-wif mode masks task-role and federation failures', async () => {
   process.env.GOOGLE_AUTH_MODE = 'aws-wif';
   process.env.AWS_REGION = 'ap-southeast-1';
   googleSpeechService._private.setAwsCredentialProviderFactory(() => async () => { throw new Error('credential source failed'); });
-  googleSpeechService._private.setAwsClientFactory((options) => { awsOptions = options; return { getProjectId: async () => { throw new Error('federation failed'); } }; });
-  googleSpeechService._private.setClientFactory(() => ({ auth: { getProjectId: async () => { throw new Error('federation failed'); } } }));
+  googleSpeechService._private.setAwsClientFactory((options) => {
+    awsOptions = options;
+    return {
+      getAccessToken: async () => { throw new Error('federation failed'); },
+      getProjectId: async () => 'project-1e4380d5-44ee-49d4-b26'
+    };
+  });
+  googleSpeechService._private.setClientFactory((options) => ({ auth: options.auth }));
 
   const health = await googleSpeechService.checkHealth();
-  await assert.rejects(awsOptions.aws_security_credentials_supplier.getAwsSecurityCredentials(), (error) => error.kind === 'authentication');
+  await assert.rejects(
+    awsOptions.aws_security_credentials_supplier.getAwsSecurityCredentials(),
+    (error) => error.kind === 'authentication' && error.cause.message === 'credential source failed'
+  );
   assert.equal(health.available, false);
   assert.doesNotMatch(health.error, /credential source|temporary-secret|token/i);
+});
+
+test('aws-wif diagnostics retain nested errors without including credential material', () => {
+  const root = new Error('provider request failed');
+  const wrapped = new googleSpeechService.SpeechServiceError('Task role unavailable', {
+    kind: 'authentication',
+    cause: root
+  });
+  const serialized = googleSpeechService._private.serializeError(wrapped);
+  assert.equal(serialized.cause.message, 'provider request failed');
+  assert.equal(JSON.stringify(serialized).includes('accessKeyId'), false);
+  assert.deepEqual(
+    googleSpeechService._private.redactSensitive({
+      access_token: 'token-value',
+      authorization: 'Bearer token-value',
+      status: 'denied'
+    }),
+    { access_token: '[REDACTED]', authorization: '[REDACTED]', status: 'denied' }
+  );
 });
 
 test('transcription controller maps quota and authentication failures without exposing credentials', async () => {
@@ -185,5 +236,27 @@ test('transcription controller maps quota and authentication failures without ex
     assert.equal(authResponse.statusCode, 503);
   } finally {
     googleSpeechService.transcribeLinear16 = originalTranscribe;
+  }
+});
+
+test('speech health endpoint returns only safe availability diagnostics', async () => {
+  const originalCheckHealth = googleSpeechService.checkHealth;
+  try {
+    googleSpeechService.checkHealth = async () => ({
+      available: false,
+      provider: 'Google Cloud Speech-to-Text V1',
+      error: 'sensitive underlying diagnostic'
+    });
+    const response = createResponse();
+    await transcriptionController.speechHealth({}, response);
+    assert.equal(response.statusCode, 503);
+    assert.deepEqual(response.body, {
+      status: 'unavailable',
+      service: 'Google Cloud Speech-to-Text V1',
+      authentication: 'unavailable'
+    });
+    assert.doesNotMatch(JSON.stringify(response.body), /sensitive underlying diagnostic/);
+  } finally {
+    googleSpeechService.checkHealth = originalCheckHealth;
   }
 });
