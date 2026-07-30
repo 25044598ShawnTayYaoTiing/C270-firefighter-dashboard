@@ -1,7 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  buildMapData
+  buildMapData,
+  mapIncident
 } = require('../helpers/incidentPresenter');
 
 function report(overrides = {}) {
@@ -47,4 +48,13 @@ test('map data keeps only active incidents with real coordinates as markers', as
   assert.equal(mapData.markers[0].longitude, 103.709);
   assert.equal(mapData.markers[0].incident_date, '2026-06-25');
   assert.equal(mapData.unmapped[0].incident_id, 'INC-NO-COORDS');
+});
+
+test('draft coordinates do not count as verified location completion', () => {
+  const draft = mapIncident(report({
+    response_status: 'Draft',
+    status: 'Draft'
+  }));
+
+  assert.ok(draft.completion.missingFields.includes('Location Verification'));
 });

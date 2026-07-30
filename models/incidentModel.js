@@ -2,11 +2,8 @@
 // AI Features: incidentModel.js manages incident data, including schema enforcement, coordinate resolution, and CRUD operations for incident reports with proper access control.
 const db = require('../config/db');
 const {
-  toNullableNumber
+  getDatabaseCoordinates
 } = require('../helpers/locationResolver');
-const {
-  resolveIncidentCoordinates
-} = require('../helpers/geocodingService');
 const officerModel = require('./officerModel');
 
 let coordinateColumnsPromise;
@@ -86,28 +83,32 @@ function normalizeText(value) {
   return String(value || '').trim().toLowerCase();
 }
 
-function hasCoordinateInput(incident) {
-  return toNullableNumber(incident.latitude) !== null
-    && toNullableNumber(incident.longitude) !== null;
+function getValidCoordinates(latitude, longitude) {
+  const coordinates = getDatabaseCoordinates(latitude, longitude);
+  return coordinates && !coordinates.invalidReason ? coordinates : null;
 }
 
-async function resolveFormCoordinates(incident, existingIncident = null) {
+function resolveFormCoordinates(incident, existingIncident = null) {
   const locationChanged = existingIncident
     ? normalizeText(existingIncident.location) !== normalizeText(incident.incidentLocation)
     : false;
-  const shouldPreferExistingCoordinates = existingIncident
+  const submittedCoordinates = incident.locationVerified
+    ? getValidCoordinates(incident.latitude, incident.longitude)
+    : null;
+  const existingCoordinates = existingIncident
+    ? getValidCoordinates(existingIncident.latitude, existingIncident.longitude)
+    : null;
+  const shouldPreserveExistingCoordinates = incident.locationVerified
+    && existingIncident
     && !locationChanged
-    && !hasCoordinateInput(incident);
+    && !submittedCoordinates;
+  const coordinates = submittedCoordinates
+    || (shouldPreserveExistingCoordinates ? existingCoordinates : null);
+  const shouldClearExistingCoordinates = Boolean(existingCoordinates) && !coordinates;
 
   return {
-    coordinates: await resolveIncidentCoordinates({
-      latitude: shouldPreferExistingCoordinates ? existingIncident.latitude : incident.latitude,
-      longitude: shouldPreferExistingCoordinates ? existingIncident.longitude : incident.longitude,
-      location: incident.incidentLocation,
-      summary: incident.incidentSummary,
-      transcript: incident.transcript || (existingIncident && existingIncident.transcript)
-    }),
-    locationChanged
+    coordinates,
+    locationChanged: locationChanged || shouldClearExistingCoordinates
   };
 }
 
@@ -307,4 +308,8 @@ exports.deleteIncident = async (incidentId) => {
   );
 
   return result.affectedRows > 0;
+};
+
+exports._private = {
+  resolveFormCoordinates
 };

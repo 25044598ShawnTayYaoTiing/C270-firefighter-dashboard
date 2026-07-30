@@ -57,20 +57,37 @@
           <input class="form-control<%= fieldClass('incidentLocation') %>" id="incidentLocation" type="text" name="incidentLocation" value="<%= form.incidentLocation || report.location %>" required aria-describedby="incidentLocationError locationVerificationMessage">
         </label>
         <small class="field-error" id="incidentLocationError" <%= fieldError('incidentLocation') ? '' : 'hidden' %>><%= fieldError('incidentLocation') %></small>
-        <div class="location-verification" data-location-verification data-initial-verified="<%= locationVerified ? 'true' : 'false' %>">
+        <div class="location-verification" data-location-verification data-state="<%= locationVerified ? 'VERIFIED' : 'UNVERIFIED' %>">
           <div class="location-action-row">
             <button class="secondary-button" id="verifyLocationButton" type="button">
               <i class="bi bi-crosshair"></i>
               Verify Location
             </button>
-            <span class="location-status location-status-pending" id="locationVerificationStatus">
+            <span class="location-status location-status-pending" id="locationVerificationStatus" role="status">
               <i class="bi bi-dash-circle-fill"></i>
-              Not verified
+              UNVERIFIED
             </span>
           </div>
           <div class="location-feedback" id="locationVerificationMessage" aria-live="polite">
             Verify the address before saving this report.
           </div>
+          <section class="location-candidates" id="locationCandidates" aria-labelledby="locationCandidatesTitle" hidden>
+            <div>
+              <strong id="locationCandidatesTitle">Choose the matching location</strong>
+              <span>Confirm the correct result before it is treated as verified.</span>
+            </div>
+            <div class="location-candidate-list" id="locationCandidateList" role="list"></div>
+          </section>
+          <section class="verified-location-card" id="verifiedLocationCard" tabindex="-1" aria-label="Verified incident location" <%= locationVerified ? '' : 'hidden' %>>
+            <div class="verified-location-heading">
+              <span class="verified-location-icon"><i class="bi bi-geo-alt-fill"></i></span>
+              <div>
+                <small>Verified incident location</small>
+                <strong id="verifiedLocationName"><%= form.verifiedLocationLabel || form.incidentLocation || report.location %></strong>
+              </div>
+            </div>
+            <p id="verifiedLocationAddress"><%= form.verifiedLocationLabel || form.incidentLocation || report.location %></p>
+          </section>
           <div class="location-preview-map" id="locationPreviewMap" <%= locationVerified ? '' : 'hidden' %>></div>
           <p class="helper-text location-coordinate-readout" id="locationCoordinateReadout" <%= locationVerified ? '' : 'hidden' %>>
             Coordinates: <span><%= form.latitude || '' %>, <%= form.longitude || '' %></span>

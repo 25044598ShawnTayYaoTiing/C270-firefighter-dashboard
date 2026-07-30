@@ -120,10 +120,11 @@ function mapIncident(row) {
   const reportingOfficerRole = row.officer_role || '';
   const completion = calculateCompletion({
     location: row.location,
-    locationVerified: hasValidCoordinates({
-      latitude: row.latitude,
-      longitude: row.longitude
-    }),
+    locationVerified: responseStatus !== 'Draft'
+      && hasValidCoordinates({
+        latitude: row.latitude,
+        longitude: row.longitude
+      }),
     type: row.incident_type,
     dateTime: row.incident_datetime,
     summary: row.incident_summary,

@@ -6,8 +6,9 @@ const {
   INCIDENT_TYPES
 } = require('../config/application');
 const {
-  resolveIncidentCoordinates
-} = require('../helpers/geocodingService');
+  LocationVerificationError,
+  verifyLocationQuery
+} = require('../helpers/locationVerificationService');
 const {
   calculateCompletion,
   hasMeaningfulValue,
@@ -155,6 +156,10 @@ function buildCreateCompletion(formData = {}) {
 }
 
 function buildEditFormData(report) {
+  const hasPersistedVerifiedLocation = report.status !== 'Draft'
+    && report.latitude !== null
+    && report.longitude !== null;
+
   return {
     reportingOfficerId: report.reportingOfficerId || '',
     transcript: report.transcriptInput || '',
@@ -169,9 +174,9 @@ function buildEditFormData(report) {
     officerNotes: report.officerNotes === 'None.' ? '' : report.officerNotes || '',
     latitude: report.latitude === null || report.latitude === undefined ? '' : String(report.latitude),
     longitude: report.longitude === null || report.longitude === undefined ? '' : String(report.longitude),
-    locationVerified: report.latitude !== null && report.longitude !== null ? 'true' : '',
-    locationVerificationSource: report.latitude !== null && report.longitude !== null ? 'existing-coordinates' : '',
-    verifiedLocationLabel: report.location || ''
+    locationVerified: hasPersistedVerifiedLocation ? 'true' : '',
+    locationVerificationSource: hasPersistedVerifiedLocation ? 'existing-coordinates' : '',
+    verifiedLocationLabel: hasPersistedVerifiedLocation ? report.location || '' : ''
   };
 }
 
@@ -451,48 +456,38 @@ exports.verifyLocation = async (req, res) => {
     ? req.body.location.trim()
     : '';
 
-  if (!location) {
-    return res.status(400).json({
-      success: false,
-      error: 'Please enter the incident location before verifying.'
-    });
-  }
-
   try {
-    const coordinates = await resolveIncidentCoordinates({
-      location,
-      summary: req.body.incidentSummary,
-      transcript: req.body.transcript
-    });
+    const result = await verifyLocationQuery(location);
 
-    if (!coordinates) {
-      return res.status(404).json({
-        success: false,
-        error: 'Unable to verify this location. Please check the address and try again.'
-      });
-    }
-
-    const validation = validateCoordinatePair(coordinates.lat, coordinates.lng);
-
-    if (!validation.valid) {
-      return res.status(422).json({
-        success: false,
-        error: validation.message
+    if (!result.verified) {
+      return res.json({
+        success: true,
+        verified: false,
+        requiresSelection: true,
+        normalizedQuery: result.normalizedQuery,
+        candidates: result.candidates
       });
     }
 
     return res.json({
       success: true,
+      verified: true,
+      requiresSelection: false,
       location,
-      resolvedLocation: coordinates.address
-        || coordinates.searchValue
-        || coordinates.area
-        || location,
-      latitude: validation.latitude,
-      longitude: validation.longitude,
-      source: coordinates.source || 'resolver'
+      resolvedLocation: result.verifiedLocation.address,
+      latitude: result.verifiedLocation.latitude,
+      longitude: result.verifiedLocation.longitude,
+      source: result.verifiedLocation.source
     });
   } catch (error) {
+    if (error instanceof LocationVerificationError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        code: error.code,
+        error: error.message
+      });
+    }
+
     return res.status(500).json({
       success: false,
       error: 'Location verification failed. Please try again.'

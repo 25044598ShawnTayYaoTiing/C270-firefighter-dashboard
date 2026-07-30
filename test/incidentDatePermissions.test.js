@@ -180,6 +180,31 @@ test('AI draft responses cannot supply the incident timestamp', { concurrency: f
   }
 });
 
+test('a persisted AI draft with inferred coordinates still reopens unverified', { concurrency: false }, async () => {
+  const originalGet = incidentModel.getIncidentByIncidentId;
+  incidentModel.getIncidentByIncidentId = async () => ({
+    incident_id: 'INC-AI-DRAFT',
+    incident_type: 'Residential Fire',
+    location: '263 Compassvale Street',
+    incident_datetime: new Date(),
+    incident_summary: 'AI-generated draft awaiting officer review.',
+    response_status: 'Draft',
+    reporting_officer_id: 7,
+    latitude: 1.3901,
+    longitude: 103.8981
+  });
+  const res = validationResponse();
+
+  try {
+    await incidentController.showEditReport(requestFor(ROLES.NORMAL), res, assert.fail);
+    assert.equal(res.renderedData.formData.incidentLocation, '263 Compassvale Street');
+    assert.equal(res.renderedData.formData.locationVerified, '');
+    assert.equal(res.renderedData.formData.verifiedLocationLabel, '');
+  } finally {
+    incidentModel.getIncidentByIncidentId = originalGet;
+  }
+});
+
 test('create rejects whitespace-only mandatory fields before saving', { concurrency: false }, async () => {
   const originalCreate = incidentModel.createIncident;
   let createCalled = false;

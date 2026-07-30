@@ -21,6 +21,13 @@ class OneMapAuthError extends Error {
   }
 }
 
+class OneMapServiceError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'OneMapServiceError';
+  }
+}
+
 function getOneMapBaseUrl() {
   return (process.env.ONEMAP_BASE_URL || 'https://www.onemap.gov.sg').replace(/\/$/, '');
 }
@@ -143,8 +150,10 @@ function isAuthError(response, data) {
     || message.includes('invalid token');
 }
 
-function getValidResultCoordinates(data) {
+function getValidResultCandidates(data) {
   const results = Array.isArray(data.results) ? data.results : [];
+  const seen = new Set();
+  const candidates = [];
 
   for (const result of results) {
     const latitude = Number(result.LATITUDE);
@@ -153,20 +162,47 @@ function getValidResultCoordinates(data) {
     if (Number.isFinite(latitude)
       && Number.isFinite(longitude)
       && isSingaporeCoordinate(latitude, longitude)) {
-      return {
-        lat: latitude,
-        lng: longitude,
+      const address = normalizeSearchText(
+        result.ADDRESS
+        || [
+          result.BLK_NO,
+          result.ROAD_NAME,
+          result.BUILDING,
+          result.POSTAL ? `Singapore ${result.POSTAL}` : ''
+        ].filter(Boolean).join(' ')
+      );
+      const name = normalizeSearchText(
+        result.SEARCHVAL
+        || result.BUILDING
+        || [result.BLK_NO, result.ROAD_NAME].filter(Boolean).join(' ')
+        || address
+      );
+      const dedupeKey = [
+        latitude.toFixed(6),
+        longitude.toFixed(6),
+        address.toLowerCase()
+      ].join('|');
+
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      candidates.push({
+        id: dedupeKey,
+        name,
+        address: address || name,
+        postalCode: normalizeSearchText(result.POSTAL),
+        latitude,
+        longitude,
         source: 'onemap',
-        address: result.ADDRESS || result.SEARCHVAL || '',
-        searchValue: result.SEARCHVAL || ''
-      };
+        searchValue: name
+      });
     }
   }
 
-  return null;
+  return candidates.slice(0, 5);
 }
 
-async function requestOneMapSearch(searchText, token) {
+async function requestOneMapCandidates(searchText, token) {
   const url = new URL(`${getOneMapBaseUrl()}/api/common/elastic/search`);
   url.searchParams.set('searchVal', searchText);
   url.searchParams.set('returnGeom', 'Y');
@@ -184,32 +220,62 @@ async function requestOneMapSearch(searchText, token) {
     throw new OneMapAuthError('OneMap token was rejected.');
   }
 
-  if (!response.ok) return null;
+  if (!response.ok) {
+    throw new OneMapServiceError('OneMap location search failed.');
+  }
 
-  return getValidResultCoordinates(data);
+  if (!Array.isArray(data.results)) {
+    throw new OneMapServiceError('OneMap returned an invalid location response.');
+  }
+
+  return getValidResultCandidates(data);
 }
 
-async function searchOneMapLocation(searchText) {
+async function searchOneMapCandidates(searchText) {
   const normalizedSearchText = normalizeSearchText(searchText);
-  if (!normalizedSearchText || !hasOneMapCredentials()) return null;
+
+  if (!normalizedSearchText) return [];
+
+  if (!hasOneMapCredentials()) {
+    throw new OneMapServiceError('OneMap credentials are not configured.');
+  }
 
   let token = await getOneMapToken();
-  if (!token) return null;
+  if (!token) {
+    throw new OneMapServiceError('OneMap authentication failed.');
+  }
 
   try {
-    return await requestOneMapSearch(normalizedSearchText, token);
+    return await requestOneMapCandidates(normalizedSearchText, token);
   } catch (error) {
-    if (!(error instanceof OneMapAuthError)) return null;
+    if (!(error instanceof OneMapAuthError)) throw error;
 
     clearCachedOneMapToken();
     token = await getOneMapToken();
-    if (!token) return null;
-
-    try {
-      return await requestOneMapSearch(normalizedSearchText, token);
-    } catch (retryError) {
-      return null;
+    if (!token) {
+      throw new OneMapServiceError('OneMap authentication failed.');
     }
+
+    return requestOneMapCandidates(normalizedSearchText, token);
+  }
+}
+
+async function searchOneMapLocation(searchText) {
+  try {
+    const candidates = await searchOneMapCandidates(searchText);
+    const candidate = candidates[0];
+
+    if (!candidate) return null;
+
+    return {
+      address: candidate.address,
+      lat: candidate.latitude,
+      lng: candidate.longitude,
+      searchValue: candidate.searchValue,
+      source: candidate.source
+    };
+  } catch (error) {
+    return null;
   }
 }
 
@@ -242,5 +308,9 @@ async function resolveIncidentCoordinates(incident) {
 }
 
 module.exports = {
-  resolveIncidentCoordinates
+  resolveIncidentCoordinates,
+  searchOneMapCandidates,
+  _private: {
+    getValidResultCandidates
+  }
 };

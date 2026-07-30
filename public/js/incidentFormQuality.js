@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     { name: 'injuredPersons', message: 'Confirm that no injured or trapped persons were reported or enter the details.' }
   ];
   const controls = {
+    component: document.querySelector('[data-location-verification]'),
     locationInput: form.elements.incidentLocation,
     latitudeInput: form.elements.latitude,
     longitudeInput: form.elements.longitude,
@@ -29,13 +30,24 @@ document.addEventListener('DOMContentLoaded', () => {
     verifyButton: document.getElementById('verifyLocationButton'),
     status: document.getElementById('locationVerificationStatus'),
     message: document.getElementById('locationVerificationMessage'),
+    candidates: document.getElementById('locationCandidates'),
+    candidateList: document.getElementById('locationCandidateList'),
+    verifiedCard: document.getElementById('verifiedLocationCard'),
+    verifiedName: document.getElementById('verifiedLocationName'),
+    verifiedAddress: document.getElementById('verifiedLocationAddress'),
     previewMap: document.getElementById('locationPreviewMap'),
     coordinateReadout: document.getElementById('locationCoordinateReadout'),
     errorSummary: form.querySelector('[data-form-error-summary]'),
   };
+  const locationVerification = window.LocationVerification;
+  const verificationState = locationVerification
+    ? locationVerification.createVerificationState()
+    : null;
   let verifiedAddress = normalizeText(controls.locationInput ? controls.locationInput.value : '');
   let locationMap = null;
   let locationMarker = null;
+  let locationMapResizeObserver = null;
+  let activeLocationRequest = null;
   let submitting = false;
 
   setupLocationVerification();
@@ -43,11 +55,17 @@ document.addEventListener('DOMContentLoaded', () => {
   initializeVerifiedLocation();
 
   function setupLocationVerification() {
-    if (!controls.locationInput || !controls.verifyButton) return;
+    if (!controls.locationInput || !controls.verifyButton || !verificationState) return;
 
     controls.verifyButton.addEventListener('click', verifyLocation);
     controls.locationInput.addEventListener('input', () => {
-      if (isLocationVerified() && normalizeText(controls.locationInput.value) !== verifiedAddress) {
+      const currentState = verificationState.getSnapshot().status;
+      const locationChanged = normalizeText(controls.locationInput.value) !== verifiedAddress;
+
+      if (locationChanged && (
+        isLocationVerified()
+        || currentState !== locationVerification.STATES.UNVERIFIED
+      )) {
         resetLocationVerification('Location changed. Verify the updated address before saving.');
       }
     });
@@ -106,12 +124,16 @@ document.addEventListener('DOMContentLoaded', () => {
         ? controls.verifiedLocationLabelInput.value
         : controls.locationInput.value;
 
-      setVerifiedLocation({
+      const initialLocation = {
+        address: label,
         latitude,
         longitude,
-        label,
+        name: label,
         source: controls.locationSourceInput ? controls.locationSourceInput.value : 'existing-coordinates'
-      }, 'Location verified');
+      };
+      const requestVersion = verificationState.beginSearch(controls.locationInput.value);
+      verificationState.verify(requestVersion, controls.locationInput.value, initialLocation);
+      setVerifiedLocation(initialLocation, 'Verified location');
       return;
     }
 
@@ -120,18 +142,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function verifyLocation() {
     const location = controls.locationInput.value.trim();
+    const validation = locationVerification.validateLocationQuery(location);
 
-    if (!location) {
-      setFieldError('incidentLocation', 'Please enter the incident location.');
-      setLocationStatus('failed', 'Unable to verify');
-      setLocationMessage('Please enter the incident location before verifying.');
+    if (!validation.valid) {
+      setFieldError('incidentLocation', validation.message);
+      resetLocationVerification(validation.message, { failed: true });
       controls.locationInput.focus();
       return;
     }
 
-    controls.verifyButton.disabled = true;
-    setLocationStatus('checking', 'Verifying...');
-    setLocationMessage('Checking the location against the configured geocoding service.');
+    abortLocationRequest();
+    const requestVersion = verificationState.beginSearch(location);
+    const controller = new AbortController();
+    activeLocationRequest = {
+      controller,
+      requestVersion
+    };
+    clearVerifiedLocationFields();
+    clearLocationCandidates();
+    renderLocationState('Searching OneMap for matching Singapore locations.');
 
     try {
       const response = await fetch(window.apiUrl('/api/locations/verify'), {
@@ -140,32 +169,78 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: {
           'Content-Type': 'application/json'
         },
+        signal: controller.signal,
         body: JSON.stringify({
-          location,
-          incidentSummary: getFieldValue('incidentSummary'),
-          transcript: getFieldValue('transcript')
+          location
         })
       });
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Unable to verify this location.');
       }
 
-      setVerifiedLocation({
+      if (!verificationState.isCurrentRequest(requestVersion, location)) return;
+
+      if (data.verified === false) {
+        if (!Array.isArray(data.candidates)) {
+          throw new Error('Location verification returned an invalid response. Please try again.');
+        }
+
+        const candidates = data.candidates.filter((candidate) => (
+          candidate
+          && isValidOperationalCoordinate(
+            getNumber(candidate.latitude),
+            getNumber(candidate.longitude)
+          )
+        ));
+
+        if (candidates.length === 0) {
+          throw new Error('No valid Singapore location candidates were returned.');
+        }
+
+        verificationState.showCandidates(requestVersion, location, candidates);
+        renderLocationCandidates(candidates);
+        renderLocationState('Select the matching location. No candidate is verified until you choose it.');
+        clearFieldError('incidentLocation');
+        return;
+      }
+
+      if (data.verified !== true || !isValidOperationalCoordinate(
+        getNumber(data.latitude),
+        getNumber(data.longitude)
+      )) {
+        throw new Error('Location verification returned an invalid response. Please try again.');
+      }
+
+      const verifiedLocation = {
+        address: data.resolvedLocation || location,
         latitude: data.latitude,
         longitude: data.longitude,
-        label: data.resolvedLocation || location,
+        name: data.resolvedLocation || location,
         source: data.source || 'resolver'
-      }, 'Location verified');
+      };
+
+      if (!verificationState.verify(requestVersion, location, verifiedLocation)) return;
+      setVerifiedLocation(verifiedLocation, 'Verified location');
       clearFieldError('incidentLocation');
     } catch (error) {
-      resetLocationVerification(error.message || 'Unable to verify this location. Please check the address and try again.', {
-        failed: true
-      });
-      setFieldError('incidentLocation', 'Unable to verify this location. Please check the address.');
+      if (error.name === 'AbortError') return;
+      if (!verificationState.isCurrentRequest(requestVersion, location)) return;
+
+      const safeMessage = error instanceof TypeError
+        ? 'Location verification is temporarily unavailable. Check your connection and try again.'
+        : error.message || 'Unable to verify this location. Please check the address and try again.';
+      verificationState.fail(requestVersion, location, safeMessage);
+      clearVerifiedLocationFields();
+      clearLocationCandidates();
+      renderLocationState(safeMessage);
+      setFieldError('incidentLocation', safeMessage);
     } finally {
-      controls.verifyButton.disabled = false;
+      if (activeLocationRequest && activeLocationRequest.requestVersion === requestVersion) {
+        activeLocationRequest = null;
+        renderLocationState();
+      }
     }
   }
 
@@ -185,27 +260,35 @@ document.addEventListener('DOMContentLoaded', () => {
     controls.longitudeInput.value = longitude.toFixed(7);
     controls.locationVerifiedInput.value = 'true';
     controls.locationSourceInput.value = result.source || 'verified';
-    controls.verifiedLocationLabelInput.value = result.label || controls.locationInput.value;
+    controls.verifiedLocationLabelInput.value = result.address
+      || result.name
+      || controls.locationInput.value;
     dispatchLocationVerificationUpdate();
 
-    setLocationStatus('verified', message || 'Location verified');
-    setLocationMessage(`${controls.verifiedLocationLabelInput.value}`);
+    clearLocationCandidates();
+    showVerifiedLocationCard({
+      ...result,
+      latitude,
+      longitude
+    });
+    renderLocationState(message || 'This location is verified and ready to save.');
     showCoordinateReadout(latitude, longitude);
     showPreviewMap(latitude, longitude);
   }
 
   function resetLocationVerification(message, options = {}) {
-    if (controls.locationVerifiedInput) controls.locationVerifiedInput.value = '';
-    if (controls.locationSourceInput) controls.locationSourceInput.value = '';
-    if (controls.verifiedLocationLabelInput) controls.verifiedLocationLabelInput.value = '';
-    if (controls.latitudeInput) controls.latitudeInput.value = '';
-    if (controls.longitudeInput) controls.longitudeInput.value = '';
-    dispatchLocationVerificationUpdate();
-    if (controls.coordinateReadout) controls.coordinateReadout.hidden = true;
-    if (controls.previewMap) controls.previewMap.hidden = true;
+    abortLocationRequest();
+    clearVerifiedLocationFields();
+    clearLocationCandidates();
 
-    setLocationStatus(options.failed ? 'failed' : 'pending', options.failed ? 'Verification failed' : 'Not verified');
-    setLocationMessage(message || 'Verify the address before saving this report.');
+    if (options.failed) {
+      const requestVersion = verificationState.beginSearch(controls.locationInput.value);
+      verificationState.fail(requestVersion, controls.locationInput.value, message);
+    } else {
+      verificationState.invalidate(controls.locationInput.value);
+    }
+
+    renderLocationState(message || 'Verify the address before saving this report.');
   }
 
   function showPreviewMap(latitude, longitude) {
@@ -234,20 +317,16 @@ document.addEventListener('DOMContentLoaded', () => {
         attribution: '&copy; OpenStreetMap contributors'
       }).addTo(locationMap);
 
-      locationMap.on('click', (event) => {
-        updateManualLocation(event.latlng.lat, event.latlng.lng);
-      });
+      if (window.ResizeObserver) {
+        locationMapResizeObserver = new ResizeObserver(() => {
+          if (!controls.previewMap.hidden) locationMap.invalidateSize();
+        });
+        locationMapResizeObserver.observe(controls.previewMap);
+      }
     }
 
     if (!locationMarker) {
-      locationMarker = L.marker([latitude, longitude], {
-        draggable: true
-      }).addTo(locationMap);
-
-      locationMarker.on('dragend', () => {
-        const latLng = locationMarker.getLatLng();
-        updateManualLocation(latLng.lat, latLng.lng);
-      });
+      locationMarker = L.marker([latitude, longitude]).addTo(locationMap);
     }
 
     locationMarker.setLatLng([latitude, longitude]);
@@ -255,19 +334,142 @@ document.addEventListener('DOMContentLoaded', () => {
     window.setTimeout(() => locationMap.invalidateSize(), 80);
   }
 
-  function updateManualLocation(latitude, longitude) {
-    if (!isValidOperationalCoordinate(latitude, longitude)) {
-      setLocationStatus('failed', 'Verification failed');
-      setLocationMessage('Selected coordinates must remain within the Singapore operational map boundary.');
-      return;
+  function renderLocationCandidates(candidates) {
+    if (!controls.candidates || !controls.candidateList) return;
+
+    controls.candidateList.replaceChildren();
+
+    candidates.forEach((candidate, index) => {
+      const item = document.createElement('div');
+      const button = document.createElement('button');
+      const name = document.createElement('strong');
+      const address = document.createElement('span');
+      const coordinates = document.createElement('small');
+
+      button.type = 'button';
+      button.className = 'location-candidate';
+      button.setAttribute('aria-label', `Select ${candidate.name || candidate.address}`);
+      item.setAttribute('role', 'listitem');
+      name.textContent = candidate.name || candidate.address;
+      address.textContent = candidate.address || candidate.name;
+      coordinates.textContent = candidate.postalCode
+        ? `Singapore ${candidate.postalCode}`
+        : `Candidate ${index + 1}`;
+      button.append(name, address, coordinates);
+      button.addEventListener('click', () => {
+        if (!verificationState.selectCandidate(candidate)) return;
+
+        setVerifiedLocation(candidate, 'Officer-selected location verified.');
+        clearFieldError('incidentLocation');
+        if (controls.verifiedCard) controls.verifiedCard.focus({ preventScroll: true });
+      });
+      item.appendChild(button);
+      controls.candidateList.appendChild(item);
+    });
+
+    controls.candidates.hidden = false;
+  }
+
+  function clearLocationCandidates() {
+    if (controls.candidateList) controls.candidateList.replaceChildren();
+    if (controls.candidates) controls.candidates.hidden = true;
+  }
+
+  function showVerifiedLocationCard(result) {
+    if (!controls.verifiedCard) return;
+
+    controls.verifiedCard.hidden = false;
+    if (controls.verifiedName) {
+      controls.verifiedName.textContent = result.name || result.address || controls.locationInput.value;
+    }
+    if (controls.verifiedAddress) {
+      controls.verifiedAddress.textContent = result.address || result.name || controls.locationInput.value;
+    }
+  }
+
+  function clearVerifiedLocationFields() {
+    if (controls.locationVerifiedInput) controls.locationVerifiedInput.value = '';
+    if (controls.locationSourceInput) controls.locationSourceInput.value = '';
+    if (controls.verifiedLocationLabelInput) controls.verifiedLocationLabelInput.value = '';
+    if (controls.latitudeInput) controls.latitudeInput.value = '';
+    if (controls.longitudeInput) controls.longitudeInput.value = '';
+    if (controls.verifiedCard) controls.verifiedCard.hidden = true;
+    if (controls.coordinateReadout) controls.coordinateReadout.hidden = true;
+    if (controls.previewMap) controls.previewMap.hidden = true;
+
+    if (locationMarker && locationMap) {
+      locationMap.removeLayer(locationMarker);
+      locationMarker = null;
     }
 
-    setVerifiedLocation({
-      latitude,
-      longitude,
-      label: controls.verifiedLocationLabelInput.value || controls.locationInput.value,
-      source: 'manual-map'
-    }, 'Location confirmed');
+    dispatchLocationVerificationUpdate();
+  }
+
+  function abortLocationRequest() {
+    if (!activeLocationRequest) return;
+
+    activeLocationRequest.controller.abort();
+    activeLocationRequest = null;
+  }
+
+  function renderLocationState(message) {
+    const snapshot = verificationState.getSnapshot();
+    const statePresentation = {
+      [locationVerification.STATES.UNVERIFIED]: {
+        className: 'pending',
+        icon: 'bi-dash-circle-fill',
+        label: 'UNVERIFIED',
+        message: 'Verify the address before saving this report.'
+      },
+      [locationVerification.STATES.SEARCHING]: {
+        className: 'checking',
+        icon: 'bi-hourglass-split',
+        label: 'SEARCHING',
+        message: 'Searching OneMap for matching Singapore locations.'
+      },
+      [locationVerification.STATES.CANDIDATES]: {
+        className: 'candidates',
+        icon: 'bi-list-check',
+        label: 'CANDIDATES',
+        message: 'Select the correct matching location.'
+      },
+      [locationVerification.STATES.VERIFIED]: {
+        className: 'verified',
+        icon: 'bi-check-circle-fill',
+        label: 'VERIFIED',
+        message: 'This location is verified and ready to save.'
+      },
+      [locationVerification.STATES.ERROR]: {
+        className: 'failed',
+        icon: 'bi-exclamation-triangle-fill',
+        label: 'ERROR',
+        message: snapshot.message || 'Location verification failed.'
+      }
+    };
+    const presentation = statePresentation[snapshot.status];
+
+    if (controls.component) controls.component.dataset.state = snapshot.status;
+    if (controls.status) {
+      controls.status.className = `location-status location-status-${presentation.className}`;
+      controls.status.innerHTML = `<i class="bi ${presentation.icon}"></i>${presentation.label}`;
+    }
+    if (controls.message) controls.message.textContent = message || presentation.message;
+    if (controls.verifyButton) {
+      controls.verifyButton.disabled = [
+        locationVerification.STATES.SEARCHING,
+        locationVerification.STATES.VERIFIED
+      ].includes(snapshot.status);
+
+      if (snapshot.status === locationVerification.STATES.SEARCHING) {
+        controls.verifyButton.innerHTML = '<span class="location-spinner" aria-hidden="true"></span>Verifying...';
+      } else if (snapshot.status === locationVerification.STATES.VERIFIED) {
+        controls.verifyButton.innerHTML = '<i class="bi bi-check2"></i>Verified';
+      } else if (snapshot.status === locationVerification.STATES.CANDIDATES) {
+        controls.verifyButton.innerHTML = '<i class="bi bi-arrow-repeat"></i>Search Again';
+      } else {
+        controls.verifyButton.innerHTML = '<i class="bi bi-crosshair"></i>Verify Location';
+      }
+    }
   }
 
   function validateForm() {
@@ -368,22 +570,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!isLocationVerified()) {
       setFieldError('incidentLocation', 'Verify the incident location before saving.');
-      setLocationStatus('failed', 'Verification required');
-      setLocationMessage('Verify the incident location before saving.');
+      resetLocationVerification('Verify the incident location before saving.', {
+        failed: true
+      });
       return false;
     }
 
     if (!isValidCoordinateRange(latitude, longitude)) {
       setFieldError('incidentLocation', 'Latitude must be between -90 and 90, and longitude must be between -180 and 180.');
-      setLocationStatus('failed', 'Verification failed');
-      setLocationMessage('Verified coordinates are invalid.');
+      resetLocationVerification('Verified coordinates are invalid.', {
+        failed: true
+      });
       return false;
     }
 
     if (!isWithinSingaporeBounds(latitude, longitude)) {
       setFieldError('incidentLocation', 'The verified coordinates must be within the Singapore operational map boundary.');
-      setLocationStatus('failed', 'Verification failed');
-      setLocationMessage('Selected coordinates are outside the Singapore operational map boundary.');
+      resetLocationVerification('Selected coordinates are outside the Singapore operational map boundary.', {
+        failed: true
+      });
       return false;
     }
 
@@ -452,26 +657,6 @@ document.addEventListener('DOMContentLoaded', () => {
     controls.locationVerifiedInput.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  function setLocationStatus(state, text) {
-    if (!controls.status) return;
-
-    const icon = {
-      checking: 'bi-hourglass-split',
-      failed: 'bi-exclamation-triangle-fill',
-      pending: 'bi-dash-circle-fill',
-      verified: 'bi-check-circle-fill'
-    }[state] || 'bi-dash-circle-fill';
-
-    controls.status.className = `location-status location-status-${state}`;
-    controls.status.innerHTML = `<i class="bi ${icon}"></i>${escapeHtml(text)}`;
-  }
-
-  function setLocationMessage(message) {
-    if (controls.message) {
-      controls.message.textContent = message;
-    }
-  }
-
   function showCoordinateReadout(latitude, longitude) {
     if (!controls.coordinateReadout) return;
 
@@ -524,11 +709,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return controls.locationVerifiedInput && controls.locationVerifiedInput.value === 'true';
   }
 
-  function getFieldValue(name) {
-    const input = form.elements[name];
-    return input ? input.value.trim() : '';
-  }
-
   function getNumber(value) {
     const number = Number(value);
     return Number.isFinite(number) ? number : NaN;
@@ -564,12 +744,4 @@ document.addEventListener('DOMContentLoaded', () => {
     return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
   }
 
-  function escapeHtml(value) {
-    return String(value || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
 });
