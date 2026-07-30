@@ -4,7 +4,7 @@
 
 The Firefighter Smart Incident Dashboard is an SCDF-inspired school prototype for emergency incident reporting. It helps users capture emergency call information, clean raw transcripts, generate AI-assisted incident report drafts, review and edit report details, save reports to MySQL, and monitor operational records through dashboard, reports, map, and analytics pages.
 
-The project uses Node.js, Express.js, EJS, CSS, JavaScript, MySQL, Gemini Flash, RealtimeSTT, Leaflet, and OpenStreetMap.
+The project uses Node.js, Express.js, EJS, CSS, JavaScript, MySQL, Gemini Flash, Google Cloud Speech-to-Text V1, Leaflet, and OpenStreetMap.
 
 ## Problem Statement
 
@@ -33,7 +33,7 @@ Prototype Users
 -> Railway MySQL using incidents and officers tables
 
 Backend/API container -> Gemini API
-Backend/API container -> optional external RealtimeSTT service
+Backend/API container -> Google Cloud Speech-to-Text V1 using Application Default Credentials
 ```
 
 The UI gateway is intentionally a reverse proxy rather than a new SPA. Existing EJS views, form actions, browser API calls, sessions, map assets, AI flows, and report-completion behavior stay intact while the sensitive database and Gemini configuration remains in the backend container.
@@ -41,7 +41,7 @@ The UI gateway is intentionally a reverse proxy rather than a new SPA. Existing 
 Supporting services:
 
 - Gemini Flash for AI transcript cleanup and AI-assisted incident draft generation
-- RealtimeSTT for the live speech-to-text proof-of-concept
+- Google Cloud Speech-to-Text V1 for microphone transcription
 - Leaflet and OpenStreetMap for live incident map visualisation
 - OneMap, when configured, for Singapore coordinate lookup
 
@@ -77,15 +77,15 @@ Dashboard values are recalculated from MySQL whenever the page reloads. The data
 
 ![Live Call Intake](docs/images/live-call-intake.png)
 
-The Live Call Intake page supports a RealtimeSTT speech-to-text proof-of-concept and a manual transcript fallback. It includes:
+The Live Call Intake page records a short microphone clip as mono PCM16, sends it to the authenticated backend, and displays the Google Speech-to-Text V1 result. It also supports manual transcript entry.
 
-- Live Transcript for the latest speech segment
+- Recording/transcription progress for the current clip
 - Full Transcript for committed transcript text
 - Clean Transcript Text for AI-cleaned output
 - Send Raw Transcript to move raw text into Create Report
 - Send Clean Transcript to move reviewed cleaned text into Create Report
 
-If RealtimeSTT is unavailable, users can paste transcript text manually.
+If Speech-to-Text is unavailable, users can paste transcript text manually.
 
 ### AI-Assisted Transcript Cleanup
 
@@ -207,7 +207,7 @@ GET /api/incidents?status=Completed&search=vehicle
 | Backend | Node.js, Express.js |
 | Database | MySQL |
 | AI | Gemini Flash |
-| Speech-to-Text | RealtimeSTT |
+| Speech-to-Text | Google Cloud Speech-to-Text V1 |
 | Map | Leaflet + OpenStreetMap |
 | Version Control | GitHub |
 
@@ -259,7 +259,7 @@ Follow these steps when setting up the project from zero on Windows.
 - MySQL running locally or reachable from this machine
 - Gemini API key for AI cleanup and report drafting
 - PowerShell on Windows
-- RealtimeSTT only if live speech-to-text is needed
+- Google Cloud project plus Application Default Credentials for microphone transcription
 - Docker Desktop with Docker Compose for the containerised local stack
 
 ### 1. Open the Project Folder
@@ -393,11 +393,11 @@ Open:
 http://localhost:3000
 ```
 
-RealtimeSTT is not required if you are using manual transcript input.
+Google Speech-to-Text requires `GOOGLE_CLOUD_PROJECT` and Application Default Credentials; manual transcript input remains available when it is not configured.
 
 ### Run the Complete Local Stack with Docker Compose
 
-The dashboard Compose file runs exactly two application containers: `frontend` (Nginx UI gateway) and `backend` (Node.js/Express). Railway MySQL and Gemini stay external and are not containerised. RealtimeSTT also remains an optional external service so this refactor does not add a third application container or remove live transcription support.
+The dashboard Compose file runs exactly two application containers: `frontend` (Nginx UI gateway) and `backend` (Node.js/Express). Railway MySQL, Gemini, and Google Speech-to-Text remain external and are not containerised.
 
 Copy `.env.example` to `.env`, then enter private Railway and session values only in `.env`. Never commit that file.
 
@@ -409,33 +409,25 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Open `http://localhost:3000`, sign in, test Clean Transcript on Live Call Intake, Generate AI Report on Create Report, and Start Transcription if an external RealtimeSTT service is ready.
+Open `http://localhost:3000`, sign in, record a short clip on Live Call Intake, test Clean Transcript, and generate an AI report on Create Report.
 
 Use these values for the supported execution modes:
 
 ```env
-# Backend container running in Docker Compose
+# Backend container or Node.js running directly on the host
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-3.5-flash-lite
-REALTIME_STT_HEALTH_URL=http://host.docker.internal:8010/health
-# Blank makes the browser use the dashboard hostname on port 8010.
-REALTIME_STT_WS_URL=
-
-# Node.js running directly on the host
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash-lite
-REALTIME_STT_HEALTH_URL=http://127.0.0.1:8010/health
-REALTIME_STT_WS_URL=
+GOOGLE_CLOUD_PROJECT=project-1e4380d5-44ee-49d4-b26
 ```
 
-Inside Docker, Node.js calls Gemini through the Gemini API and checks an externally run RealtimeSTT service at `http://host.docker.internal:8010/health` by default. The browser cannot resolve Docker service names, so it connects to `ws://<dashboard-hostname>:8010/ws/transcribe` (or `wss://` when the dashboard uses HTTPS). This works with `localhost` and later with the laptop's LAN address without hard-coding an IP. Start RealtimeSTT separately when live speech-to-text is needed; manual transcript entry remains available without it.
+Inside Docker, Node.js calls Gemini and Google Speech-to-Text. Use the optional `docker-compose.gcp.yml` overlay to mount an existing ADC file read-only; never copy credentials into the image.
 
 Useful checks:
 
 ```powershell
 docker compose ps
 docker compose logs --tail 100 frontend backend
-Invoke-RestMethod http://localhost:8010/health
+Invoke-RestMethod http://localhost:3001/health
 ```
 
 Stop or restart without deleting model volumes:
@@ -447,7 +439,7 @@ docker compose restart
 docker compose down
 ```
 
-If Gemini is unavailable or not configured, cleanup preserves the original transcript and report generation supplies a conservative editable fallback. If RealtimeSTT stops, manual transcript entry remains available. The application and Railway-backed non-AI features continue running.
+If Gemini is unavailable or not configured, cleanup preserves the original transcript and report generation supplies a conservative editable fallback. If Google Speech-to-Text is unavailable, manual transcript entry remains available.
 
 ## DevSecOps pipeline
 
@@ -519,21 +511,13 @@ WHERE officer_role IS NULL OR officer_role IN ('Officer', 'Normal Officer');
 
 Run only the `ALTER TABLE` statements for columns that do not already exist. Passwords continue to use bcrypt hashes in `password_hash`; account forms never store plain-text passwords.
 
-### 8. Run RealtimeSTT Only If Live Speech-to-Text Is Needed
-
-```powershell
-cd C:\Users\goati\Downloads\RealtimeSTT
-.\.venv-fastapi\Scripts\Activate.ps1
-python example_fastapi_server\server.py --host 127.0.0.1 --port 8010 --engine faster_whisper --model medium.en --realtime-model tiny.en --language en
-```
-
-### 9. Run the Full Demo
+### 8. Run the Full Demo
 
 ```powershell
 npm run demo
 ```
 
-The demo launcher opens the dashboard and RealtimeSTT in separate PowerShell windows, opens the dashboard in your browser, and checks that Gemini AI is configured. It does not start MySQL.
+The demo launcher opens the dashboard in a PowerShell window and opens the browser. It does not start MySQL or configure Google credentials.
 
 ## Environment Variables
 
@@ -554,16 +538,15 @@ The dashboard reads local configuration from `.env`. Keep this file in the proje
 | `GEMINI_API_KEY` | Private Gemini API key used by the backend only |
 | `GEMINI_MODEL` | Gemini Flash model used for cleanup and draft generation |
 | `GEMINI_TIMEOUT_MS` | Optional per-attempt Gemini timeout in milliseconds; defaults to `30000` |
+| `GOOGLE_CLOUD_PROJECT` | Google Cloud project used by Speech-to-Text V1 through ADC |
 | `ONEMAP_EMAIL` | Optional OneMap email |
 | `ONEMAP_PASSWORD` | Optional OneMap password |
 | `ONEMAP_BASE_URL` | OneMap API base URL |
 | `GEOCODING_DEBUG` | Enables backend map payload logging when `true` |
-| `REALTIME_STT_HEALTH_URL` | Backend health URL for the optional external RealtimeSTT service |
-| `REALTIME_STT_WS_URL` | Optional browser WebSocket URL; blank uses the dashboard hostname on port `8010` |
 
 ## Run the Full Local Demo
 
-Use this flow when you want the dashboard and RealtimeSTT running together for a prototype demo. The script checks whether `GEMINI_API_KEY` and `GEMINI_MODEL` are configured without printing the key.
+Use this flow to start the dashboard demo. The script checks whether `GOOGLE_CLOUD_PROJECT` is configured without printing credentials.
 
 1. Start or confirm MySQL is reachable.
 2. Confirm `.env` exists in the project root.
@@ -577,21 +560,11 @@ Use this flow when you want the dashboard and RealtimeSTT running together for a
 The demo uses:
 
 - Dashboard on `http://localhost:3000`
-- RealtimeSTT on `http://127.0.0.1:8010`
+- Google Speech-to-Text V1 through the backend service
 - Gemini AI through the backend service
 - MySQL from the configured Railway connection
 
-The launcher opens separate PowerShell windows for the dashboard and RealtimeSTT, opens the dashboard in your browser, and checks Gemini configuration. It does not start MySQL.
-
-By default, the script expects RealtimeSTT at:
-
-```text
-C:\Users\goati\Downloads\RealtimeSTT
-```
-
-If your RealtimeSTT folder is somewhere else, edit `$RealtimeSttPath` near the top of `scripts/start-demo.ps1`, then run `npm run demo` again. The script checks that the RealtimeSTT folder, `.venv-fastapi`, and `example_fastapi_server\server.py` exist before starting the service.
-
-To stop the demo, close the separate PowerShell windows for the dashboard and RealtimeSTT.
+The launcher opens a dashboard PowerShell window and the browser. It does not start MySQL or provision Google credentials.
 
 ## Recommended Demo Testing Flow
 
@@ -628,75 +601,21 @@ The seed script creates or upgrades the `officers` table, stores bcrypt password
 
 After seeding, open `http://localhost:3000/dashboard` and `http://localhost:3000/analytics` to confirm totals, charts, and percentages update.
 
-## Run RealtimeSTT
-
-RealtimeSTT is a separate Python service. Do not install it as a Node.js package.
-
-1. Clone RealtimeSTT outside this dashboard project:
-
-   ```powershell
-   git clone https://github.com/KoljaB/RealtimeSTT.git
-   cd RealtimeSTT
-   ```
-
-2. Create and activate a Python virtual environment:
-
-   ```powershell
-   python -m venv .venv-fastapi
-   .\.venv-fastapi\Scripts\Activate.ps1
-   ```
-
-3. Upgrade packaging tools:
-
-   ```powershell
-   python -m pip install -U pip setuptools wheel
-   ```
-
-4. Install the main RealtimeSTT requirements:
-
-   ```powershell
-   python -m pip install -r requirements.txt
-   ```
-
-5. Install the FastAPI browser server requirements:
-
-   ```powershell
-   python -m pip install -r example_fastapi_server\requirements.txt
-   ```
-
-6. Start the FastAPI browser server on port `8010`:
-
-   ```powershell
-   python example_fastapi_server\server.py --host 0.0.0.0 --port 8010
-   ```
-
-7. Open the RealtimeSTT service directly if needed:
-
-   ```text
-   http://localhost:8010
-   ```
-
-The demo launcher uses this RealtimeSTT command:
-
-```powershell
-python example_fastapi_server\server.py --host 127.0.0.1 --port 8010 --engine faster_whisper --model medium.en --realtime-model tiny.en --language en
-```
-
 ## How Each Feature Works
 
 ### Live Call Intake Flow
 
 Open `http://localhost:3000/transcription` or choose Live Call Intake from the sidebar.
 
-1. To use live speech-to-text, start RealtimeSTT first and click Start Transcription.
-2. Allow microphone access, then speak into the microphone.
-3. RealtimeSTT converts speech to text through port `8010` on the same hostname used to open the dashboard. For example, localhost uses `ws://localhost:8010/ws/transcribe`, while a LAN client uses the laptop hostname or LAN address.
-4. Live Transcript updates with the latest speech segment.
-5. Stop Transcription commits the latest text into Full Transcript.
+1. Confirm `GOOGLE_CLOUD_PROJECT` and ADC are configured, then click Start Transcription.
+2. Allow microphone access, then speak into the microphone for up to 40 seconds.
+3. Stop Transcription. The browser sends PCM16 audio to `POST /api/transcribe`; the backend calls Google Speech-to-Text V1.
+4. The returned transcript appears in Full Transcript.
+5. If transcription is unavailable, paste text into Manual Transcript Input.
 6. Click Clean Transcript to send the transcript to Gemini for cleanup.
 7. Click Send Raw Transcript or Send Clean Transcript to open Create Report with the transcript loaded.
 
-If RealtimeSTT is unavailable, paste text into the manual transcript field and continue from the cleanup or send step.
+Manual transcript input remains available if Google Speech-to-Text is unavailable.
 
 ### AI Report Flow
 
@@ -755,11 +674,7 @@ Open Analytics from the sidebar.
 
 ### Port 8010 Already in Use
 
-RealtimeSTT needs port `8010`. Find the process using the port:
-
-```powershell
-netstat -ano | findstr :8010
-```
+Google Speech-to-Text requests are sent through the dashboard backend. Check the backend logs and verify Application Default Credentials when transcription fails.
 
 Stop the process by replacing `<PID_NUMBER>` with the PID from the last column:
 
@@ -811,11 +726,28 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 
 If Gemini is unavailable, transcript cleanup returns the original transcript and AI report generation returns a conservative editable fallback report. Manual report editing remains available.
 
-### RealtimeSTT Not Responding
+### Google Speech-to-Text Not Available
 
-Confirm RealtimeSTT is running on `http://localhost:8010` or `http://127.0.0.1:8010`. If the demo launcher cannot start it, check that the RealtimeSTT folder, `.venv-fastapi`, and `example_fastapi_server\server.py` exist.
+The Live Call Intake page records a short microphone clip in the browser as mono PCM16 and posts it to `POST /api/transcribe`. The Node.js backend sends that audio to Google Cloud Speech-to-Text V1 using `LINEAR16`, the browser sample rate, and `en-SG`. The browser never receives Google credentials or calls Google directly.
 
-Manual transcript input still works when RealtimeSTT is unavailable.
+For local Node.js development, configure the project and Application Default Credentials:
+
+```powershell
+$env:GOOGLE_CLOUD_PROJECT='project-1e4380d5-44ee-49d4-b26'
+gcloud auth application-default login
+npm start
+```
+
+For Docker Compose, mount the locally created ADC file read-only rather than copying it into the image:
+
+```powershell
+$env:GOOGLE_APPLICATION_CREDENTIALS_HOST="$env:APPDATA\gcloud\application_default_credentials.json"
+docker compose -f docker-compose.yml -f docker-compose.gcp.yml up --build
+```
+
+For ECS, configure an ADC-compatible workload identity or inject a credential reference at runtime through the platform's secret/identity configuration. Do not add a credential JSON file to this repository or Docker image.
+
+The previous external RealtimeSTT WebSocket service on port 8010 is no longer used by the dashboard.
 
 ### Raw Transcript Does Not Send
 

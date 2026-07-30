@@ -4,11 +4,13 @@ const crypto = require('crypto');
 const express = require('express');
 const path = require('path');
 const session = require('express-session');
+const { attachLiveTranscriptionGateway } = require('./services/liveTranscriptionGateway');
 
 const authRoutes = require('./routes/authRoutes');
 const pageRoutes = require('./routes/pageRoutes');
 const incidentRoutes = require('./routes/incidentRoutes');
 const aiRoutes = require('./routes/aiRoutes');
+const transcriptionRoutes = require('./routes/transcriptionRoutes');
 const userRoutes = require('./routes/userRoutes');
 const {
   attachCurrentOfficer,
@@ -62,7 +64,8 @@ app.use('/vendor/leaflet.heat', express.static(path.join(__dirname, 'node_module
 app.use('/vendor/leaflet.markercluster', express.static(path.join(__dirname, 'node_modules', 'leaflet.markercluster', 'dist')));
 // Allow long manual transcripts to reach the backend without changing database behavior.
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
-app.use(express.json({ limit: '1mb' }));
+// Browser microphone clips are raw PCM16 and base64 encoded before transport.
+app.use(express.json({ limit: '8mb' }));
 app.use(session({
   name: SESSION_COOKIE_NAME,
   secret: SESSION_SECRET,
@@ -81,6 +84,7 @@ app.use(requireAuth);
 app.use('/', pageRoutes);
 app.use('/', incidentRoutes);
 app.use('/', aiRoutes);
+app.use('/', transcriptionRoutes);
 app.use('/', userRoutes);
 
 app.use((req, res) => {
@@ -92,6 +96,7 @@ app.use((error, req, res, next) => {
   res.status(500).send('Something went wrong while loading the dashboard.');
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Firefighter Smart Incident Dashboard running at http://localhost:${PORT}`);
 });
+attachLiveTranscriptionGateway(server);

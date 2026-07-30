@@ -220,3 +220,15 @@ I converted the existing test-and-deploy job into an explicit fail-closed DevSec
 - CodeQL is optional because GitHub Code Scanning availability differs by repository plan. Semgrep remains the always-on, deploy-gating source-security scan.
 - Local validation cannot prove a real AWS deployment without authorization; only GitHub Actions with correctly configured repository variables and IAM can execute that path.
 - A post-deployment failure can occur only after the new revision has been requested. The workflow therefore restores the saved previous revision; it cannot make a failed rollout never have been attempted.
+
+## 15. ECS Google Speech-to-Text authentication
+
+The backend ECS task must use the application Task Role `FirefighterBackendTaskRole`, not the task execution role, for Google Speech-to-Text. Set these non-secret task environment variables:
+
+```text
+GOOGLE_CLOUD_PROJECT=project-1e4380d5-44ee-49d4-b26
+GOOGLE_AUTH_MODE=aws-wif
+AWS_REGION=ap-southeast-1
+```
+
+In `aws-wif` mode the application obtains temporary credentials through the ECS Task Role using the AWS SDK provider chain, signs the AWS identity request through Google Workload Identity Federation, and impersonates the configured `firefighter-stt` Google service account. No Google service-account key, `GOOGLE_APPLICATION_CREDENTIALS`, AWS static access key, or secret is used or stored in the image. The ECS task definition must attach `FirefighterBackendTaskRole` as `taskRoleArn`, retain network access to AWS STS/ECS task credentials and Google STS/IAM Credentials/Speech endpoints, and must not inject static `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, or `AWS_SESSION_TOKEN` variables.

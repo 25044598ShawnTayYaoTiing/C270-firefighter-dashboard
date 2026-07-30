@@ -44,13 +44,13 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
       GEMINI_TIMEOUT_MS: ${GEMINI_TIMEOUT_MS:-30000}
+      GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
+      GOOGLE_AUTH_MODE: ${GOOGLE_AUTH_MODE:-}
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
       ONEMAP_EMAIL: ${ONEMAP_EMAIL:-}
       ONEMAP_PASSWORD: ${ONEMAP_PASSWORD:-}
       ONEMAP_BASE_URL: ${ONEMAP_BASE_URL:-https://www.onemap.gov.sg}
       GEOCODING_DEBUG: ${GEOCODING_DEBUG:-false}
-      # RealtimeSTT is an optional existing external service, not a Compose service.
-      REALTIME_STT_HEALTH_URL: ${REALTIME_STT_HEALTH_URL:-http://host.docker.internal:8010/health}
-      REALTIME_STT_WS_URL: ${REALTIME_STT_WS_URL:-}
     ports:
       - "${BACKEND_PORT:-3001}:3000"
     networks:
