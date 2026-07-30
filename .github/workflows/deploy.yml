@@ -253,6 +253,11 @@ jobs:
             exit 1
           fi
 
+          if [ "${ECS_BACKEND_SERVICE_ARN}" = "${ECS_FRONTEND_SERVICE_ARN}" ]; then
+            echo 'ECS_BACKEND_SERVICE_ARN and ECS_FRONTEND_SERVICE_ARN must be different ECS services.' >&2
+            exit 1
+          fi
+
           case "${APP_HEALTH_URL}" in
             */health)
               ;;
@@ -356,14 +361,20 @@ jobs:
             local task_definition_file="$1"
             local repository_name="$2"
             jq -er --arg repository "${repository_name}" '
-              ([.containerDefinitions[]
-                | select((.image // "") | contains("/" + $repository + ":") or contains("/" + $repository + "@"))
-                | .name] as $matches
-              | if ($matches | length) == 1
-                then $matches[0]
-                elif (.containerDefinitions | length) == 1
-                then .containerDefinitions[0].name
-                else error("Could not identify exactly one application container from the active task definition")
+              [
+                .containerDefinitions[]
+                | select(
+                    (.image // "")
+                    | (contains("/" + $repository + ":") or contains("/" + $repository + "@"))
+                  )
+                | .name
+              ] as $matches
+              | if ($matches | length) == 1 then
+                  $matches[0]
+                elif (.containerDefinitions | length) == 1 then
+                  .containerDefinitions[0].name
+                else
+                  error("Could not identify exactly one application container from the active task definition")
                 end
             ' "${task_definition_file}"
           }

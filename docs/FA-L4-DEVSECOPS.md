@@ -64,7 +64,7 @@ The workflow is in [`.github/workflows/deploy.yml`](../.github/workflows/deploy.
 |---|---|
 | Complete build → test → deploy pipeline | The workflow has explicit `needs` dependencies from quality/security gates through Docker build/scan to ECR and ECS. |
 | Reliable, well-structured automation | Separate named jobs, timeouts, concurrency cancellation, immutable images, checksum verification, retries, summaries, and rollback handling. |
-| Well-configured cloud deployment | OIDC-capable AWS authentication, root-credential guard, least-privilege CloudFormation template, SHA image tag, task-definition verification, and smoke tests. |
+| Well-configured cloud deployment | OIDC-capable AWS authentication, root-credential guard, least-privilege manually managed IAM role, SHA image tag, task-definition verification, and smoke tests. |
 | Strong containerisation and repeatability | Separate frontend/backend Dockerfiles, Compose health checks, production backend dependencies, a non-root Node runtime, and comprehensive `.dockerignore`. |
 | Advanced DevSecOps technical initiative | Gitleaks, production audit, Semgrep, Trivy SARIF/table reporting, artifact identity preservation, and automatic rollback path. |
 | Demonstrable integrated security gate | Any required scanner or test failure blocks the `build-and-scan` job; the AWS/ECR/ECS job has an explicit dependency on it. |
@@ -76,7 +76,7 @@ The workflow is in [`.github/workflows/deploy.yml`](../.github/workflows/deploy.
 2. Open a successful pull-request run. Show that `Test and dependency security gate`, `Secret scanning gate`, `Source security gate`, and `Build and container security gate` completed, while `Push, deploy, verify, and smoke test` is skipped.
 3. Open the build job and show the Trivy table output plus the uploaded `semgrep-sarif` and `container-security-reports` artifacts.
 4. Open a successful `main` push run. Show the job dependency graph and the deployment summary, including the immutable SHA image URI and task-definition ARNs.
-5. Show [`infra/aws/github-actions-oidc-role.yml`](../infra/aws/github-actions-oidc-role.yml) and explain the branch-restricted GitHub OIDC trust policy plus restricted ECR, ECS, and `iam:PassRole` permissions.
+5. Show the manually configured `GitHubActionsDeployRole` in AWS IAM and explain the branch-restricted GitHub OIDC trust policy plus restricted ECR, ECS, and `iam:PassRole` permissions.
 6. Show [`docker-compose.yml`](../docker-compose.yml), the two container health checks, and `docker compose config` output from a local terminal.
 7. Show this document's gate table and the actual workflow code. The implementation—not a screenshot of a scanner alone—is the evidence that deployment is gated.
 
@@ -162,13 +162,9 @@ Runtime application values such as MySQL credentials, `SESSION_SECRET`, and `GEM
 
 ## 10. Required AWS IAM configuration
 
-Review and deploy [`infra/aws/github-actions-oidc-role.yml`](../infra/aws/github-actions-oidc-role.yml) manually. It is intentionally not invoked by GitHub Actions. Supply the existing backend and frontend ECR repository ARNs, backend and frontend ECS Express service ARNs, task execution role ARN, task role ARN, and GitHub owner/repository values. If the GitHub OIDC provider already exists in the AWS account, pass its ARN and leave `CreateOidcProvider=false`.
+`GitHubActionsDeployRole` is manually configured in AWS IAM and is assumed by GitHub Actions through GitHub's OIDC provider. Keep its trust policy restricted to this repository's `main` branch and keep its least-privilege permissions scoped to the two ECR repositories, two ECS services, task-definition registration, and the existing task roles.
 
-The template authorizes pushes to existing repositories; it does not create ECR repositories. Create `firefighter-dashboard-backend` and `firefighter-dashboard-frontend` in the deployment region first, or use their actual existing names in the corresponding GitHub repository variables and CloudFormation parameters.
-
-The template names the role `GitHubActionsDeployRole` to match the manually configured production role. After a successful OIDC deployment, set its `GitHubActionsRoleArn` output as the `AWS_ROLE_TO_ASSUME` repository variable. Existing legacy GitHub AWS secrets are not used by this workflow and should remain untouched until that deployment has been independently confirmed.
-
-The template allows only ECR image push and repository-read actions for the two named repositories, only ECS Express service update/read actions for the named service, two required task-definition actions, and `iam:PassRole` for the two specified ECS roles. It does not grant an administrator policy.
+When deployment resources or permissions change, update `GitHubActionsDeployRole` directly in AWS IAM. This repository does not create or update that role through CloudFormation, and no AWS access keys are used by the workflow. The `AWS_ROLE_TO_ASSUME` GitHub repository variable must contain the existing role ARN. Existing legacy GitHub AWS secrets are not used by this workflow and should remain untouched until that deployment has been independently confirmed.
 
 ## 11. Local validation commands
 
