@@ -17,7 +17,7 @@ flowchart LR
   C --> D[Semgrep SAST]
   D --> E[Build backend and frontend images]
   E --> F[Trivy HIGH/CRITICAL image scan]
-  F --> G[ECR push of exact scanned backend image]
+  F --> G[ECR push of exact scanned backend and frontend images]
   G --> H[ECS Express Mode deployment]
   H --> I[ECS service verification]
   I --> J[HTTP health and smoke test]
@@ -36,11 +36,11 @@ The workflow is in [`.github/workflows/deploy.yml`](../.github/workflows/deploy.
 6. Run Semgrep JavaScript and OWASP source-security rules.
 7. Build the backend image and the frontend image.
 8. Generate Trivy table and SARIF reports, then fail on HIGH or CRITICAL OS/library image vulnerabilities.
-9. Export the scanned backend image and store its SHA-256 checksum as a short-lived workflow artifact.
-10. On a `push` to `main`, or manual dispatch with `deploy=true`, load and verify that artifact.
+9. Export the scanned backend and frontend images and store their SHA-256 checksums as a short-lived workflow artifact.
+10. On a `push` to `main`, or manual dispatch with `deploy=true`, load and verify both artifacts.
 11. Authenticate to AWS only through the required `GitHubActionsDeployRole` OIDC role.
-12. Push the same SHA-tagged image to ECR.
-13. Register a new ECS task-definition revision that changes only the selected container image.
+12. Push the same SHA-tagged backend and frontend images to their separate ECR repositories.
+13. Register a new ECS task-definition revision that changes only the selected backend and frontend container images.
 14. Update and verify the existing ECS Express Gateway service.
 15. Retry the JSON `/health` endpoint, then request the configured application URL while accepting an intentional login redirect.
 16. Write the deployment summary. A failed deployment, verification, or smoke test triggers a restore to the saved previous task definition.
@@ -54,7 +54,7 @@ The workflow is in [`.github/workflows/deploy.yml`](../.github/workflows/deploy.
 | Docker build | Docker | Backend and frontend container build correctness | Any build error | `build-and-scan` job fails | Image build log |
 | Image scan | Trivy | OS and application dependencies in both images | HIGH or CRITICAL | Trivy exits with code 1 before image export | Table output and `container-security-reports` SARIF artifact |
 | AWS identity | AWS CLI | Rejects root credentials | Root identity or credential failure | Deployment job fails before ECR push | Identity guard log without credentials |
-| ECR push | Docker/ECR | Transfers exact scanned artifact image | Push failure | No task-definition update occurs | SHA image URI in summary |
+| ECR push | Docker/ECR | Transfers exact scanned backend and frontend artifacts to separate repositories | Push failure | No task-definition update occurs | Both SHA image URIs in summary |
 | ECS verification | AWS CLI | Active ECS Express service uses expected revision | Not `ACTIVE` or wrong revision | Deployment job fails and runs rollback | ECS CLI log and summary |
 | App smoke test | curl and jq | JSON health plus reachable app/login redirect | No `{ "status": "ok" }` or unexpected status | Deployment job fails and runs rollback | Health/smoke log and summary |
 
@@ -104,18 +104,18 @@ Build and container security gate       passed
 Push, deploy, verify, and smoke test    passed (main push or approved manual run only)
 ```
 
-The build summary states that tests, Gitleaks, npm audit, Semgrep, and Trivy passed before AWS authentication. The deployment summary records the SHA-tagged image, previous and active task-definition ARNs, ECS verification, health check, and smoke-test status. It never prints credentials.
+The build summary states that tests, Gitleaks, npm audit, Semgrep, and Trivy passed before AWS authentication. The deployment summary records the SHA-tagged backend and frontend images, previous and active task-definition ARNs, ECS verification, health check, and smoke-test status. It never prints credentials.
 
 ## 7. Rollback
 
 The workflow saves `PREVIOUS_TASK_DEFINITION_ARN` before registering a new revision. If the update, ECS verification, health retry, or smoke test fails after the new update begins, the same existing ECS Express Mode command is called with that saved revision.
 
-If automatic rollback itself fails, run the following manually with values from the failed workflow log or Actions summary:
+If automatic rollback itself fails, run the following manually for each affected service with values from the failed workflow log or Actions summary:
 
 ```bash
 aws ecs update-express-gateway-service \
-  --service-arn "$ECS_SERVICE_ARN" \
-  --task-definition-arn "$PREVIOUS_TASK_DEFINITION_ARN" \
+  --service-arn "$BACKEND_SERVICE_ARN" \
+  --task-definition-arn "$PREVIOUS_BACKEND_TASK_DEFINITION_ARN" \
   --monitor-resources DEPLOYMENT \
   --monitor-mode TEXT-ONLY
 ```
@@ -124,7 +124,7 @@ Then confirm the expected revision:
 
 ```bash
 aws ecs describe-express-gateway-service \
-  --service-arn "$ECS_SERVICE_ARN" \
+  --service-arn "$BACKEND_SERVICE_ARN" \
   --query 'service.activeConfigurations[0].taskDefinitionArn' \
   --output text
 ```
@@ -138,7 +138,7 @@ aws ecs describe-express-gateway-service \
 | Semgrep fails | Inspect the SARIF artifact, fix the insecure pattern, and rerun. The workflow scans only `ERROR` severity rules to avoid cosmetic style failures. |
 | Trivy finds HIGH/CRITICAL vulnerability | Update the affected Node/Nginx base image or dependency, rebuild, and rescan. Do not add a broad `.trivyignore`. |
 | OIDC `AccessDenied` | Verify the role template parameters, GitHub owner/repository/branch, `AWS_ROLE_TO_ASSUME`, and job `id-token: write` permission. |
-| ECS container not selected | Set `ECS_CONTAINER_NAME` to the exact existing task-definition container name. |
+| ECS service/task definition not selected | Verify `ECS_BACKEND_SERVICE` and `ECS_FRONTEND_SERVICE`; the workflow resolves each service's exact single container name from its active task definition. |
 | Health or smoke test times out | Check `APP_HEALTH_URL` returns JSON `{ "status": "ok" }`, `APP_SMOKE_URL` is publicly reachable, TLS is valid, and ECS service events show a healthy deployment. |
 | Frontend starts but proxy fails | Set ECS frontend `BACKEND_URL` to its real HTTPS backend origin without a trailing slash, path, query, or fragment. |
 
@@ -150,10 +150,12 @@ Repository variables (not secrets):
 |---|---:|---|
 | `AWS_REGION` | Yes for deploy | AWS deployment region. |
 | `AWS_ROLE_TO_ASSUME` | Yes for deploy | ARN of the existing `GitHubActionsDeployRole` OIDC role. |
-| `ECR_REPOSITORY` | Yes for deploy | Existing backend ECR repository name. |
-| `ECS_SERVICE_ARN` | Recommended | Existing ECS Express Gateway service ARN. |
-| `ECS_CLUSTER` and `ECS_SERVICE` | Alternative | Used only when `ECS_SERVICE_ARN` is not configured. |
-| `ECS_CONTAINER_NAME` | Usually | Exact task-definition container to replace; required for multi-container task definitions where auto-detection is ambiguous. |
+| `ECR_BACKEND_REPOSITORY` | Yes for deploy | Existing backend ECR repository name, normally `firefighter-dashboard-backend`. |
+| `ECR_FRONTEND_REPOSITORY` | Yes for deploy | Existing frontend ECR repository name, normally `firefighter-dashboard-frontend`. |
+| `ECS_BACKEND_SERVICE` | Yes for deploy | Existing backend ECS Express service name; set to `firefighter-backend`. |
+| `ECS_FRONTEND_SERVICE` | Yes for deploy | Existing frontend ECS Express service name; set to `firefighter-frontend`. |
+| `ECS_BACKEND_SERVICE_ARN` | Optional | Full backend service ARN if the account uses a nonstandard ARN; otherwise derived from region/account/name. |
+| `ECS_FRONTEND_SERVICE_ARN` | Optional | Full frontend service ARN if the account uses a nonstandard ARN; otherwise derived from region/account/name. |
 | `APP_HEALTH_URL` | Yes for deploy | Public HTTPS URL ending in `/health`; must return `{ "status": "ok" }`. |
 | `APP_SMOKE_URL` | Yes for deploy | Public application root; a 2xx response or expected login redirect is accepted. |
 | `ENABLE_CODEQL` | Optional | Set to `true` only when GitHub Code Scanning is available for this repository. |
@@ -162,11 +164,13 @@ Runtime application values such as MySQL credentials, `SESSION_SECRET`, and `GEM
 
 ## 10. Required AWS IAM configuration
 
-Review and deploy [`infra/aws/github-actions-oidc-role.yml`](../infra/aws/github-actions-oidc-role.yml) manually. It is intentionally not invoked by GitHub Actions. Supply the existing ECR repository ARN, ECS Express service ARN, task execution role ARN, task role ARN, and GitHub owner/repository values. If the GitHub OIDC provider already exists in the AWS account, pass its ARN and leave `CreateOidcProvider=false`.
+Review and deploy [`infra/aws/github-actions-oidc-role.yml`](../infra/aws/github-actions-oidc-role.yml) manually. It is intentionally not invoked by GitHub Actions. Supply the existing backend and frontend ECR repository ARNs, backend and frontend ECS Express service ARNs, task execution role ARN, task role ARN, and GitHub owner/repository values. If the GitHub OIDC provider already exists in the AWS account, pass its ARN and leave `CreateOidcProvider=false`.
+
+The template authorizes pushes to existing repositories; it does not create ECR repositories. Create `firefighter-dashboard-backend` and `firefighter-dashboard-frontend` in the deployment region first, or use their actual existing names in the corresponding GitHub repository variables and CloudFormation parameters.
 
 The template names the role `GitHubActionsDeployRole` to match the manually configured production role. After a successful OIDC deployment, set its `GitHubActionsRoleArn` output as the `AWS_ROLE_TO_ASSUME` repository variable. Existing legacy GitHub AWS secrets are not used by this workflow and should remain untouched until that deployment has been independently confirmed.
 
-The template allows only ECR image push actions for the named repository, only ECS Express service update/read actions for the named service, two required task-definition actions, and `iam:PassRole` for the two specified ECS roles. It does not grant an administrator policy.
+The template allows only ECR image push and repository-read actions for the two named repositories, only ECS Express service update/read actions for the named service, two required task-definition actions, and `iam:PassRole` for the two specified ECS roles. It does not grant an administrator policy.
 
 ## 11. Local validation commands
 
@@ -198,6 +202,9 @@ docker run --rm -v "${PWD}:/repo" zricethezav/gitleaks:v8.28.0 `
 
 trivy image --scanners vuln --pkg-types os,library --severity HIGH,CRITICAL `
   firefighter-dashboard-backend:local
+
+trivy image --scanners vuln --pkg-types os,library --severity HIGH,CRITICAL `
+  firefighter-dashboard-frontend:local
 ```
 
 ## 12. Screenshots to capture
@@ -216,7 +223,7 @@ I converted the existing test-and-deploy job into an explicit fail-closed DevSec
 
 ## 14. Scope and limitations
 
-- This repository contains only one existing ECS deployment target: the backend Dockerfile. The workflow builds and scans the separate frontend image but does not invent a second AWS service or deployment workflow.
+- This repository deploys the backend and frontend images through two existing ECS Express services, `firefighter-backend` and `firefighter-frontend`. The workflow resolves each service's exact single container name from its active task definition and fails before registration if either service does not have exactly one container; it does not invent another ECS service.
 - CodeQL is optional because GitHub Code Scanning availability differs by repository plan. Semgrep remains the always-on, deploy-gating source-security scan.
 - Local validation cannot prove a real AWS deployment without authorization; only GitHub Actions with correctly configured repository variables and IAM can execute that path.
 - A post-deployment failure can occur only after the new revision has been requested. The workflow therefore restores the saved previous revision; it cannot make a failed rollout never have been attempted.

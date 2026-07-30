@@ -15,12 +15,18 @@ Parameters:
     Type: String
     Default: main
     Description: Branch allowed to assume the role.
-  EcrRepositoryArn:
+  EcrBackendRepositoryArn:
     Type: String
     Description: ARN of the existing ECR repository that receives the backend image.
-  EcsServiceArn:
+  EcrFrontendRepositoryArn:
     Type: String
-    Description: ARN of the existing ECS Express Gateway service to update.
+    Description: ARN of the existing ECR repository that receives the frontend image.
+  EcsBackendServiceArn:
+    Type: String
+    Description: ARN of the existing backend ECS Express Gateway service to update.
+  EcsFrontendServiceArn:
+    Type: String
+    Description: ARN of the existing frontend ECS Express Gateway service to update.
   EcsTaskExecutionRoleArn:
     Type: String
     Description: ARN of the existing ECS task execution role.
@@ -81,22 +87,27 @@ Resources:
                 Action:
                   - ecr:GetAuthorizationToken
                 Resource: '*'
-              - Sid: PushOnlyToDashboardRepository
+              - Sid: PushOnlyToConfiguredDashboardRepositories
                 Effect: Allow
                 Action:
                   - ecr:BatchCheckLayerAvailability
                   - ecr:BatchGetImage
                   - ecr:CompleteLayerUpload
+                  - ecr:DescribeRepositories
                   - ecr:InitiateLayerUpload
                   - ecr:PutImage
                   - ecr:UploadLayerPart
-                Resource: !Ref EcrRepositoryArn
-              - Sid: UpdateOnlyTheConfiguredExpressService
+                Resource:
+                  - !Ref EcrBackendRepositoryArn
+                  - !Ref EcrFrontendRepositoryArn
+              - Sid: UpdateOnlyTheConfiguredExpressServices
                 Effect: Allow
                 Action:
                   - ecs:DescribeExpressGatewayService
                   - ecs:UpdateExpressGatewayService
-                Resource: !Ref EcsServiceArn
+                Resource:
+                  - !Ref EcsBackendServiceArn
+                  - !Ref EcsFrontendServiceArn
               # ECS task-definition registration does not support a single
               # existing revision ARN as a resource scope. The action list is
               # intentionally limited to the two calls used by the workflow.

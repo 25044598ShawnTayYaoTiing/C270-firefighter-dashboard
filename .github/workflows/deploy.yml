@@ -28,11 +28,12 @@ env:
   FRONTEND_IMAGE: firefighter-dashboard-frontend:${{ github.sha }}
   AWS_REGION: ${{ vars.AWS_REGION }}
   AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
-  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
-  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
-  ECS_SERVICE: ${{ vars.ECS_SERVICE }}
-  ECS_SERVICE_ARN: ${{ vars.ECS_SERVICE_ARN }}
-  ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+  ECR_BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
+  ECR_FRONTEND_REPOSITORY: ${{ vars.ECR_FRONTEND_REPOSITORY }}
+  ECS_BACKEND_SERVICE: ${{ vars.ECS_BACKEND_SERVICE }}
+  ECS_FRONTEND_SERVICE: ${{ vars.ECS_FRONTEND_SERVICE }}
+  ECS_BACKEND_SERVICE_ARN: ${{ vars.ECS_BACKEND_SERVICE_ARN }}
+  ECS_FRONTEND_SERVICE_ARN: ${{ vars.ECS_FRONTEND_SERVICE_ARN }}
   APP_HEALTH_URL: ${{ vars.APP_HEALTH_URL }}
   APP_SMOKE_URL: ${{ vars.APP_SMOKE_URL }}
 
@@ -122,7 +123,9 @@ jobs:
     timeout-minutes: 35
     outputs:
       backend_image: ${{ steps.image-metadata.outputs.backend_image }}
+      frontend_image: ${{ steps.image-metadata.outputs.frontend_image }}
       backend_image_tar_sha256: ${{ steps.image-artifact.outputs.sha256 }}
+      frontend_image_tar_sha256: ${{ steps.image-artifact.outputs.frontend_sha256 }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -144,6 +147,7 @@ jobs:
           docker image inspect "${BACKEND_IMAGE}" > backend-image-inspect.json
           docker image inspect "${FRONTEND_IMAGE}" > frontend-image-inspect.json
           echo "backend_image=${BACKEND_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=${FRONTEND_IMAGE}" >> "$GITHUB_OUTPUT"
 
       - name: Install pinned Trivy
         uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
@@ -173,13 +177,16 @@ jobs:
           set -euo pipefail
           trivy image --scanners vuln --pkg-types os,library --severity HIGH,CRITICAL --exit-code 1 --format table "${FRONTEND_IMAGE}"
 
-      - name: Export the exact scanned backend image
+      - name: Export the exact scanned images
         id: image-artifact
         run: |
           set -euo pipefail
           docker save --output backend-image.tar "${BACKEND_IMAGE}"
           sha256sum backend-image.tar > backend-image.tar.sha256
+          docker save --output frontend-image.tar "${FRONTEND_IMAGE}"
+          sha256sum frontend-image.tar > frontend-image.tar.sha256
           echo "sha256=$(awk '{print $1}' backend-image.tar.sha256)" >> "$GITHUB_OUTPUT"
+          echo "frontend_sha256=$(awk '{print $1}' frontend-image.tar.sha256)" >> "$GITHUB_OUTPUT"
 
       - name: Upload Trivy and image metadata reports
         if: always()
@@ -194,13 +201,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Upload exact scanned backend image
+      - name: Upload exact scanned images
         uses: actions/upload-artifact@v4
         with:
-          name: backend-image
+          name: scanned-images
           path: |
             backend-image.tar
             backend-image.tar.sha256
+            frontend-image.tar
+            frontend-image.tar.sha256
           if-no-files-found: error
           retention-days: 1
 
@@ -233,7 +242,7 @@ jobs:
       - name: Validate deployment configuration
         run: |
           set -euo pipefail
-          required=(AWS_REGION AWS_ROLE_TO_ASSUME ECR_REPOSITORY APP_HEALTH_URL APP_SMOKE_URL)
+          required=(AWS_REGION AWS_ROLE_TO_ASSUME ECR_BACKEND_REPOSITORY ECR_FRONTEND_REPOSITORY ECS_BACKEND_SERVICE ECS_FRONTEND_SERVICE APP_HEALTH_URL APP_SMOKE_URL)
           for name in "${required[@]}"; do
             if [ -z "${!name:-}" ]; then
               echo "Repository variable ${name} must be configured before deployment." >&2
@@ -241,13 +250,13 @@ jobs:
             fi
           done
 
-          if [ -z "${ECS_SERVICE_ARN:-}" ] && { [ -z "${ECS_CLUSTER:-}" ] || [ -z "${ECS_SERVICE:-}" ]; }; then
-            echo 'Configure ECS_SERVICE_ARN, or both ECS_CLUSTER and ECS_SERVICE, before deployment.' >&2
+          if [ "${ECR_BACKEND_REPOSITORY}" = "${ECR_FRONTEND_REPOSITORY}" ]; then
+            echo 'ECR_BACKEND_REPOSITORY and ECR_FRONTEND_REPOSITORY must be different repositories.' >&2
             exit 1
           fi
 
-          if [ "${ECR_REPOSITORY}" != 'firefighter-dashboard' ]; then
-            echo 'ECR_REPOSITORY must name the existing firefighter-dashboard repository.' >&2
+          if [ "${ECS_BACKEND_SERVICE}" = "${ECS_FRONTEND_SERVICE}" ]; then
+            echo 'ECS_BACKEND_SERVICE and ECS_FRONTEND_SERVICE must be different ECS services.' >&2
             exit 1
           fi
 
@@ -260,20 +269,26 @@ jobs:
               ;;
           esac
 
-      - name: Download the exact scanned backend image
+      - name: Download the exact scanned images
         uses: actions/download-artifact@v4
         with:
-          name: backend-image
+          name: scanned-images
 
-      - name: Verify artifact integrity and load the scanned image
+      - name: Verify artifact integrity and load the scanned images
         run: |
           set -euo pipefail
-          expected_sha256="${{ needs.build-and-scan.outputs.backend_image_tar_sha256 }}"
-          actual_sha256="$(awk '{print $1}' backend-image.tar.sha256)"
-          [ "${actual_sha256}" = "${expected_sha256}" ]
-          [ "$(sha256sum backend-image.tar | awk '{print $1}')" = "${expected_sha256}" ]
+          expected_backend_sha256="${{ needs.build-and-scan.outputs.backend_image_tar_sha256 }}"
+          expected_frontend_sha256="${{ needs.build-and-scan.outputs.frontend_image_tar_sha256 }}"
+          actual_backend_sha256="$(awk '{print $1}' backend-image.tar.sha256)"
+          actual_frontend_sha256="$(awk '{print $1}' frontend-image.tar.sha256)"
+          [ "${actual_backend_sha256}" = "${expected_backend_sha256}" ]
+          [ "$(sha256sum backend-image.tar | awk '{print $1}')" = "${expected_backend_sha256}" ]
+          [ "${actual_frontend_sha256}" = "${expected_frontend_sha256}" ]
+          [ "$(sha256sum frontend-image.tar | awk '{print $1}')" = "${expected_frontend_sha256}" ]
           docker load --input backend-image.tar
+          docker load --input frontend-image.tar
           docker image inspect "${BACKEND_IMAGE}" > /dev/null
+          docker image inspect "${FRONTEND_IMAGE}" > /dev/null
 
       - name: Configure AWS credentials with OIDC
         uses: aws-actions/configure-aws-credentials@v5
@@ -306,67 +321,97 @@ jobs:
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Tag and push the exact scanned image
+      - name: Verify configured ECR repositories exist
+        run: |
+          set -euo pipefail
+          aws ecr describe-repositories --repository-names "${ECR_BACKEND_REPOSITORY}" > /dev/null
+          aws ecr describe-repositories --repository-names "${ECR_FRONTEND_REPOSITORY}" > /dev/null
+
+      - name: Tag and push the exact scanned images
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
         run: |
           set -euo pipefail
-          image_uri="${ECR_REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
-          latest_image_uri="${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
-          docker tag "${BACKEND_IMAGE}" "${image_uri}"
-          docker tag "${BACKEND_IMAGE}" "${latest_image_uri}"
-          docker push "${image_uri}"
-          docker push "${latest_image_uri}"
-          echo "IMAGE_URI=${image_uri}" >> "$GITHUB_ENV"
+          backend_ecr_image="${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:${GITHUB_SHA}"
+          backend_latest_image="${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:latest"
+          frontend_ecr_image="${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:${GITHUB_SHA}"
+          frontend_latest_image="${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:latest"
+          docker tag "${BACKEND_IMAGE}" "${backend_ecr_image}"
+          docker tag "${BACKEND_IMAGE}" "${backend_latest_image}"
+          docker tag "${FRONTEND_IMAGE}" "${frontend_ecr_image}"
+          docker tag "${FRONTEND_IMAGE}" "${frontend_latest_image}"
+          docker push "${backend_ecr_image}"
+          docker push "${backend_latest_image}"
+          docker push "${frontend_ecr_image}"
+          docker push "${frontend_latest_image}"
+          echo "BACKEND_ECR_IMAGE=${backend_ecr_image}" >> "$GITHUB_ENV"
+          echo "FRONTEND_ECR_IMAGE=${frontend_ecr_image}" >> "$GITHUB_ENV"
           echo "ECR_REGISTRY=${ECR_REGISTRY}" >> "$GITHUB_ENV"
 
-      - name: Create task definition revision for the immutable image
+      - name: Create task-definition revisions for both ECS services
         run: |
           set -euo pipefail
-          if [ -n "${ECS_SERVICE_ARN:-}" ]; then
-            service_arn="${ECS_SERVICE_ARN}"
-          else
-            service_arn="arn:aws:ecs:${AWS_REGION}:${AWS_ACCOUNT_ID}:service/${ECS_CLUSTER}/${ECS_SERVICE}"
-          fi
+          resolve_service_arn() {
+            local configured_arn="$1"
+            local service_name="$2"
+            if [ -n "${configured_arn}" ]; then
+              printf '%s\n' "${configured_arn}"
+            else
+              printf 'arn:aws:ecs:%s:%s:service/%s\n' "${AWS_REGION}" "${AWS_ACCOUNT_ID}" "${service_name}"
+            fi
+          }
 
-          previous_task_definition_arn="$(aws ecs describe-express-gateway-service \
-            --service-arn "${service_arn}" \
-            --query 'service.activeConfigurations[0].taskDefinitionArn' \
-            --output text)"
+          resolve_active_task_definition() {
+            local service_arn="$1"
+            aws ecs describe-express-gateway-service \
+              --service-arn "${service_arn}" \
+              --query 'service.activeConfigurations[0].taskDefinitionArn' \
+              --output text
+          }
 
-          if [ -z "${previous_task_definition_arn}" ] || [ "${previous_task_definition_arn}" = 'None' ]; then
-            echo 'Could not find the active ECS task definition.' >&2
-            exit 1
-          fi
+          resolve_single_container_name() {
+            local task_definition_file="$1"
+            local repository_name="$2"
+            jq -er --arg repository "${repository_name}" '
+              ([.containerDefinitions[]
+                | select((.image // "") | contains("/" + $repository + ":") or contains("/" + $repository + "@"))
+                | .name] as $matches
+              | if ($matches | length) == 1
+                then $matches[0]
+                elif (.containerDefinitions | length) == 1
+                then .containerDefinitions[0].name
+                else error("Could not identify exactly one application container from the active task definition")
+                end
+            ' "${task_definition_file}"
+          }
+
+          backend_service_arn="$(resolve_service_arn "${ECS_BACKEND_SERVICE_ARN:-}" "${ECS_BACKEND_SERVICE}")"
+          frontend_service_arn="$(resolve_service_arn "${ECS_FRONTEND_SERVICE_ARN:-}" "${ECS_FRONTEND_SERVICE}")"
+          previous_backend_task_definition_arn="$(resolve_active_task_definition "${backend_service_arn}")"
+          previous_frontend_task_definition_arn="$(resolve_active_task_definition "${frontend_service_arn}")"
+
+          for task_definition_arn in "${previous_backend_task_definition_arn}" "${previous_frontend_task_definition_arn}"; do
+            if [ -z "${task_definition_arn}" ] || [ "${task_definition_arn}" = 'None' ]; then
+              echo 'Could not find an active ECS task definition for both services.' >&2
+              exit 1
+            fi
+          done
 
           aws ecs describe-task-definition \
-            --task-definition "${previous_task_definition_arn}" \
+            --task-definition "${previous_backend_task_definition_arn}" \
             --query taskDefinition \
-            --output json > current-task-definition.json
+            --output json > backend-task-definition.json
+          aws ecs describe-task-definition \
+            --task-definition "${previous_frontend_task_definition_arn}" \
+            --query taskDefinition \
+            --output json > frontend-task-definition.json
 
-          image_repository="${ECR_REGISTRY}/${ECR_REPOSITORY}"
-          if [ -n "${ECS_CONTAINER_NAME:-}" ]; then
-            container_name="${ECS_CONTAINER_NAME}"
-          else
-            container_name="$(jq -r --arg repo "${image_repository}" '
-              [.containerDefinitions[] | select(.image | startswith($repo + ":") or startswith($repo + "@")) | .name]
-              | if length == 1 then .[0] else empty end
-            ' current-task-definition.json)"
+          backend_container_name="$(resolve_single_container_name backend-task-definition.json "${ECR_BACKEND_REPOSITORY}")"
+          frontend_container_name="$(resolve_single_container_name frontend-task-definition.json "${ECR_FRONTEND_REPOSITORY}")"
 
-            if [ -z "${container_name}" ]; then
-              container_count="$(jq '.containerDefinitions | length' current-task-definition.json)"
-              if [ "${container_count}" = '1' ]; then
-                container_name="$(jq -r '.containerDefinitions[0].name' current-task-definition.json)"
-              else
-                echo 'Could not determine the deployment container. Set ECS_CONTAINER_NAME.' >&2
-                exit 1
-              fi
-            fi
-          fi
-
-          jq -e --arg name "${container_name}" 'any(.containerDefinitions[]; .name == $name)' current-task-definition.json > /dev/null
-
-          jq --arg name "${container_name}" --arg image "${IMAGE_URI}" '
+          jq \
+            --arg name "${backend_container_name}" \
+            --arg image "${BACKEND_ECR_IMAGE}" '
             del(
               .taskDefinitionArn,
               .revision,
@@ -378,34 +423,71 @@ jobs:
               .deregisteredAt
             )
             | .containerDefinitions = (
-              .containerDefinitions
-              | map(if .name == $name then .image = $image else . end)
-            )
-          ' current-task-definition.json > new-task-definition.json
+                .containerDefinitions | map(if .name == $name then .image = $image else . end)
+              )
+          ' backend-task-definition.json > new-backend-task-definition.json
 
-          task_definition_arn="$(aws ecs register-task-definition \
-            --cli-input-json file://new-task-definition.json \
+          jq \
+            --arg name "${frontend_container_name}" \
+            --arg image "${FRONTEND_ECR_IMAGE}" '
+            del(
+              .taskDefinitionArn,
+              .revision,
+              .status,
+              .requiresAttributes,
+              .compatibilities,
+              .registeredAt,
+              .registeredBy,
+              .deregisteredAt
+            )
+            | .containerDefinitions = (
+                .containerDefinitions | map(if .name == $name then .image = $image else . end)
+              )
+          ' frontend-task-definition.json > new-frontend-task-definition.json
+
+          backend_task_definition_arn="$(aws ecs register-task-definition \
+            --cli-input-json file://new-backend-task-definition.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)"
+          frontend_task_definition_arn="$(aws ecs register-task-definition \
+            --cli-input-json file://new-frontend-task-definition.json \
             --query 'taskDefinition.taskDefinitionArn' \
             --output text)"
 
           {
-            echo "SERVICE_ARN=${service_arn}"
-            echo "PREVIOUS_TASK_DEFINITION_ARN=${previous_task_definition_arn}"
-            echo "TASK_DEFINITION_ARN=${task_definition_arn}"
+            echo "BACKEND_SERVICE_ARN=${backend_service_arn}"
+            echo "FRONTEND_SERVICE_ARN=${frontend_service_arn}"
+            echo "PREVIOUS_BACKEND_TASK_DEFINITION_ARN=${previous_backend_task_definition_arn}"
+            echo "PREVIOUS_FRONTEND_TASK_DEFINITION_ARN=${previous_frontend_task_definition_arn}"
+            echo "BACKEND_TASK_DEFINITION_ARN=${backend_task_definition_arn}"
+            echo "FRONTEND_TASK_DEFINITION_ARN=${frontend_task_definition_arn}"
+            echo "BACKEND_CONTAINER_NAME=${backend_container_name}"
+            echo "FRONTEND_CONTAINER_NAME=${frontend_container_name}"
           } >> "$GITHUB_ENV"
 
       - name: Deploy, verify, smoke test, and roll back on failure
         run: |
           set -euo pipefail
           deployment_started=false
+          backend_updated=false
+          frontend_updated=false
 
           rollback() {
             echo 'Deployment validation failed; restoring the previous task definition.' >&2
-            aws ecs update-express-gateway-service \
-              --service-arn "${SERVICE_ARN}" \
-              --task-definition-arn "${PREVIOUS_TASK_DEFINITION_ARN}" \
-              --monitor-resources DEPLOYMENT \
-              --monitor-mode TEXT-ONLY
+            if [ "${backend_updated}" = true ]; then
+              aws ecs update-express-gateway-service \
+                --service-arn "${BACKEND_SERVICE_ARN}" \
+                --task-definition-arn "${PREVIOUS_BACKEND_TASK_DEFINITION_ARN}" \
+                --monitor-resources DEPLOYMENT \
+                --monitor-mode TEXT-ONLY
+            fi
+            if [ "${frontend_updated}" = true ]; then
+              aws ecs update-express-gateway-service \
+                --service-arn "${FRONTEND_SERVICE_ARN}" \
+                --task-definition-arn "${PREVIOUS_FRONTEND_TASK_DEFINITION_ARN}" \
+                --monitor-resources DEPLOYMENT \
+                --monitor-mode TEXT-ONLY
+            fi
           }
 
           on_exit() {
@@ -421,22 +503,51 @@ jobs:
 
           deployment_started=true
           aws ecs update-express-gateway-service \
-            --service-arn "${SERVICE_ARN}" \
-            --task-definition-arn "${TASK_DEFINITION_ARN}" \
+            --service-arn "${BACKEND_SERVICE_ARN}" \
+            --task-definition-arn "${BACKEND_TASK_DEFINITION_ARN}" \
             --monitor-resources DEPLOYMENT \
             --monitor-mode TEXT-ONLY
+          backend_updated=true
 
-          service_status="$(aws ecs describe-express-gateway-service \
-            --service-arn "${SERVICE_ARN}" \
-            --query 'service.status.statusCode' \
-            --output text)"
-          active_task_definition_matches="$(aws ecs describe-express-gateway-service \
-            --service-arn "${SERVICE_ARN}" \
-            --query "length(service.activeConfigurations[?taskDefinitionArn=='${TASK_DEFINITION_ARN}'])" \
-            --output text)"
+          aws ecs update-express-gateway-service \
+            --service-arn "${FRONTEND_SERVICE_ARN}" \
+            --task-definition-arn "${FRONTEND_TASK_DEFINITION_ARN}" \
+            --monitor-resources DEPLOYMENT \
+            --monitor-mode TEXT-ONLY
+          frontend_updated=true
 
-          if [ "${service_status}" != 'ACTIVE' ] || [ "${active_task_definition_matches}" = '0' ]; then
-            echo 'ECS Express service is not active on the expected task definition.' >&2
+          stable=false
+          for attempt in $(seq 1 18); do
+            backend_status="$(aws ecs describe-express-gateway-service \
+              --service-arn "${BACKEND_SERVICE_ARN}" \
+              --query 'service.status.statusCode' \
+              --output text)"
+            frontend_status="$(aws ecs describe-express-gateway-service \
+              --service-arn "${FRONTEND_SERVICE_ARN}" \
+              --query 'service.status.statusCode' \
+              --output text)"
+            backend_active_task_definition="$(aws ecs describe-express-gateway-service \
+              --service-arn "${BACKEND_SERVICE_ARN}" \
+              --query 'service.activeConfigurations[0].taskDefinitionArn' \
+              --output text)"
+            frontend_active_task_definition="$(aws ecs describe-express-gateway-service \
+              --service-arn "${FRONTEND_SERVICE_ARN}" \
+              --query 'service.activeConfigurations[0].taskDefinitionArn' \
+              --output text)"
+
+            if [ "${backend_status}" = 'ACTIVE' ] \
+              && [ "${frontend_status}" = 'ACTIVE' ] \
+              && [ "${backend_active_task_definition}" = "${BACKEND_TASK_DEFINITION_ARN}" ] \
+              && [ "${frontend_active_task_definition}" = "${FRONTEND_TASK_DEFINITION_ARN}" ]; then
+              stable=true
+              break
+            fi
+            echo "Waiting for both ECS services to become stable (attempt ${attempt}/18)." >&2
+            sleep 10
+          done
+
+          if [ "${stable}" != true ]; then
+            echo 'Both ECS services did not become active on their expected task definitions.' >&2
             exit 1
           fi
 
@@ -473,10 +584,14 @@ jobs:
           {
             echo '## Deployment summary'
             echo
-            echo "- Immutable image deployed: \`${IMAGE_URI}\`"
-            echo "- Previous task definition: \`${PREVIOUS_TASK_DEFINITION_ARN}\`"
-            echo "- Active task definition: \`${TASK_DEFINITION_ARN}\`"
-            echo '- ECS verification: active on the expected revision.'
+            echo "- Immutable backend image deployed: \`${BACKEND_ECR_IMAGE}\`"
+            echo "- Immutable frontend image deployed: \`${FRONTEND_ECR_IMAGE}\`"
+            echo "- Previous backend task definition: \`${PREVIOUS_BACKEND_TASK_DEFINITION_ARN}\`"
+            echo "- Active backend task definition: \`${BACKEND_TASK_DEFINITION_ARN}\`"
+            echo "- Previous frontend task definition: \`${PREVIOUS_FRONTEND_TASK_DEFINITION_ARN}\`"
+            echo "- Active frontend task definition: \`${FRONTEND_TASK_DEFINITION_ARN}\`"
+            echo "- ECS containers updated: \`${BACKEND_CONTAINER_NAME}\`, \`${FRONTEND_CONTAINER_NAME}\`"
+            echo '- ECS verification: both services active on their expected revisions.'
             echo '- HTTP health check: passed.'
             echo '- Application smoke test: passed (200 or intentional authentication redirect).'
           } >> "$GITHUB_STEP_SUMMARY"
