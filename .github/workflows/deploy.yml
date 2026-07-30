@@ -27,6 +27,7 @@ env:
   BACKEND_IMAGE: firefighter-dashboard-backend:${{ github.sha }}
   FRONTEND_IMAGE: firefighter-dashboard-frontend:${{ github.sha }}
   AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
   ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
   ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
   ECS_SERVICE: ${{ vars.ECS_SERVICE }}
