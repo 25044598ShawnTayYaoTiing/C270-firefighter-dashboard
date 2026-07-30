@@ -1,0 +1,77 @@
+---
+- name: Assert required non-secret deployment inputs
+  ansible.builtin.assert:
+    that:
+      - ecs_express_deploy_aws_region | length > 0
+      - ecs_express_deploy_backend_service_arn | length > 0
+      - ecs_express_deploy_frontend_service_arn | length > 0
+      - ecs_express_deploy_backend_service_arn != ecs_express_deploy_frontend_service_arn
+      - ecs_express_deploy_backend_task_definition_arn is match('^arn:aws:ecs:')
+      - ecs_express_deploy_frontend_task_definition_arn is match('^arn:aws:ecs:')
+      - ecs_express_deploy_previous_backend_task_definition_arn is match('^arn:aws:ecs:')
+      - ecs_express_deploy_previous_frontend_task_definition_arn is match('^arn:aws:ecs:')
+      - ecs_express_deploy_backend_health_url is match('^https?://.+/health$')
+      - ecs_express_deploy_frontend_url is match('^https?://.+')
+    fail_msg: >-
+      Required ECS deployment identifiers or public health URLs are missing or invalid.
+      GitHub Actions must pass the existing repository variables and generated task-definition ARNs.
+
+- name: Verify OIDC-provided AWS credentials are usable by Ansible
+  amazon.aws.aws_caller_info:
+    region: '{{ ecs_express_deploy_aws_region }}'
+  no_log: true
+  register: ecs_express_deploy_aws_caller_identity
+
+- name: Read backend ECS Express service state
+  ansible.builtin.command:
+    argv:
+      - aws
+      - ecs
+      - describe-express-gateway-service
+      - --region
+      - '{{ ecs_express_deploy_aws_region }}'
+      - --service-arn
+      - '{{ ecs_express_deploy_backend_service_arn }}'
+      - --query
+      - 'service.{status:status.statusCode,taskDefinition:activeConfigurations[0].taskDefinitionArn}'
+      - --output
+      - json
+  changed_when: false
+  register: ecs_express_deploy_backend_service_info
+
+- name: Read frontend ECS Express service state
+  ansible.builtin.command:
+    argv:
+      - aws
+      - ecs
+      - describe-express-gateway-service
+      - --region
+      - '{{ ecs_express_deploy_aws_region }}'
+      - --service-arn
+      - '{{ ecs_express_deploy_frontend_service_arn }}'
+      - --query
+      - 'service.{status:status.statusCode,taskDefinition:activeConfigurations[0].taskDefinitionArn}'
+      - --output
+      - json
+  changed_when: false
+  register: ecs_express_deploy_frontend_service_info
+
+- name: Record existing service task definitions
+  ansible.builtin.set_fact:
+    ecs_express_deploy_backend_service_state: '{{ ecs_express_deploy_backend_service_info.stdout | from_json }}'
+    ecs_express_deploy_frontend_service_state: '{{ ecs_express_deploy_frontend_service_info.stdout | from_json }}'
+
+- name: Assert both ECS Express services are active and have task definitions
+  ansible.builtin.assert:
+    that:
+      - ecs_express_deploy_backend_service_state.status == 'ACTIVE'
+      - ecs_express_deploy_frontend_service_state.status == 'ACTIVE'
+      - ecs_express_deploy_backend_service_state.taskDefinition | default('') | length > 0
+      - ecs_express_deploy_frontend_service_state.taskDefinition | default('') | length > 0
+    fail_msg: Existing ECS Express services must be active before deployment; Ansible will not create missing resources.
+
+- name: Report safe deployment targets
+  ansible.builtin.debug:
+    msg: >-
+      Preflight passed for backend {{ ecs_express_deploy_backend_service_arn }} and frontend {{ ecs_express_deploy_frontend_service_arn }}
+      in {{ ecs_express_deploy_aws_region }}.

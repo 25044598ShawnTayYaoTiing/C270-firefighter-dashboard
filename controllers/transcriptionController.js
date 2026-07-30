@@ -5,6 +5,16 @@ exports.createStreamToken = (req, res) => {
   return res.json({ token: createToken(req.currentOfficer.officer_id) });
 };
 
+exports.speechHealth = async (req, res) => {
+  const health = await googleSpeechService.checkHealth();
+  const status = health.available ? 200 : 503;
+  return res.status(status).json({
+    status: health.available ? 'ok' : 'unavailable',
+    service: 'Google Cloud Speech-to-Text V1',
+    authentication: health.available ? 'available' : 'unavailable'
+  });
+};
+
 function getStatusForError(error) {
   switch (error && error.kind) {
     case 'validation':
@@ -33,7 +43,11 @@ exports.transcribe = async (req, res) => {
   } catch (error) {
     const status = getStatusForError(error);
     if (status >= 500) {
-      console.error('[SpeechToText] transcription failed', { kind: error && error.kind, code: error && error.code });
+      console.error('[SpeechToText] transcription failed', {
+        kind: error && error.kind,
+        code: error && error.code,
+        error: googleSpeechService._private.serializeError(error)
+      });
     }
     return res.status(status).json({ error: error && error.message || 'Transcription failed.' });
   }

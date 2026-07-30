@@ -460,111 +460,29 @@ jobs:
             echo "FRONTEND_CONTAINER_NAME=${frontend_container_name}"
           } >> "$GITHUB_ENV"
 
-      - name: Deploy, verify, smoke test, and roll back on failure
+      - name: Install constrained Ansible deployment tooling
         run: |
           set -euo pipefail
-          deployment_started=false
-          backend_updated=false
-          frontend_updated=false
+          python3 -m pip install --user --requirement ansible/requirements.txt
+          "${HOME}/.local/bin/ansible-galaxy" collection install --force --requirements-file ansible/requirements.yml
+          echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
 
-          rollback() {
-            echo 'Deployment validation failed; restoring the previous task definition.' >&2
-            if [ "${backend_updated}" = true ]; then
-              aws ecs update-express-gateway-service \
-                --service-arn "${BACKEND_SERVICE_ARN}" \
-                --task-definition-arn "${PREVIOUS_BACKEND_TASK_DEFINITION_ARN}"
-            fi
-            if [ "${frontend_updated}" = true ]; then
-              aws ecs update-express-gateway-service \
-                --service-arn "${FRONTEND_SERVICE_ARN}" \
-                --task-definition-arn "${PREVIOUS_FRONTEND_TASK_DEFINITION_ARN}"
-            fi
-          }
-
-          on_exit() {
-            exit_code=$?
-            if [ "${exit_code}" -ne 0 ] && [ "${deployment_started}" = true ]; then
-              rollback || echo 'Automatic rollback command failed; follow the documented manual rollback procedure.' >&2
-            fi
-            exit "${exit_code}"
-          }
-
-          trap on_exit EXIT
-          trap 'exit 143' INT TERM
-
-          deployment_started=true
-          aws ecs update-express-gateway-service \
-            --service-arn "${BACKEND_SERVICE_ARN}" \
-            --task-definition-arn "${BACKEND_TASK_DEFINITION_ARN}"
-          backend_updated=true
-
-          aws ecs update-express-gateway-service \
-            --service-arn "${FRONTEND_SERVICE_ARN}" \
-            --task-definition-arn "${FRONTEND_TASK_DEFINITION_ARN}"
-          frontend_updated=true
-
-          stable=false
-          for attempt in $(seq 1 18); do
-            backend_status="$(aws ecs describe-express-gateway-service \
-              --service-arn "${BACKEND_SERVICE_ARN}" \
-              --query 'service.status.statusCode' \
-              --output text)"
-            frontend_status="$(aws ecs describe-express-gateway-service \
-              --service-arn "${FRONTEND_SERVICE_ARN}" \
-              --query 'service.status.statusCode' \
-              --output text)"
-            backend_active_task_definition="$(aws ecs describe-express-gateway-service \
-              --service-arn "${BACKEND_SERVICE_ARN}" \
-              --query 'service.activeConfigurations[0].taskDefinitionArn' \
-              --output text)"
-            frontend_active_task_definition="$(aws ecs describe-express-gateway-service \
-              --service-arn "${FRONTEND_SERVICE_ARN}" \
-              --query 'service.activeConfigurations[0].taskDefinitionArn' \
-              --output text)"
-
-            if [ "${backend_status}" = 'ACTIVE' ] \
-              && [ "${frontend_status}" = 'ACTIVE' ] \
-              && [ "${backend_active_task_definition}" = "${BACKEND_TASK_DEFINITION_ARN}" ] \
-              && [ "${frontend_active_task_definition}" = "${FRONTEND_TASK_DEFINITION_ARN}" ]; then
-              stable=true
-              break
-            fi
-            echo "Waiting for both ECS services to become stable (attempt ${attempt}/18)." >&2
-            sleep 10
-          done
-
-          if [ "${stable}" != true ]; then
-            echo 'Both ECS services did not become active on their expected task definitions.' >&2
-            exit 1
-          fi
-
-          health_ready=false
-          for attempt in $(seq 1 18); do
-            if health_body="$(curl --fail --silent --show-error --max-time 10 "${APP_HEALTH_URL}")" \
-              && printf '%s' "${health_body}" | jq -e '.status == "ok"' > /dev/null; then
-              health_ready=true
-              break
-            fi
-            echo "Health endpoint is not ready yet (attempt ${attempt}/18)." >&2
-            sleep 10
-          done
-
-          if [ "${health_ready}" != true ]; then
-            echo 'Application health endpoint did not return {"status":"ok"} before timeout.' >&2
-            exit 1
-          fi
-
-          smoke_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 10 "${APP_SMOKE_URL}")"
-          case "${smoke_status}" in
-            200|301|302|303|307|308)
-              ;;
-            *)
-              echo "Application smoke test returned unexpected HTTP status ${smoke_status}." >&2
-              exit 1
-              ;;
-          esac
-
-          trap - EXIT INT TERM
+      - name: Deploy backend first with Ansible, then verify frontend
+        working-directory: ansible
+        env:
+          ANSIBLE_FORCE_COLOR: 'true'
+        run: |
+          set -euo pipefail
+          ansible-playbook deploy.yml \
+            --extra-vars "ecs_express_deploy_aws_region=${AWS_REGION}" \
+            --extra-vars "ecs_express_deploy_backend_service_arn=${BACKEND_SERVICE_ARN}" \
+            --extra-vars "ecs_express_deploy_frontend_service_arn=${FRONTEND_SERVICE_ARN}" \
+            --extra-vars "ecs_express_deploy_backend_task_definition_arn=${BACKEND_TASK_DEFINITION_ARN}" \
+            --extra-vars "ecs_express_deploy_frontend_task_definition_arn=${FRONTEND_TASK_DEFINITION_ARN}" \
+            --extra-vars "ecs_express_deploy_previous_backend_task_definition_arn=${PREVIOUS_BACKEND_TASK_DEFINITION_ARN}" \
+            --extra-vars "ecs_express_deploy_previous_frontend_task_definition_arn=${PREVIOUS_FRONTEND_TASK_DEFINITION_ARN}" \
+            --extra-vars "ecs_express_deploy_backend_health_url=${APP_HEALTH_URL}" \
+            --extra-vars "ecs_express_deploy_frontend_url=${APP_SMOKE_URL}"
 
       - name: Write deployment summary
         run: |
@@ -578,7 +496,6 @@ jobs:
             echo "- Previous frontend task definition: \`${PREVIOUS_FRONTEND_TASK_DEFINITION_ARN}\`"
             echo "- Active frontend task definition: \`${FRONTEND_TASK_DEFINITION_ARN}\`"
             echo "- ECS containers updated: \`${BACKEND_CONTAINER_NAME}\`, \`${FRONTEND_CONTAINER_NAME}\`"
-            echo '- ECS verification: both services active on their expected revisions.'
-            echo '- HTTP health check: passed.'
-            echo '- Application smoke test: passed (200 or intentional authentication redirect).'
+            echo '- Ansible preflight, backend ECS stability, backend health, frontend ECS stability, and frontend HTTP validation: passed.'
+            echo '- On a post-update failure, Ansible requests the saved previous task definitions for services changed in this run.'
           } >> "$GITHUB_STEP_SUMMARY"

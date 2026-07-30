@@ -1,0 +1,7 @@
+---
+- name: Deploy Firefighter Dashboard ECS Express services
+  hosts: production
+  gather_facts: false
+  any_errors_fatal: true
+  roles:
+    - role: ecs_express_deploy

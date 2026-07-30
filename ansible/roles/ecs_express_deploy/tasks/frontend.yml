@@ -1,0 +1,44 @@
+---
+- name: Determine whether frontend deployment is required
+  ansible.builtin.set_fact:
+    ecs_express_deploy_frontend_update_required: >-
+      {{ ecs_express_deploy_frontend_service_state.taskDefinition
+         != ecs_express_deploy_frontend_task_definition_arn }}
+
+- name: Deploy frontend ECS Express service revision
+  # ECS Express uses UpdateExpressGatewayService, which is not managed by the
+  # standard ECS Ansible service module. This command changes only the revision.
+  ansible.builtin.command:
+    argv:
+      - aws
+      - ecs
+      - update-express-gateway-service
+      - --region
+      - '{{ ecs_express_deploy_aws_region }}'
+      - --service-arn
+      - '{{ ecs_express_deploy_frontend_service_arn }}'
+      - --task-definition-arn
+      - '{{ ecs_express_deploy_frontend_task_definition_arn }}'
+  when: ecs_express_deploy_frontend_update_required | bool
+  changed_when: true
+
+- name: Wait for frontend ECS Express service stability
+  ansible.builtin.include_tasks: wait_for_service.yml
+  vars:
+    ecs_express_deploy_service_label: frontend
+    ecs_express_deploy_service_arn: '{{ ecs_express_deploy_frontend_service_arn }}'
+    ecs_express_deploy_expected_task_definition_arn: '{{ ecs_express_deploy_frontend_task_definition_arn }}'
+
+- name: Verify frontend HTTP availability
+  ansible.builtin.uri:
+    url: '{{ ecs_express_deploy_frontend_url }}'
+    method: GET
+    status_code: '{{ ecs_express_deploy_frontend_success_status_codes }}'
+    return_content: false
+    follow_redirects: none
+    validate_certs: true
+    timeout: '{{ ecs_express_deploy_health_timeout }}'
+  register: ecs_express_deploy_frontend_health
+  retries: '{{ ecs_express_deploy_health_retries }}'
+  delay: '{{ ecs_express_deploy_health_delay }}'
+  until: ecs_express_deploy_frontend_health.status in ecs_express_deploy_frontend_success_status_codes

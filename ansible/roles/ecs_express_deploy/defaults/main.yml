@@ -1,0 +1,25 @@
+---
+# All service identifiers and URLs are supplied by GitHub Actions as non-secret
+# extra variables. Keep credentials in the existing OIDC environment only.
+ecs_express_deploy_aws_region: ''
+ecs_express_deploy_backend_service_arn: ''
+ecs_express_deploy_frontend_service_arn: ''
+ecs_express_deploy_backend_task_definition_arn: ''
+ecs_express_deploy_frontend_task_definition_arn: ''
+ecs_express_deploy_previous_backend_task_definition_arn: ''
+ecs_express_deploy_previous_frontend_task_definition_arn: ''
+ecs_express_deploy_backend_health_url: ''
+ecs_express_deploy_frontend_url: ''
+
+ecs_express_deploy_stabilization_retries: 90
+ecs_express_deploy_stabilization_delay: 10
+ecs_express_deploy_health_retries: 18
+ecs_express_deploy_health_delay: 10
+ecs_express_deploy_health_timeout: 10
+ecs_express_deploy_frontend_success_status_codes:
+  - 200
+  - 301
+  - 302
+  - 303
+  - 307
+  - 308

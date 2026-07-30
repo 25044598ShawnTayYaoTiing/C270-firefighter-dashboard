@@ -1,0 +1,25 @@
+---
+- name: Wait for ECS Express service to use the expected task definition - {{ ecs_express_deploy_service_label }}
+  ansible.builtin.command:
+    argv:
+      - aws
+      - ecs
+      - describe-express-gateway-service
+      - --region
+      - '{{ ecs_express_deploy_aws_region }}'
+      - --service-arn
+      - '{{ ecs_express_deploy_service_arn }}'
+      - --query
+      - 'service.{status:status.statusCode,taskDefinition:activeConfigurations[0].taskDefinitionArn}'
+      - --output
+      - json
+  register: ecs_express_deploy_service_status
+  changed_when: false
+  failed_when: false
+  retries: '{{ ecs_express_deploy_stabilization_retries }}'
+  delay: '{{ ecs_express_deploy_stabilization_delay }}'
+  until:
+    - ecs_express_deploy_service_status.rc == 0
+    - >-
+      '"status": "ACTIVE"' in ecs_express_deploy_service_status.stdout
+    - ecs_express_deploy_expected_task_definition_arn in ecs_express_deploy_service_status.stdout
