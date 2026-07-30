@@ -87,13 +87,19 @@ Resources:
                 Action:
                   - ecr:GetAuthorizationToken
                 Resource: '*'
+              - Sid: DescribeConfiguredDashboardRepositories
+                Effect: Allow
+                Action:
+                  - ecr:DescribeRepositories
+                Resource:
+                  - !Ref EcrBackendRepositoryArn
+                  - !Ref EcrFrontendRepositoryArn
               - Sid: PushOnlyToConfiguredDashboardRepositories
                 Effect: Allow
                 Action:
                   - ecr:BatchCheckLayerAvailability
                   - ecr:BatchGetImage
                   - ecr:CompleteLayerUpload
-                  - ecr:DescribeRepositories
                   - ecr:InitiateLayerUpload
                   - ecr:PutImage
                   - ecr:UploadLayerPart
