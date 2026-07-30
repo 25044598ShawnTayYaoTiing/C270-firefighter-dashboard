@@ -148,7 +148,12 @@ test('aws-wif mode uses the ECS credential provider and Google AwsClient without
   assert.equal(awsOptions.audience, '//iam.googleapis.com/projects/981601006380/locations/global/workloadIdentityPools/aws-ecs-firefighter/providers/aws-ecs-provider');
   assert.equal(awsOptions.service_account_impersonation_url, 'https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/firefighter-stt@project-1e4380d5-44ee-49d4-b26.iam.gserviceaccount.com:generateAccessToken');
   assert.equal(await awsOptions.aws_security_credentials_supplier.getAwsRegion(), 'ap-southeast-1');
-  assert.equal(credentials.sessionToken, 'temporary-session-token');
+  assert.deepEqual(credentials, {
+    accessKeyId: 'temporary-access-key',
+    secretAccessKey: 'temporary-secret',
+    token: 'temporary-session-token'
+  });
+  assert.equal(Object.hasOwn(credentials, 'sessionToken'), false);
   assert.ok(speechOptions.auth);
   assert.equal(speechOptions.auth.getProjectId instanceof Function, true);
 });

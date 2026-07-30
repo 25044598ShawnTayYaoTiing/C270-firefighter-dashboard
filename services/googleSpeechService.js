@@ -148,7 +148,7 @@ function createAwsWifClient() {
           return {
             accessKeyId: credentials.accessKeyId,
             secretAccessKey: credentials.secretAccessKey,
-            sessionToken: credentials.sessionToken
+            token: credentials.sessionToken
           };
         } catch (error) {
           logWifError('ecs-task-role-credential-resolution', error);
