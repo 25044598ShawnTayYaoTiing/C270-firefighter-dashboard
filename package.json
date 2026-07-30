@@ -24,5 +24,10 @@
     "leaflet.markercluster": "^1.5.3",
     "mysql2": "^3.22.5",
     "ws": "^8.21.1"
+  },
+  "overrides": {
+    "google-gax": {
+      "rimraf": "6.1.3"
+    }
   }
 }
