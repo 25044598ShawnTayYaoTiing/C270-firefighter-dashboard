@@ -6,3 +6,8 @@ node_modules/
 *.key
 server.out.log
 server.err.log
+deployment-diagnostics.json
+aiops-analysis.json
+aiops-summary.md
+ansible/deployment-diagnostics.json
+ansible/deployment-summary.md

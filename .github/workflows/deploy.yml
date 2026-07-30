@@ -240,6 +240,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    outputs:
+      aiops_ready: ${{ steps.prepare-aiops.outputs.ready }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -492,7 +494,34 @@ jobs:
             --extra-vars "ecs_express_deploy_previous_backend_task_definition_arn=${PREVIOUS_BACKEND_TASK_DEFINITION_ARN}" \
             --extra-vars "ecs_express_deploy_previous_frontend_task_definition_arn=${PREVIOUS_FRONTEND_TASK_DEFINITION_ARN}" \
             --extra-vars "ecs_express_deploy_backend_health_url=${APP_HEALTH_URL}" \
-            --extra-vars "ecs_express_deploy_frontend_url=${APP_SMOKE_URL}"
+            --extra-vars "ecs_express_deploy_frontend_url=${APP_SMOKE_URL}" \
+            --extra-vars "ecs_express_deploy_github_run_id=${GITHUB_RUN_ID}" \
+            --extra-vars "ecs_express_deploy_github_commit_sha=${GITHUB_SHA}" \
+            --extra-vars "ecs_express_deploy_github_branch=${GITHUB_REF_NAME}"
+
+      - name: Sanitize failed deployment diagnostics
+        id: prepare-aiops
+        if: always() && steps.ansible-deploy.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          echo 'ready=false' >> "$GITHUB_OUTPUT"
+          if [ ! -f ansible/deployment-diagnostics.json ]; then
+            echo 'Ansible failure diagnostics were unavailable; advisory analysis will be skipped.'
+            exit 0
+          fi
+          node scripts/aiops/sanitizeDiagnostics.js \
+            ansible/deployment-diagnostics.json \
+            deployment-diagnostics.json
+          echo 'ready=true' >> "$GITHUB_OUTPUT"
+
+      - name: Upload sanitized deployment diagnostics
+        if: always() && steps.prepare-aiops.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: deployment-diagnostics.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Write deployment summary
         if: always()
@@ -517,3 +546,59 @@ jobs:
               echo 'Ansible deployment details were unavailable because deployment did not reach outcome tracking.'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  aiops-analysis:
+    name: Advisory AIOps deployment failure analysis
+    needs: deploy
+    if: >-
+      always() &&
+      needs.deploy.result == 'failure' &&
+      needs.deploy.outputs.aiops_ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out analysis code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install locked production dependencies
+        run: npm ci --omit=dev --ignore-scripts
+
+      - name: Download sanitized deployment diagnostics
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Generate read-only advisory analysis
+        env:
+          AIOPS_GEMINI_API_KEY: ${{ secrets.AIOPS_GEMINI_API_KEY }}
+          AIOPS_GEMINI_MODEL: ${{ vars.AIOPS_GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
+        run: |
+          node scripts/aiops/analyzeDeploymentFailure.js \
+            deployment-diagnostics.json \
+            aiops-summary.md \
+            aiops-analysis.json
+
+      - name: Write advisory analysis summary
+        if: always()
+        run: |
+          if [ -f aiops-summary.md ]; then
+            cat aiops-summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo '## AIOps Deployment Failure Analysis'
+              echo
+              echo '> **AI-GENERATED OPERATIONAL ANALYSIS — ADVISORY ONLY**'
+              echo
+              echo '**Analysis:** AI analysis unavailable'
+              echo
+              echo '**Human review required:** YES'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
