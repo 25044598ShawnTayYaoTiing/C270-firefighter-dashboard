@@ -361,18 +361,19 @@ jobs:
             local task_definition_file="$1"
             local repository_name="$2"
             jq -er --arg repository "${repository_name}" '
-              [
-                .containerDefinitions[]
-                | select(
-                    (.image // "")
-                    | (contains("/" + $repository + ":") or contains("/" + $repository + "@"))
-                  )
-                | .name
-              ] as $matches
-              | if ($matches | length) == 1 then
-                  $matches[0]
-                elif (.containerDefinitions | length) == 1 then
-                  .containerDefinitions[0].name
+              . as $task
+              | [
+                  $task.containerDefinitions[]
+                  | select(
+                      (.image // "")
+                      | (contains("/" + $repository + ":") or contains("/" + $repository + "@"))
+                    )
+                  | .name
+                ]
+              | if length == 1 then
+                  .[0]
+                elif ($task.containerDefinitions | length) == 1 then
+                  $task.containerDefinitions[0].name
                 else
                   error("Could not identify exactly one application container from the active task definition")
                 end
