@@ -42,10 +42,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -65,12 +65,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out complete Git history
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Scan repository and history with Gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITLEAKS_ENABLE_COMMENTS: 'false'
@@ -83,7 +83,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run Semgrep JavaScript and OWASP rules
         run: |
@@ -104,7 +104,7 @@ jobs:
 
       - name: Upload Semgrep report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: semgrep-sarif
           path: semgrep.sarif
@@ -126,7 +126,7 @@ jobs:
       frontend_image_tar_sha256: ${{ steps.image-artifact.outputs.frontend_sha256 }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build the backend image to be deployed
         run: |
@@ -148,7 +148,7 @@ jobs:
           echo "frontend_image=${FRONTEND_IMAGE}" >> "$GITHUB_OUTPUT"
 
       - name: Install pinned Trivy
-        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         with:
           version: v0.70.0
           cache: true
@@ -188,7 +188,7 @@ jobs:
 
       - name: Upload Trivy and image metadata reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container-security-reports
           path: |
@@ -200,7 +200,7 @@ jobs:
           retention-days: 30
 
       - name: Upload exact scanned images
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: scanned-images
           path: |
@@ -238,7 +238,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Validate deployment configuration
         run: |
@@ -271,7 +271,7 @@ jobs:
           esac
 
       - name: Download the exact scanned images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: scanned-images
 
@@ -292,7 +292,7 @@ jobs:
           docker image inspect "${FRONTEND_IMAGE}" > /dev/null
 
       - name: Configure AWS credentials with OIDC
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
