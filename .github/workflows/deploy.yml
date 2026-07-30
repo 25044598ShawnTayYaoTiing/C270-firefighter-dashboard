@@ -472,16 +472,12 @@ jobs:
             if [ "${backend_updated}" = true ]; then
               aws ecs update-express-gateway-service \
                 --service-arn "${BACKEND_SERVICE_ARN}" \
-                --task-definition-arn "${PREVIOUS_BACKEND_TASK_DEFINITION_ARN}" \
-                --monitor-resources DEPLOYMENT \
-                --monitor-mode TEXT-ONLY
+                --task-definition-arn "${PREVIOUS_BACKEND_TASK_DEFINITION_ARN}"
             fi
             if [ "${frontend_updated}" = true ]; then
               aws ecs update-express-gateway-service \
                 --service-arn "${FRONTEND_SERVICE_ARN}" \
-                --task-definition-arn "${PREVIOUS_FRONTEND_TASK_DEFINITION_ARN}" \
-                --monitor-resources DEPLOYMENT \
-                --monitor-mode TEXT-ONLY
+                --task-definition-arn "${PREVIOUS_FRONTEND_TASK_DEFINITION_ARN}"
             fi
           }
 
@@ -499,16 +495,12 @@ jobs:
           deployment_started=true
           aws ecs update-express-gateway-service \
             --service-arn "${BACKEND_SERVICE_ARN}" \
-            --task-definition-arn "${BACKEND_TASK_DEFINITION_ARN}" \
-            --monitor-resources DEPLOYMENT \
-            --monitor-mode TEXT-ONLY
+            --task-definition-arn "${BACKEND_TASK_DEFINITION_ARN}"
           backend_updated=true
 
           aws ecs update-express-gateway-service \
             --service-arn "${FRONTEND_SERVICE_ARN}" \
-            --task-definition-arn "${FRONTEND_TASK_DEFINITION_ARN}" \
-            --monitor-resources DEPLOYMENT \
-            --monitor-mode TEXT-ONLY
+            --task-definition-arn "${FRONTEND_TASK_DEFINITION_ARN}"
           frontend_updated=true
 
           stable=false

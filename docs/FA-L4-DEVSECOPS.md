@@ -166,6 +166,43 @@ Runtime application values such as MySQL credentials, `SESSION_SECRET`, and `GEM
 
 When deployment resources or permissions change, update `GitHubActionsDeployRole` directly in AWS IAM. This repository does not create or update that role through CloudFormation, and no AWS access keys are used by the workflow. The `AWS_ROLE_TO_ASSUME` GitHub repository variable must contain the existing role ARN. Existing legacy GitHub AWS secrets are not used by this workflow and should remain untouched until that deployment has been independently confirmed.
 
+The ECS Express deployment command uses `--monitor-resources DEPLOYMENT --monitor-mode TEXT-ONLY`. Keep monitoring enabled and add the following scoped read permissions to the live `GitHubActionsDeployRole` policy. Replace `AWS_REGION`, `AWS_ACCOUNT_ID`, and each cluster name with the values from the two existing service ARNs; do not replace these resources with `*`.
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "ecs:ListServiceDeployments"
+  ],
+  "Resource": [
+    "arn:aws:ecs:AWS_REGION:AWS_ACCOUNT_ID:service/BACKEND_CLUSTER/firefighter-backend",
+    "arn:aws:ecs:AWS_REGION:AWS_ACCOUNT_ID:service/FRONTEND_CLUSTER/firefighter-frontend"
+  ]
+},
+{
+  "Effect": "Allow",
+  "Action": [
+    "ecs:DescribeServiceDeployments"
+  ],
+  "Resource": [
+    "arn:aws:ecs:AWS_REGION:AWS_ACCOUNT_ID:service-deployment/BACKEND_CLUSTER/firefighter-backend/*",
+    "arn:aws:ecs:AWS_REGION:AWS_ACCOUNT_ID:service-deployment/FRONTEND_CLUSTER/firefighter-frontend/*"
+  ]
+},
+{
+  "Effect": "Allow",
+  "Action": [
+    "ecs:DescribeServiceRevisions"
+  ],
+  "Resource": [
+    "arn:aws:ecs:AWS_REGION:AWS_ACCOUNT_ID:service-revision/BACKEND_CLUSTER/firefighter-backend/*",
+    "arn:aws:ecs:AWS_REGION:AWS_ACCOUNT_ID:service-revision/FRONTEND_CLUSTER/firefighter-frontend/*"
+  ]
+}
+```
+
+The first statement permits deployment listing for only the backend and frontend services. The second and third statements permit reading only deployments and revisions belonging to those same services. These permissions support deployment monitoring and its existing rollback path; they do not grant permission to change any additional ECS service.
+
 ## 11. Local validation commands
 
 Run from the repository root. Do not run Docker Compose against production credentials unless the local `.env` is intentionally configured for that environment.
