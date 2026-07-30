@@ -11,6 +11,10 @@ ecs_express_deploy_previous_frontend_task_definition_arn: ''
 ecs_express_deploy_backend_health_url: ''
 ecs_express_deploy_frontend_url: ''
 ecs_express_deploy_summary_path: '{{ playbook_dir }}/deployment-summary.md'
+ecs_express_deploy_diagnostics_path: '{{ playbook_dir }}/deployment-diagnostics.json'
+ecs_express_deploy_github_run_id: unavailable
+ecs_express_deploy_github_commit_sha: unavailable
+ecs_express_deploy_github_branch: unavailable
 
 # Service polling is bounded at approximately 15 minutes per phase.
 ecs_express_deploy_stabilization_retries: 90

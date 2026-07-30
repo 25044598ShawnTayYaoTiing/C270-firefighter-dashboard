@@ -1,0 +1,88 @@
+---
+- name: Produce non-blocking deployment failure diagnostics
+  block:
+    - name: Parse bounded ECS diagnostic responses
+      ansible.builtin.set_fact:
+        ecs_express_deploy_backend_failure_state_document: >-
+          {{ ecs_express_deploy_backend_failure_state | from_json }}
+        ecs_express_deploy_backend_recent_deployments_document: >-
+          {{ ecs_express_deploy_backend_recent_deployments | from_json }}
+        ecs_express_deploy_frontend_failure_state_document: >-
+          {{ ecs_express_deploy_frontend_failure_state | from_json }}
+        ecs_express_deploy_frontend_recent_deployments_document: >-
+          {{ ecs_express_deploy_frontend_recent_deployments | from_json }}
+      no_log: true
+
+    - name: Build the allowlisted deployment failure document
+      ansible.builtin.set_fact:
+        ecs_express_deploy_diagnostic_document:
+          schemaVersion: '1.0'
+          timestamp: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+          github:
+            runId: '{{ ecs_express_deploy_github_run_id }}'
+            commitSha: '{{ ecs_express_deploy_github_commit_sha }}'
+            branch: '{{ ecs_express_deploy_github_branch }}'
+          failure:
+            stage: '{{ ecs_express_deploy_failure_stage }}'
+            task: '{{ ecs_express_deploy_failure_task }}'
+            message: '{{ ecs_express_deploy_failure_message }}'
+          services:
+            backend:
+              identifier: '{{ ecs_express_deploy_backend_service_arn }}'
+              previousTaskDefinition: '{{ ecs_express_deploy_previous_backend_task_definition_arn }}'
+              expectedTaskDefinition: '{{ ecs_express_deploy_backend_task_definition_arn }}'
+              activeTaskDefinition: >-
+                {{ ecs_express_deploy_backend_failure_state_document.activeTaskDefinition
+                   | default('unavailable', true) }}
+              status: >-
+                {{ ecs_express_deploy_backend_failure_state_document.status
+                   | default('unavailable', true) }}
+              statusReason: >-
+                {{ ecs_express_deploy_backend_failure_state_document.statusReason
+                   | default('unavailable', true) }}
+              recentDeployments: >-
+                {{ ecs_express_deploy_backend_recent_deployments_document }}
+            frontend:
+              identifier: '{{ ecs_express_deploy_frontend_service_arn }}'
+              previousTaskDefinition: '{{ ecs_express_deploy_previous_frontend_task_definition_arn }}'
+              expectedTaskDefinition: '{{ ecs_express_deploy_frontend_task_definition_arn }}'
+              activeTaskDefinition: >-
+                {{ ecs_express_deploy_frontend_failure_state_document.activeTaskDefinition
+                   | default('unavailable', true) }}
+              status: >-
+                {{ ecs_express_deploy_frontend_failure_state_document.status
+                   | default('unavailable', true) }}
+              statusReason: >-
+                {{ ecs_express_deploy_frontend_failure_state_document.statusReason
+                   | default('unavailable', true) }}
+              recentDeployments: >-
+                {{ ecs_express_deploy_frontend_recent_deployments_document }}
+          verification:
+            backendHealth: '{{ ecs_express_deploy_backend_health_result }}'
+            frontendSmoke: '{{ ecs_express_deploy_frontend_health_result }}'
+          rollback:
+            backend:
+              attempted: '{{ ecs_express_deploy_backend_update_required | bool }}'
+              result: '{{ ecs_express_deploy_backend_rollback_result }}'
+              postRollbackHealth: '{{ ecs_express_deploy_backend_rollback_health_result }}'
+            frontend:
+              attempted: '{{ ecs_express_deploy_frontend_update_required | bool }}'
+              result: '{{ ecs_express_deploy_frontend_rollback_result }}'
+      no_log: true
+
+    - name: Write structured deployment failure diagnostics
+      ansible.builtin.copy:
+        dest: '{{ ecs_express_deploy_diagnostics_path }}'
+        mode: '0600'
+        content: '{{ ecs_express_deploy_diagnostic_document | to_nice_json }}'
+      no_log: true
+      register: ecs_express_deploy_diagnostics_file
+      changed_when: false
+
+    - name: Confirm safe deployment diagnostics are available for sanitization
+      ansible.builtin.debug:
+        msg: Deployment diagnostics were written for the isolated advisory analysis job.
+  rescue:
+    - name: Report unavailable advisory diagnostics without masking deployment failure
+      ansible.builtin.debug:
+        msg: Deployment diagnostics could not be written; deterministic rollback results remain authoritative.

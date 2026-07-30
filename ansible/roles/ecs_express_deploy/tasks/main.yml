@@ -6,6 +6,7 @@
 - name: Initialize deployment outcome tracking
   ansible.builtin.set_fact:
     ecs_express_deploy_result: succeeded
+    ecs_express_deploy_failure_stage: unavailable
     ecs_express_deploy_failure_task: ''
     ecs_express_deploy_failure_message: ''
     ecs_express_deploy_backend_update_required: false
@@ -30,6 +31,18 @@
     - name: Preserve the original deployment failure
       ansible.builtin.set_fact:
         ecs_express_deploy_result: failed
+        ecs_express_deploy_failure_stage: >-
+          {{ 'backend_health'
+             if ansible_failed_task.name | default('')
+                == 'Verify backend application health endpoint'
+             else 'frontend_smoke'
+             if ansible_failed_task.name | default('')
+                == 'Verify frontend HTTP availability'
+             else 'backend_deployment'
+             if 'backend' in (ansible_failed_task.name | default('') | lower)
+             else 'frontend_deployment'
+             if 'frontend' in (ansible_failed_task.name | default('') | lower)
+             else 'deployment' }}
         ecs_express_deploy_failure_task: '{{ ansible_failed_task.name | default("unknown task") }}'
         ecs_express_deploy_failure_message: >-
           {{ ansible_failed_result.msg
@@ -56,6 +69,11 @@
     - name: Record the deployment and rollback summary
       ansible.builtin.import_tasks: summary.yml
       tags: [deploy, summary]
+
+    - name: Write allowlisted diagnostics after rollback outcome is known
+      ansible.builtin.import_tasks: failure_diagnostics.yml
+      when: ecs_express_deploy_result == 'failed'
+      tags: [deploy, diagnostics]
 
 - name: Fail with the original deployment context after rollback verification
   ansible.builtin.fail:
