@@ -145,9 +145,9 @@ jobs:
           echo "backend_image=${BACKEND_IMAGE}" >> "$GITHUB_OUTPUT"
 
       - name: Install pinned Trivy
-        uses: aquasecurity/setup-trivy@v0.2.0
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
         with:
-          version: v0.72.0
+          version: v0.70.0
           cache: true
 
       - name: Generate human-readable Trivy reports
