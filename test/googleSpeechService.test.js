@@ -1,10 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
+const { SpeechClient } = require('@google-cloud/speech');
 const googleSpeechService = require('../services/googleSpeechService');
 const ORIGINAL_AUTH_MODE = process.env.GOOGLE_AUTH_MODE;
 const ORIGINAL_AWS_REGION = process.env.AWS_REGION;
 const ORIGINAL_AWS_CONTAINER_CREDENTIALS_RELATIVE_URI = process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI;
+const ORIGINAL_GOOGLE_CLOUD_PROJECT = process.env.GOOGLE_CLOUD_PROJECT;
 const transcriptionController = require('../controllers/transcriptionController');
 
 function createResponse() {
@@ -23,6 +25,8 @@ test.afterEach(() => {
   else process.env.AWS_REGION = ORIGINAL_AWS_REGION;
   if (ORIGINAL_AWS_CONTAINER_CREDENTIALS_RELATIVE_URI === undefined) delete process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI;
   else process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI = ORIGINAL_AWS_CONTAINER_CREDENTIALS_RELATIVE_URI;
+  if (ORIGINAL_GOOGLE_CLOUD_PROJECT === undefined) delete process.env.GOOGLE_CLOUD_PROJECT;
+  else process.env.GOOGLE_CLOUD_PROJECT = ORIGINAL_GOOGLE_CLOUD_PROJECT;
   delete process.env.AWS_ACCESS_KEY_ID;
   delete process.env.AWS_SECRET_ACCESS_KEY;
   delete process.env.AWS_SESSION_TOKEN;
@@ -113,22 +117,40 @@ test('Google Speech streaming recognition reports stream errors without throwing
   stream.write = () => {};
   stream.end = () => {};
   let observedError;
+  let loggedError;
+  const originalConsoleError = console.error;
+  console.error = (message, metadata) => { loggedError = { message, metadata }; };
   googleSpeechService._private.setClientFactory(() => ({ streamingRecognize: () => stream }));
-  googleSpeechService.startStreamingRecognition({
-    sampleRateHertz: 16000,
-    onResult: () => {},
-    onError: (error) => { observedError = error; },
-    onEnd: () => {}
-  });
-  stream.emit('error', Object.assign(new Error('network'), { code: 14 }));
+  try {
+    googleSpeechService.startStreamingRecognition({
+      sampleRateHertz: 16000,
+      onResult: () => {},
+      onError: (error) => { observedError = error; },
+      onEnd: () => {}
+    });
+    stream.emit('error', Object.assign(new Error('network failure Bearer sensitive-token'), { code: 14 }));
+  } finally {
+    console.error = originalConsoleError;
+  }
   assert.equal(observedError.kind, 'network');
+  assert.deepEqual(loggedError, {
+    message: '[SpeechToText] streaming recognition error',
+    metadata: {
+      name: 'Error',
+      code: 14,
+      message: 'network failure Bearer [REDACTED]'
+    }
+  });
+  assert.doesNotMatch(JSON.stringify(loggedError), /sensitive-token/);
 });
 
 test('aws-wif mode uses the ECS credential provider and Google AwsClient without static credentials', async () => {
   let speechOptions;
   let awsOptions;
+  const wifAuthClient = { getAccessToken: async () => ({ token: 'test-token' }) };
   process.env.GOOGLE_AUTH_MODE = 'aws-wif';
   process.env.AWS_REGION = 'ap-southeast-1';
+  process.env.GOOGLE_CLOUD_PROJECT = 'project-1e4380d5-44ee-49d4-b26';
   process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI = '/v2/credentials/test-task';
   googleSpeechService._private.setAwsCredentialProviderFactory(() => async () => ({
     accessKeyId: 'temporary-access-key', secretAccessKey: 'temporary-secret', sessionToken: 'temporary-session-token'
@@ -136,7 +158,7 @@ test('aws-wif mode uses the ECS credential provider and Google AwsClient without
   googleSpeechService._private.setStsClientFactory(() => ({
     send: async () => ({ Arn: 'arn:aws:sts::123456789012:assumed-role/FirefighterBackendTaskRole/test-task' })
   }));
-  googleSpeechService._private.setAwsClientFactory((options) => { awsOptions = options; return { getProjectId: async () => 'project-1e4380d5-44ee-49d4-b26' }; });
+  googleSpeechService._private.setAwsClientFactory((options) => { awsOptions = options; return wifAuthClient; });
   googleSpeechService._private.setClientFactory((options) => {
     speechOptions = options;
     return { recognize: async () => [{ results: [] }] };
@@ -154,13 +176,28 @@ test('aws-wif mode uses the ECS credential provider and Google AwsClient without
     token: 'temporary-session-token'
   });
   assert.equal(Object.hasOwn(credentials, 'sessionToken'), false);
-  assert.ok(speechOptions.auth);
-  assert.equal(speechOptions.auth.getProjectId instanceof Function, true);
+  assert.equal(speechOptions.projectId, 'project-1e4380d5-44ee-49d4-b26');
+  assert.equal(speechOptions.authClient, wifAuthClient);
+  assert.equal(Object.hasOwn(speechOptions, 'auth'), false);
 });
 
-test('aws-wif mode uses the configured ECS region when AWS region variables are unavailable', async () => {
+test('aws-wif health wraps the auth client and resolves the explicit project without raw project discovery', async () => {
   let awsOptions;
+  let wrappedGoogleAuth;
+  let tokenAcquisitions = 0;
+  let rawClientProjectLookups = 0;
+  const wifAuthClient = {
+    getAccessToken: async () => {
+      tokenAcquisitions += 1;
+      return { token: 'test-token' };
+    },
+    getProjectId: async () => {
+      rawClientProjectLookups += 1;
+      throw new Error('Raw AwsClient project lookup must not be used.');
+    }
+  };
   process.env.GOOGLE_AUTH_MODE = 'aws-wif';
+  process.env.GOOGLE_CLOUD_PROJECT = 'project-1e4380d5-44ee-49d4-b26';
   delete process.env.AWS_REGION;
   googleSpeechService._private.setAwsCredentialProviderFactory(() => async () => ({
     accessKeyId: 'temporary-access-key', secretAccessKey: 'temporary-secret', sessionToken: 'temporary-session-token'
@@ -170,14 +207,19 @@ test('aws-wif mode uses the configured ECS region when AWS region variables are 
   }));
   googleSpeechService._private.setAwsClientFactory((options) => {
     awsOptions = options;
-    return {
-      getAccessToken: async () => ({ token: 'test-token' }),
-      getProjectId: async () => 'project-1e4380d5-44ee-49d4-b26'
-    };
+    return wifAuthClient;
   });
-  googleSpeechService._private.setClientFactory((options) => ({ auth: options.auth }));
+  googleSpeechService._private.setClientFactory((options) => {
+    const speechClient = new SpeechClient(options);
+    wrappedGoogleAuth = speechClient.auth;
+    return speechClient;
+  });
   const health = await googleSpeechService.checkHealth();
   assert.equal(health.available, true);
+  assert.equal(tokenAcquisitions, 1);
+  assert.equal(rawClientProjectLookups, 0);
+  assert.equal(await wrappedGoogleAuth.getClient(), wifAuthClient);
+  assert.equal(await wrappedGoogleAuth.getProjectId(), 'project-1e4380d5-44ee-49d4-b26');
   assert.equal(await awsOptions.aws_security_credentials_supplier.getAwsRegion(), 'ap-southeast-1');
 });
 
@@ -193,7 +235,12 @@ test('aws-wif mode masks task-role and federation failures', async () => {
       getProjectId: async () => 'project-1e4380d5-44ee-49d4-b26'
     };
   });
-  googleSpeechService._private.setClientFactory((options) => ({ auth: options.auth }));
+  googleSpeechService._private.setClientFactory((options) => ({
+    auth: {
+      getClient: async () => options.authClient,
+      getProjectId: async () => 'project-1e4380d5-44ee-49d4-b26'
+    }
+  }));
 
   const health = await googleSpeechService.checkHealth();
   await assert.rejects(

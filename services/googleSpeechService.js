@@ -80,7 +80,7 @@ function getClient() {
     const projectId = String(process.env.GOOGLE_CLOUD_PROJECT || '').trim() || undefined;
     if (isAwsWifMode()) {
       logWif('speech-client-initialization', { projectIdConfigured: Boolean(projectId) });
-      client = clientFactory({ projectId, auth: createAwsWifClient() });
+      client = clientFactory({ projectId, authClient: createAwsWifClient() });
       logWif('speech-client-initialized');
     } else {
       client = clientFactory({ projectId });
@@ -167,7 +167,8 @@ async function checkHealth() {
     const activeClient = getClient();
     if (isAwsWifMode()) {
       logWif('google-sts-token-exchange-started');
-      await activeClient.auth.getAccessToken();
+      const authClient = await activeClient.auth.getClient();
+      await authClient.getAccessToken();
       logWif('service-account-impersonation-completed');
     }
     await activeClient.auth.getProjectId();
@@ -263,7 +264,14 @@ function startStreamingRecognition({ sampleRateHertz, onResult, onError, onEnd }
       if (transcript) onResult({ transcript: transcript.trim(), isFinal: Boolean(result.isFinal) });
     });
   });
-  recognitionStream.on('error', (error) => onError(classifyError(error)));
+  recognitionStream.on('error', (error) => {
+    console.error('[SpeechToText] streaming recognition error', {
+      name: error && error.name,
+      code: error && error.code,
+      message: redactSensitive(error && error.message)
+    });
+    onError(classifyError(error));
+  });
   recognitionStream.on('end', () => onEnd());
 
   return {
