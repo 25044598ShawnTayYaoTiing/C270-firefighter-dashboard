@@ -138,7 +138,7 @@ aws ecs describe-express-gateway-service \
 | Semgrep fails | Inspect the SARIF artifact, fix the insecure pattern, and rerun. The workflow scans only `ERROR` severity rules to avoid cosmetic style failures. |
 | Trivy finds HIGH/CRITICAL vulnerability | Update the affected Node/Nginx base image or dependency, rebuild, and rescan. Do not add a broad `.trivyignore`. |
 | OIDC `AccessDenied` | Verify the role template parameters, GitHub owner/repository/branch, `AWS_ROLE_TO_ASSUME`, and job `id-token: write` permission. |
-| ECS service/task definition not selected | Verify `ECS_BACKEND_SERVICE` and `ECS_FRONTEND_SERVICE`; the workflow resolves each service's exact single container name from its active task definition. |
+| ECS service/task definition not selected | Verify `ECS_BACKEND_SERVICE_ARN` and `ECS_FRONTEND_SERVICE_ARN`; the workflow resolves each service's exact container name from its active task definition. |
 | Health or smoke test times out | Check `APP_HEALTH_URL` returns JSON `{ "status": "ok" }`, `APP_SMOKE_URL` is publicly reachable, TLS is valid, and ECS service events show a healthy deployment. |
 | Frontend starts but proxy fails | Set ECS frontend `BACKEND_URL` to its real HTTPS backend origin without a trailing slash, path, query, or fragment. |
 
@@ -152,10 +152,8 @@ Repository variables (not secrets):
 | `AWS_ROLE_TO_ASSUME` | Yes for deploy | ARN of the existing `GitHubActionsDeployRole` OIDC role. |
 | `ECR_BACKEND_REPOSITORY` | Yes for deploy | Existing backend ECR repository name, normally `firefighter-dashboard-backend`. |
 | `ECR_FRONTEND_REPOSITORY` | Yes for deploy | Existing frontend ECR repository name, normally `firefighter-dashboard-frontend`. |
-| `ECS_BACKEND_SERVICE` | Yes for deploy | Existing backend ECS Express service name; set to `firefighter-backend`. |
-| `ECS_FRONTEND_SERVICE` | Yes for deploy | Existing frontend ECS Express service name; set to `firefighter-frontend`. |
-| `ECS_BACKEND_SERVICE_ARN` | Optional | Full backend service ARN if the account uses a nonstandard ARN; otherwise derived from region/account/name. |
-| `ECS_FRONTEND_SERVICE_ARN` | Optional | Full frontend service ARN if the account uses a nonstandard ARN; otherwise derived from region/account/name. |
+| `ECS_BACKEND_SERVICE_ARN` | Yes for deploy | Full ARN of the existing `firefighter-backend` ECS Express service. |
+| `ECS_FRONTEND_SERVICE_ARN` | Yes for deploy | Full ARN of the existing `firefighter-frontend` ECS Express service. |
 | `APP_HEALTH_URL` | Yes for deploy | Public HTTPS URL ending in `/health`; must return `{ "status": "ok" }`. |
 | `APP_SMOKE_URL` | Yes for deploy | Public application root; a 2xx response or expected login redirect is accepted. |
 | `ENABLE_CODEQL` | Optional | Set to `true` only when GitHub Code Scanning is available for this repository. |

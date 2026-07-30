@@ -30,8 +30,6 @@ env:
   AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
   ECR_BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
   ECR_FRONTEND_REPOSITORY: ${{ vars.ECR_FRONTEND_REPOSITORY }}
-  ECS_BACKEND_SERVICE: ${{ vars.ECS_BACKEND_SERVICE }}
-  ECS_FRONTEND_SERVICE: ${{ vars.ECS_FRONTEND_SERVICE }}
   ECS_BACKEND_SERVICE_ARN: ${{ vars.ECS_BACKEND_SERVICE_ARN }}
   ECS_FRONTEND_SERVICE_ARN: ${{ vars.ECS_FRONTEND_SERVICE_ARN }}
   APP_HEALTH_URL: ${{ vars.APP_HEALTH_URL }}
@@ -242,7 +240,7 @@ jobs:
       - name: Validate deployment configuration
         run: |
           set -euo pipefail
-          required=(AWS_REGION AWS_ROLE_TO_ASSUME ECR_BACKEND_REPOSITORY ECR_FRONTEND_REPOSITORY ECS_BACKEND_SERVICE ECS_FRONTEND_SERVICE APP_HEALTH_URL APP_SMOKE_URL)
+          required=(AWS_REGION AWS_ROLE_TO_ASSUME ECR_BACKEND_REPOSITORY ECR_FRONTEND_REPOSITORY ECS_BACKEND_SERVICE_ARN ECS_FRONTEND_SERVICE_ARN APP_HEALTH_URL APP_SMOKE_URL)
           for name in "${required[@]}"; do
             if [ -z "${!name:-}" ]; then
               echo "Repository variable ${name} must be configured before deployment." >&2
@@ -252,11 +250,6 @@ jobs:
 
           if [ "${ECR_BACKEND_REPOSITORY}" = "${ECR_FRONTEND_REPOSITORY}" ]; then
             echo 'ECR_BACKEND_REPOSITORY and ECR_FRONTEND_REPOSITORY must be different repositories.' >&2
-            exit 1
-          fi
-
-          if [ "${ECS_BACKEND_SERVICE}" = "${ECS_FRONTEND_SERVICE}" ]; then
-            echo 'ECS_BACKEND_SERVICE and ECS_FRONTEND_SERVICE must be different ECS services.' >&2
             exit 1
           fi
 
@@ -351,16 +344,6 @@ jobs:
       - name: Create task-definition revisions for both ECS services
         run: |
           set -euo pipefail
-          resolve_service_arn() {
-            local configured_arn="$1"
-            local service_name="$2"
-            if [ -n "${configured_arn}" ]; then
-              printf '%s\n' "${configured_arn}"
-            else
-              printf 'arn:aws:ecs:%s:%s:service/%s\n' "${AWS_REGION}" "${AWS_ACCOUNT_ID}" "${service_name}"
-            fi
-          }
-
           resolve_active_task_definition() {
             local service_arn="$1"
             aws ecs describe-express-gateway-service \
@@ -385,8 +368,8 @@ jobs:
             ' "${task_definition_file}"
           }
 
-          backend_service_arn="$(resolve_service_arn "${ECS_BACKEND_SERVICE_ARN:-}" "${ECS_BACKEND_SERVICE}")"
-          frontend_service_arn="$(resolve_service_arn "${ECS_FRONTEND_SERVICE_ARN:-}" "${ECS_FRONTEND_SERVICE}")"
+          backend_service_arn="${ECS_BACKEND_SERVICE_ARN}"
+          frontend_service_arn="${ECS_FRONTEND_SERVICE_ARN}"
           previous_backend_task_definition_arn="$(resolve_active_task_definition "${backend_service_arn}")"
           previous_frontend_task_definition_arn="$(resolve_active_task_definition "${frontend_service_arn}")"
 
