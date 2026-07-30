@@ -2,6 +2,10 @@
 // AI Features: incidentController.js manages incident report operations, including creation, editing, viewing, and deletion, with proper access control and data normalization.
 const incidentModel = require('../models/incidentModel');
 const {
+  INCIDENT_STATUSES,
+  INCIDENT_TYPES
+} = require('../config/application');
+const {
   resolveIncidentCoordinates
 } = require('../helpers/geocodingService');
 const {
@@ -13,30 +17,15 @@ const {
 const {
   validateCoordinatePair
 } = require('../helpers/locationResolver');
+const renderLayout = require('../helpers/renderLayout');
 const {
   PERMISSIONS,
   hasPermission
 } = require('../middleware/rolePermissions');
 
-const statuses = ['Draft', 'Pending Review', 'Completed', 'Escalated'];
-const incidentTypes = [
-  'Residential Fire',
-  'Kitchen Fire',
-  'Road Traffic Accident',
-  'Lift Rescue',
-  'Gas Leak',
-  'Electrical Fire',
-  'Rubbish Chute Fire',
-  'Vehicle Fire'
-];
-
 function renderPage(res, view, options) {
-  res.render('layout', {
-    view,
-    appName: 'Firefighter Incident Command',
-    pageTitle: 'Dashboard',
-    activePage: 'dashboard',
-    statuses,
+  return renderLayout(res, view, {
+    statuses: INCIDENT_STATUSES,
     statusKey,
     ...options
   });
@@ -152,7 +141,7 @@ function buildFormData(incident = {}) {
   };
 }
 
-function buildCreateCompletion(req, formData = {}) {
+function buildCreateCompletion(formData = {}) {
   return calculateCompletion({
     location: formData.incidentLocation,
     locationVerified: formData.locationVerified,
@@ -226,7 +215,7 @@ function validateIncident(incident, options = {}) {
     errors.injuredPersons = 'Confirm that no injured or trapped persons were reported or enter the details.';
   }
 
-  if (!statuses.includes(incident.responseStatus)) {
+  if (!INCIDENT_STATUSES.includes(incident.responseStatus)) {
     errors.responseStatus = 'Select a valid response status.';
   }
 
@@ -252,12 +241,12 @@ function renderCreateForm(req, res, options = {}) {
   return renderPage(res, 'create-report', {
     pageTitle: 'Create Report',
     activePage: 'create-report',
-    incidentTypes,
+    incidentTypes: INCIDENT_TYPES,
     canManageIncidentDateTime: canManageIncidentDateTime(req),
     serverDateTime,
     validationErrors: options.validationErrors || {},
     formData,
-    completion: options.completion || buildCreateCompletion(req, formData)
+    completion: options.completion || buildCreateCompletion(formData)
   });
 }
 
@@ -265,11 +254,19 @@ function renderEditForm(req, res, report, options = {}) {
   return renderPage(res, 'edit-report', {
     pageTitle: 'Edit Report',
     activePage: 'incidents',
-    incidentTypes,
+    incidentTypes: INCIDENT_TYPES,
     canManageIncidentDateTime: canManageIncidentDateTime(req),
     report,
     validationErrors: options.validationErrors || {},
     formData: options.formData || buildEditFormData(report)
+  });
+}
+
+function renderReportNotFound(res) {
+  return renderPage(res.status(404), 'placeholder', {
+    pageTitle: 'Report Not Found',
+    activePage: 'incidents',
+    message: 'The requested incident report could not be found.'
   });
 }
 
@@ -375,11 +372,7 @@ exports.showReportDetails = async (req, res, next) => {
     const incident = await incidentModel.getIncidentByIncidentId(req.params.incidentId);
 
     if (!incident) {
-      return renderPage(res.status(404), 'placeholder', {
-        pageTitle: 'Report Not Found',
-        activePage: 'incidents',
-        message: 'The requested incident report could not be found.'
-      });
+      return renderReportNotFound(res);
     }
 
     return renderPage(res, 'report-details', {
@@ -397,11 +390,7 @@ exports.showEditReport = async (req, res, next) => {
     const incident = await incidentModel.getIncidentByIncidentId(req.params.incidentId);
 
     if (!incident) {
-      return renderPage(res.status(404), 'placeholder', {
-        pageTitle: 'Report Not Found',
-        activePage: 'incidents',
-        message: 'The requested incident report could not be found.'
-      });
+      return renderReportNotFound(res);
     }
 
     return renderEditForm(req, res, mapIncident(incident));
@@ -414,11 +403,7 @@ exports.updateIncident = async (req, res, next) => {
   try {
     const existingIncident = await incidentModel.getIncidentByIncidentId(req.params.incidentId);
     if (!existingIncident) {
-      return renderPage(res.status(404), 'placeholder', {
-        pageTitle: 'Report Not Found',
-        activePage: 'incidents',
-        message: 'The requested incident report could not be found.'
-      });
+      return renderReportNotFound(res);
     }
 
     const incident = readIncidentForm(req.body, {
@@ -443,11 +428,7 @@ exports.updateIncident = async (req, res, next) => {
     const updated = await incidentModel.updateIncident(req.params.incidentId, incident);
 
     if (!updated) {
-      return renderPage(res.status(404), 'placeholder', {
-        pageTitle: 'Report Not Found',
-        activePage: 'incidents',
-        message: 'The requested incident report could not be found.'
-      });
+      return renderReportNotFound(res);
     }
 
     return res.redirect(`/incidents/${req.params.incidentId}`);

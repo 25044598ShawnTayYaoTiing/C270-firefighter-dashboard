@@ -101,9 +101,7 @@ function calculateCompletion(values = {}) {
   const missingFields = COMPLETION_FIELDS
     .filter((field) => !hasMeaningfulValue(field.key, values[field.key]))
     .map((field) => field.label);
-  const completedCount = COMPLETION_FIELDS.filter((field) => {
-    return hasMeaningfulValue(field.key, values[field.key]);
-  }).length;
+  const completedCount = COMPLETION_FIELDS.length - missingFields.length;
   const percent = Math.round((completedCount / COMPLETION_FIELDS.length) * 100);
 
   return {

@@ -27,12 +27,10 @@ document.addEventListener('DOMContentLoaded', () => {
   let silentGain;
   let sampleRateHertz;
   let liveSocket;
-  let liveFinalSegments = [];
-  let currentInterim = '';
+  const liveTranscriptState = window.LiveTranscriptState.createLiveTranscriptState();
   let isRecording = false;
   let isStopping = false;
   let isCleaning = false;
-  let liveTranscript = '';
   let fullTranscript = '';
 
   startButton.addEventListener('click', startTranscription);
@@ -93,8 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
       processor.connect(silentGain);
       silentGain.connect(audioContext.destination);
       isRecording = true;
-      liveFinalSegments = [];
-      currentInterim = '';
+      liveTranscriptState.reset();
       setNotice('ready', 'Listening. Live transcript will appear as you speak.');
     } catch (error) {
       releaseAudio();
@@ -128,28 +125,32 @@ document.addEventListener('DOMContentLoaded', () => {
         if (message.type === 'error') { setNotice('warning', message.message || 'Live transcription failed.'); if (isStopping) finishLiveTranscription(); }
         if (message.type === 'ended') finishLiveTranscription();
       });
-      socket.addEventListener('close', () => { if (isRecording) { isRecording = false; releaseAudio(); setNotice('warning', 'Live transcription connection closed. Finalized text was preserved.'); } });
+      socket.addEventListener('close', () => {
+        if (isRecording) {
+          isRecording = false;
+          isStopping = true;
+          releaseAudio();
+          finishLiveTranscription();
+          setNotice('warning', 'Live transcription connection closed. Captured text was preserved.');
+        }
+      });
       socket.addEventListener('error', () => reject(new Error('Live transcription connection failed.')));
     });
   }
 
   function handleRecognitionResult(message) {
-    const text = normalizeTranscriptText(message.transcript);
-    if (!text) return;
-    if (message.isFinal) {
-      if (liveFinalSegments[liveFinalSegments.length - 1] !== text) liveFinalSegments.push(text);
-      currentInterim = '';
-    } else currentInterim = text;
-    liveTranscript = [...liveFinalSegments, currentInterim].filter(Boolean).join(' ');
+    liveTranscriptState.applyResult({
+      transcript: message.transcript,
+      isFinal: message.isFinal === true
+    });
     updateTranscriptDisplays();
   }
 
   function finishLiveTranscription() {
     if (!isStopping && !isRecording) return;
-    const completed = liveFinalSegments.join(' ');
+    const completed = liveTranscriptState.finalize().finalTranscript;
     if (completed) appendToFullTranscript(completed);
-    liveTranscript = '';
-    currentInterim = '';
+    liveTranscriptState.reset();
     isStopping = false;
     if (liveSocket) liveSocket.close();
     liveSocket = null;
@@ -168,7 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function clearTranscript() {
     fullTranscript = '';
-    liveTranscript = '';
+    liveTranscriptState.reset();
     manualTranscriptInput.value = '';
     cleanedTranscriptInput.value = '';
     hideCleanupNotice();
@@ -210,6 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function normalizeTranscriptText(text) { return String(text || '').replace(/\s+/g, ' ').trim(); }
 
   function updateTranscriptDisplays() {
+    const liveTranscript = liveTranscriptState.snapshot().displayedTranscript;
     renderTranscriptText(fullTranscriptDisplay, fullTranscript, 'No completed transcript yet.');
     renderTranscriptText(liveTranscriptDisplay, liveTranscript, 'Waiting for a recording...');
     const hasRaw = Boolean(getRawTranscript());
@@ -256,19 +258,4 @@ function floatToPcm16(samples) {
   const view = new DataView(buffer);
   samples.forEach((sample, index) => view.setInt16(index * 2, Math.max(-1, Math.min(1, sample)) * (sample < 0 ? 0x8000 : 0x7fff), true));
   return buffer;
-}
-
-function joinAudioChunks(chunks) {
-  const length = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
-  const joined = new Uint8Array(length);
-  let offset = 0;
-  chunks.forEach((chunk) => { joined.set(new Uint8Array(chunk), offset); offset += chunk.byteLength; });
-  return joined.buffer;
-}
-
-function arrayBufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-  return btoa(binary);
 }

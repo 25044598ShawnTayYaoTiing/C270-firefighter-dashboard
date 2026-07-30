@@ -1,6 +1,7 @@
 // done by Thein 25040396
 // AI Features: authController.js manages user authentication, including login and logout processes, with session handling and access control.
 const authModel = require('../models/authModel');
+const { APP_NAME } = require('../config/application');
 
 const INVALID_LOGIN_MESSAGE = 'Invalid username or password.';
 const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'firefighter.sid';
@@ -15,7 +16,7 @@ function getSafeRedirect(value) {
 
 function renderLogin(res, options = {}) {
   return res.render('login', {
-    appName: 'Firefighter Incident Command',
+    appName: APP_NAME,
     pageTitle: 'Officer Login',
     error: '',
     username: '',

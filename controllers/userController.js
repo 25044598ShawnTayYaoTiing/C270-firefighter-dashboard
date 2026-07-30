@@ -1,4 +1,5 @@
 const officerModel = require('../models/officerModel');
+const renderLayout = require('../helpers/renderLayout');
 const {
   ROLES,
   getCreatableRoles,
@@ -6,9 +7,7 @@ const {
 } = require('../middleware/rolePermissions');
 
 function renderPage(res, view, options) {
-  return res.render('layout', {
-    view,
-    appName: 'Firefighter Incident Command',
+  return renderLayout(res, view, {
     pageTitle: 'User Management',
     activePage: 'users',
     ...options

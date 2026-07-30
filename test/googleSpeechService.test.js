@@ -223,6 +223,22 @@ test('aws-wif health wraps the auth client and resolves the explicit project wit
   assert.equal(await awsOptions.aws_security_credentials_supplier.getAwsRegion(), 'ap-southeast-1');
 });
 
+test('aws-wif configuration errors retain their safe error classification', async () => {
+  process.env.GOOGLE_AUTH_MODE = 'aws-wif';
+  process.env.AWS_REGION = 'us-east-1';
+
+  await assert.rejects(
+    googleSpeechService.transcribeLinear16({
+      audioBase64: Buffer.from([0, 0]).toString('base64'),
+      sampleRateHertz: 16000
+    }),
+    (error) => (
+      error.kind === 'configuration'
+      && /ap-southeast-1/.test(error.message)
+    )
+  );
+});
+
 test('aws-wif mode masks task-role and federation failures', async () => {
   let awsOptions;
   process.env.GOOGLE_AUTH_MODE = 'aws-wif';

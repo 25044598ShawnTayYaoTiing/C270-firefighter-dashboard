@@ -1,5 +1,6 @@
 const incidentModel = require('../models/incidentModel');
 const db = require('../config/db');
+const { INCIDENT_STATUSES } = require('../config/application');
 const geminiService = require('../services/geminiService');
 const googleSpeechService = require('../services/googleSpeechService');
 const {
@@ -8,16 +9,11 @@ const {
   safeJson,
   statusKey
 } = require('../helpers/incidentPresenter');
-
-const statuses = ['Draft', 'Pending Review', 'Completed', 'Escalated'];
+const renderLayout = require('../helpers/renderLayout');
 
 function renderPage(res, view, options) {
-  res.render('layout', {
-    view,
-    appName: 'Firefighter Incident Command',
-    pageTitle: 'Dashboard',
-    activePage: 'dashboard',
-    statuses,
+  return renderLayout(res, view, {
+    statuses: INCIDENT_STATUSES,
     statusKey,
     ...options
   });
@@ -82,6 +78,15 @@ function getStartOfWeek() {
 function getReportsThisWeek(reports) {
   const startOfWeek = getStartOfWeek();
   return reports.filter((report) => report.incidentDate && report.incidentDate >= startOfWeek).length;
+}
+
+function buildReportSummary(reports) {
+  return {
+    totalReports: reports.length,
+    pendingCount: getStatusCount(reports, 'Pending Review'),
+    completedCount: getStatusCount(reports, 'Completed'),
+    escalatedCount: getStatusCount(reports, 'Escalated')
+  };
 }
 
 function buildBreakdown(reports, key, limit) {
@@ -171,10 +176,12 @@ exports.showDashboard = async (req, res, next) => {
     // Done by Fatin ID: 25050557
     // Read all incidents from the database and prepare them for the dashboard
     const reports = await getReports();
-    const totalReports = reports.length;
-    const pendingCount = getStatusCount(reports, 'Pending Review');
-    const completedCount = getStatusCount(reports, 'Completed');
-    const escalatedCount = getStatusCount(reports, 'Escalated');
+    const {
+      totalReports,
+      pendingCount,
+      completedCount,
+      escalatedCount
+    } = buildReportSummary(reports);
     const reportsThisWeek = getReportsThisWeek(reports);
     const typeBreakdown = buildBreakdown(reports, 'type', 5);
     const locations = buildBreakdown(reports, 'location', 4);
@@ -227,10 +234,12 @@ exports.showDevMapPayload = async (req, res, next) => {
 exports.showAnalytics = async (req, res, next) => {
   try {
     const reports = await getReports();
-    const totalReports = reports.length;
-    const pendingCount = getStatusCount(reports, 'Pending Review');
-    const completedCount = getStatusCount(reports, 'Completed');
-    const escalatedCount = getStatusCount(reports, 'Escalated');
+    const {
+      totalReports,
+      pendingCount,
+      completedCount,
+      escalatedCount
+    } = buildReportSummary(reports);
     const typeBreakdown = buildBreakdown(reports, 'type', 8);
     const locations = buildBreakdown(reports, 'location', 6);
     const statusIconMap = {
@@ -239,7 +248,7 @@ exports.showAnalytics = async (req, res, next) => {
       'Completed': 'bi-check-circle-fill',
       'Escalated': 'bi-exclamation-triangle-fill'
     };
-    const statusCounts = statuses.map((status) => {
+    const statusCounts = INCIDENT_STATUSES.map((status) => {
       const value = getStatusCount(reports, status);
       return {
         label: status,

@@ -345,9 +345,11 @@ jobs:
           docker push "${backend_latest_image}"
           docker push "${frontend_ecr_image}"
           docker push "${frontend_latest_image}"
-          echo "BACKEND_ECR_IMAGE=${backend_ecr_image}" >> "$GITHUB_ENV"
-          echo "FRONTEND_ECR_IMAGE=${frontend_ecr_image}" >> "$GITHUB_ENV"
-          echo "ECR_REGISTRY=${ECR_REGISTRY}" >> "$GITHUB_ENV"
+          {
+            echo "BACKEND_ECR_IMAGE=${backend_ecr_image}"
+            echo "FRONTEND_ECR_IMAGE=${frontend_ecr_image}"
+            echo "ECR_REGISTRY=${ECR_REGISTRY}"
+          } >> "$GITHUB_ENV"
 
       - name: Create task-definition revisions for both ECS services
         run: |
