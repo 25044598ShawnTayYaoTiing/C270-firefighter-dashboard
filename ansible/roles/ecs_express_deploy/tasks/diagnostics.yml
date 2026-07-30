@@ -1,0 +1,132 @@
+---
+- name: Read backend ECS Express failure state
+  ansible.builtin.command:
+    argv:
+      - aws
+      - ecs
+      - describe-express-gateway-service
+      - --region
+      - '{{ ecs_express_deploy_aws_region }}'
+      - --service-arn
+      - '{{ ecs_express_deploy_backend_service_arn }}'
+      - --query
+      - 'service.{serviceArn:serviceArn,status:status.statusCode,statusReason:status.statusReason,currentDeployment:currentDeployment,activeTaskDefinition:activeConfigurations[0].taskDefinitionArn}'
+      - --output
+      - json
+      - --cli-connect-timeout
+      - '5'
+      - --cli-read-timeout
+      - '10'
+  register: ecs_express_deploy_backend_failure_state_command
+  changed_when: false
+  failed_when: false
+
+- name: Read recent backend ECS service deployments
+  ansible.builtin.command:
+    argv:
+      - aws
+      - ecs
+      - list-service-deployments
+      - --region
+      - '{{ ecs_express_deploy_aws_region }}'
+      - --service
+      - '{{ ecs_express_deploy_backend_service_arn }}'
+      - --max-results
+      - '5'
+      - --query
+      - 'serviceDeployments[].{status:status,statusReason:statusReason,targetServiceRevisionArn:targetServiceRevisionArn,startedAt:startedAt,finishedAt:finishedAt}'
+      - --output
+      - json
+      - --cli-connect-timeout
+      - '5'
+      - --cli-read-timeout
+      - '10'
+  register: ecs_express_deploy_backend_deployments_command
+  changed_when: false
+  failed_when: false
+
+- name: Read frontend ECS Express failure state
+  ansible.builtin.command:
+    argv:
+      - aws
+      - ecs
+      - describe-express-gateway-service
+      - --region
+      - '{{ ecs_express_deploy_aws_region }}'
+      - --service-arn
+      - '{{ ecs_express_deploy_frontend_service_arn }}'
+      - --query
+      - 'service.{serviceArn:serviceArn,status:status.statusCode,statusReason:status.statusReason,currentDeployment:currentDeployment,activeTaskDefinition:activeConfigurations[0].taskDefinitionArn}'
+      - --output
+      - json
+      - --cli-connect-timeout
+      - '5'
+      - --cli-read-timeout
+      - '10'
+  register: ecs_express_deploy_frontend_failure_state_command
+  changed_when: false
+  failed_when: false
+
+- name: Read recent frontend ECS service deployments
+  ansible.builtin.command:
+    argv:
+      - aws
+      - ecs
+      - list-service-deployments
+      - --region
+      - '{{ ecs_express_deploy_aws_region }}'
+      - --service
+      - '{{ ecs_express_deploy_frontend_service_arn }}'
+      - --max-results
+      - '5'
+      - --query
+      - 'serviceDeployments[].{status:status,statusReason:statusReason,targetServiceRevisionArn:targetServiceRevisionArn,startedAt:startedAt,finishedAt:finishedAt}'
+      - --output
+      - json
+      - --cli-connect-timeout
+      - '5'
+      - --cli-read-timeout
+      - '10'
+  register: ecs_express_deploy_frontend_deployments_command
+  changed_when: false
+  failed_when: false
+
+- name: Record safe ECS failure diagnostics
+  ansible.builtin.set_fact:
+    ecs_express_deploy_backend_failure_state: >-
+      {{ (ecs_express_deploy_backend_failure_state_command.stdout | trim)
+         if (ecs_express_deploy_backend_failure_state_command.rc == 0
+             and ecs_express_deploy_backend_failure_state_command.stdout | trim | length > 0)
+         else '{"diagnostic":"service state unavailable"}' }}
+    ecs_express_deploy_backend_recent_deployments: >-
+      {{ (ecs_express_deploy_backend_deployments_command.stdout | trim)
+         if (ecs_express_deploy_backend_deployments_command.rc == 0
+             and ecs_express_deploy_backend_deployments_command.stdout | trim | length > 0)
+         else '[{"diagnostic":"deployment history unavailable"}]' }}
+    ecs_express_deploy_frontend_failure_state: >-
+      {{ (ecs_express_deploy_frontend_failure_state_command.stdout | trim)
+         if (ecs_express_deploy_frontend_failure_state_command.rc == 0
+             and ecs_express_deploy_frontend_failure_state_command.stdout | trim | length > 0)
+         else '{"diagnostic":"service state unavailable"}' }}
+    ecs_express_deploy_frontend_recent_deployments: >-
+      {{ (ecs_express_deploy_frontend_deployments_command.stdout | trim)
+         if (ecs_express_deploy_frontend_deployments_command.rc == 0
+             and ecs_express_deploy_frontend_deployments_command.stdout | trim | length > 0)
+         else '[{"diagnostic":"deployment history unavailable"}]' }}
+
+- name: Report safe ECS failure diagnostics
+  ansible.builtin.debug:
+    msg:
+      failureTask: '{{ ecs_express_deploy_failure_task }}'
+      backend:
+        service: '{{ ecs_express_deploy_backend_service_arn }}'
+        expectedTaskDefinition: '{{ ecs_express_deploy_backend_task_definition_arn }}'
+        previousTaskDefinition: '{{ ecs_express_deploy_previous_backend_task_definition_arn }}'
+        state: '{{ ecs_express_deploy_backend_failure_state }}'
+        recentDeployments: '{{ ecs_express_deploy_backend_recent_deployments }}'
+      frontend:
+        service: '{{ ecs_express_deploy_frontend_service_arn }}'
+        expectedTaskDefinition: '{{ ecs_express_deploy_frontend_task_definition_arn }}'
+        previousTaskDefinition: '{{ ecs_express_deploy_previous_frontend_task_definition_arn }}'
+        state: '{{ ecs_express_deploy_frontend_failure_state }}'
+        recentDeployments: '{{ ecs_express_deploy_frontend_recent_deployments }}'

@@ -232,7 +232,8 @@ jobs:
       github.event_name == 'push' ||
       (github.event_name == 'workflow_dispatch' && inputs.deploy)
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # Covers the bounded backend/frontend rollout checks plus verified rollback.
+    timeout-minutes: 80
     permissions:
       contents: read
       id-token: write
@@ -473,6 +474,7 @@ jobs:
           echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
 
       - name: Deploy backend first with Ansible, then verify frontend
+        id: ansible-deploy
         working-directory: ansible
         env:
           ANSIBLE_FORCE_COLOR: 'true'
@@ -490,17 +492,25 @@ jobs:
             --extra-vars "ecs_express_deploy_frontend_url=${APP_SMOKE_URL}"
 
       - name: Write deployment summary
+        if: always()
+        env:
+          ANSIBLE_DEPLOY_OUTCOME: ${{ steps.ansible-deploy.outcome }}
         run: |
           {
             echo '## Deployment summary'
             echo
-            echo "- Immutable backend image deployed: \`${BACKEND_ECR_IMAGE}\`"
-            echo "- Immutable frontend image deployed: \`${FRONTEND_ECR_IMAGE}\`"
+            echo "- Immutable backend image target: \`${BACKEND_ECR_IMAGE}\`"
+            echo "- Immutable frontend image target: \`${FRONTEND_ECR_IMAGE}\`"
             echo "- Previous backend task definition: \`${PREVIOUS_BACKEND_TASK_DEFINITION_ARN}\`"
-            echo "- Active backend task definition: \`${BACKEND_TASK_DEFINITION_ARN}\`"
+            echo "- Requested backend task definition: \`${BACKEND_TASK_DEFINITION_ARN}\`"
             echo "- Previous frontend task definition: \`${PREVIOUS_FRONTEND_TASK_DEFINITION_ARN}\`"
-            echo "- Active frontend task definition: \`${FRONTEND_TASK_DEFINITION_ARN}\`"
-            echo "- ECS containers updated: \`${BACKEND_CONTAINER_NAME}\`, \`${FRONTEND_CONTAINER_NAME}\`"
-            echo '- Ansible preflight, backend ECS stability, backend health, frontend ECS stability, and frontend HTTP validation: passed.'
-            echo '- On a post-update failure, Ansible requests the saved previous task definitions for services changed in this run.'
+            echo "- Requested frontend task definition: \`${FRONTEND_TASK_DEFINITION_ARN}\`"
+            echo "- Resolved ECS containers: \`${BACKEND_CONTAINER_NAME}\`, \`${FRONTEND_CONTAINER_NAME}\`"
+            echo "- Ansible deployment step outcome: \`${ANSIBLE_DEPLOY_OUTCOME}\`"
+            echo
+            if [ -f ansible/deployment-summary.md ]; then
+              cat ansible/deployment-summary.md
+            else
+              echo 'Ansible deployment details were unavailable because deployment did not reach outcome tracking.'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

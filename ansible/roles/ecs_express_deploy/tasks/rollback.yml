@@ -1,5 +1,17 @@
 ---
-- name: Restore previous backend ECS Express revision when this run changed it
+- name: Initialize rollback outcome tracking
+  ansible.builtin.set_fact:
+    ecs_express_deploy_backend_rollback_result: >-
+      {{ 'pending' if ecs_express_deploy_backend_update_required | default(false) | bool
+         else 'not-required' }}
+    ecs_express_deploy_frontend_rollback_result: >-
+      {{ 'pending' if ecs_express_deploy_frontend_update_required | default(false) | bool
+         else 'not-required' }}
+    ecs_express_deploy_backend_rollback_health_result: >-
+      {{ 'pending' if ecs_express_deploy_backend_update_required | default(false) | bool
+         else 'not-required' }}
+
+- name: Request previous backend ECS Express revision when this run changed it
   ansible.builtin.command:
     argv:
       - aws
@@ -11,11 +23,12 @@
       - '{{ ecs_express_deploy_backend_service_arn }}'
       - --task-definition-arn
       - '{{ ecs_express_deploy_previous_backend_task_definition_arn }}'
+  register: ecs_express_deploy_backend_rollback_request
   when: ecs_express_deploy_backend_update_required | default(false) | bool
-  changed_when: true
+  changed_when: ecs_express_deploy_backend_rollback_request.rc == 0
   failed_when: false
 
-- name: Restore previous frontend ECS Express revision when this run changed it
+- name: Request previous frontend ECS Express revision when this run changed it
   ansible.builtin.command:
     argv:
       - aws
@@ -27,6 +40,94 @@
       - '{{ ecs_express_deploy_frontend_service_arn }}'
       - --task-definition-arn
       - '{{ ecs_express_deploy_previous_frontend_task_definition_arn }}'
+  register: ecs_express_deploy_frontend_rollback_request
   when: ecs_express_deploy_frontend_update_required | default(false) | bool
-  changed_when: true
+  changed_when: ecs_express_deploy_frontend_rollback_request.rc == 0
   failed_when: false
+
+- name: Record backend rollback request failure
+  ansible.builtin.set_fact:
+    ecs_express_deploy_backend_rollback_result: request-failed
+    ecs_express_deploy_backend_rollback_health_result: not-verified
+  when:
+    - ecs_express_deploy_backend_update_required | default(false) | bool
+    - ecs_express_deploy_backend_rollback_request.rc | default(1) != 0
+
+- name: Record frontend rollback request failure
+  ansible.builtin.set_fact:
+    ecs_express_deploy_frontend_rollback_result: request-failed
+  when:
+    - ecs_express_deploy_frontend_update_required | default(false) | bool
+    - ecs_express_deploy_frontend_rollback_request.rc | default(1) != 0
+
+- name: Verify backend rollback and restored application health
+  when:
+    - ecs_express_deploy_backend_update_required | default(false) | bool
+    - ecs_express_deploy_backend_rollback_request.rc | default(1) == 0
+  block:
+    - name: Wait for previous backend ECS Express revision
+      ansible.builtin.include_tasks: wait_for_service.yml
+      vars:
+        ecs_express_deploy_service_label: backend rollback
+        ecs_express_deploy_service_arn: '{{ ecs_express_deploy_backend_service_arn }}'
+        ecs_express_deploy_expected_task_definition_arn: '{{ ecs_express_deploy_previous_backend_task_definition_arn }}'
+
+    - name: Verify backend health after rollback
+      ansible.builtin.uri:
+        url: '{{ ecs_express_deploy_backend_health_url }}'
+        method: GET
+        status_code: 200
+        return_content: true
+        validate_certs: true
+        timeout: '{{ ecs_express_deploy_health_timeout }}'
+      register: ecs_express_deploy_backend_rollback_health
+      retries: '{{ ecs_express_deploy_health_retries }}'
+      delay: '{{ ecs_express_deploy_health_delay }}'
+      until:
+        - ecs_express_deploy_backend_rollback_health.status == 200
+        - ecs_express_deploy_backend_rollback_health.json is defined
+        - ecs_express_deploy_backend_rollback_health.json.status | default('') == 'ok'
+
+    - name: Record successful backend rollback
+      ansible.builtin.set_fact:
+        ecs_express_deploy_backend_rollback_result: succeeded
+        ecs_express_deploy_backend_rollback_health_result: passed
+  rescue:
+    - name: Record failed backend rollback verification
+      ansible.builtin.set_fact:
+        ecs_express_deploy_backend_rollback_result: verification-failed
+        ecs_express_deploy_backend_rollback_health_result: >-
+          {{ 'failed'
+             if 'health' in (ansible_failed_task.name | default('') | lower)
+             else 'not-verified' }}
+
+- name: Verify frontend rollback
+  when:
+    - ecs_express_deploy_frontend_update_required | default(false) | bool
+    - ecs_express_deploy_frontend_rollback_request.rc | default(1) == 0
+  block:
+    - name: Wait for previous frontend ECS Express revision
+      ansible.builtin.include_tasks: wait_for_service.yml
+      vars:
+        ecs_express_deploy_service_label: frontend rollback
+        ecs_express_deploy_service_arn: '{{ ecs_express_deploy_frontend_service_arn }}'
+        ecs_express_deploy_expected_task_definition_arn: '{{ ecs_express_deploy_previous_frontend_task_definition_arn }}'
+
+    - name: Record successful frontend rollback
+      ansible.builtin.set_fact:
+        ecs_express_deploy_frontend_rollback_result: succeeded
+  rescue:
+    - name: Record failed frontend rollback verification
+      ansible.builtin.set_fact:
+        ecs_express_deploy_frontend_rollback_result: verification-failed
+
+- name: Report rollback verification outcome
+  ansible.builtin.debug:
+    msg:
+      backend:
+        attempted: '{{ ecs_express_deploy_backend_update_required | default(false) | bool }}'
+        result: '{{ ecs_express_deploy_backend_rollback_result }}'
+        health: '{{ ecs_express_deploy_backend_rollback_health_result }}'
+      frontend:
+        attempted: '{{ ecs_express_deploy_frontend_update_required | default(false) | bool }}'
+        result: '{{ ecs_express_deploy_frontend_rollback_result }}'

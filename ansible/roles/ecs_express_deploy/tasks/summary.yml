@@ -1,0 +1,44 @@
+---
+- name: Report deployment outcome
+  ansible.builtin.debug:
+    msg:
+      result: '{{ ecs_express_deploy_result }}'
+      backend:
+        revision: >-
+          {{ ecs_express_deploy_previous_backend_task_definition_arn }}
+          -> {{ ecs_express_deploy_backend_task_definition_arn }}
+        updateRequired: '{{ ecs_express_deploy_backend_update_required | bool }}'
+        health: '{{ ecs_express_deploy_backend_health_result }}'
+        rollback: '{{ ecs_express_deploy_backend_rollback_result }}'
+        rollbackHealth: '{{ ecs_express_deploy_backend_rollback_health_result }}'
+      frontend:
+        revision: >-
+          {{ ecs_express_deploy_previous_frontend_task_definition_arn }}
+          -> {{ ecs_express_deploy_frontend_task_definition_arn }}
+        updateRequired: '{{ ecs_express_deploy_frontend_update_required | bool }}'
+        smokeTest: '{{ ecs_express_deploy_frontend_health_result }}'
+        rollback: '{{ ecs_express_deploy_frontend_rollback_result }}'
+
+- name: Write safe deployment details for the GitHub Actions summary
+  ansible.builtin.copy:
+    dest: '{{ ecs_express_deploy_summary_path }}'
+    mode: '0600'
+    content: |
+      ### Ansible ECS deployment details
+
+      - Result: `{{ ecs_express_deploy_result }}`
+      - Backend revision: `{{ ecs_express_deploy_previous_backend_task_definition_arn }}` -> `{{ ecs_express_deploy_backend_task_definition_arn }}`
+      - Backend update required: `{{ ecs_express_deploy_backend_update_required | bool }}`
+      - Backend health: `{{ ecs_express_deploy_backend_health_result }}`
+      - Backend rollback: `{{ ecs_express_deploy_backend_rollback_result }}`
+      - Backend health after rollback: `{{ ecs_express_deploy_backend_rollback_health_result }}`
+      - Frontend revision: `{{ ecs_express_deploy_previous_frontend_task_definition_arn }}` -> `{{ ecs_express_deploy_frontend_task_definition_arn }}`
+      - Frontend update required: `{{ ecs_express_deploy_frontend_update_required | bool }}`
+      - Frontend smoke test: `{{ ecs_express_deploy_frontend_health_result }}`
+      - Frontend rollback: `{{ ecs_express_deploy_frontend_rollback_result }}`
+      {% if ecs_express_deploy_result == 'failed' %}
+      - Original failed task: `{{ ecs_express_deploy_failure_task }}`
+      {% endif %}
+  register: ecs_express_deploy_summary_file
+  changed_when: false
+  failed_when: false

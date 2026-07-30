@@ -42,3 +42,7 @@
   retries: '{{ ecs_express_deploy_health_retries }}'
   delay: '{{ ecs_express_deploy_health_delay }}'
   until: ecs_express_deploy_frontend_health.status in ecs_express_deploy_frontend_success_status_codes
+
+- name: Record successful frontend smoke verification
+  ansible.builtin.set_fact:
+    ecs_express_deploy_frontend_health_result: passed

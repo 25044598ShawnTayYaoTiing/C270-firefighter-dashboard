@@ -44,3 +44,7 @@
     - ecs_express_deploy_backend_health.status == 200
     - ecs_express_deploy_backend_health.json is defined
     - ecs_express_deploy_backend_health.json.status | default('') == 'ok'
+
+- name: Record successful backend health verification
+  ansible.builtin.set_fact:
+    ecs_express_deploy_backend_health_result: passed

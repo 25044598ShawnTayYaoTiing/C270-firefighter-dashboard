@@ -3,6 +3,20 @@
   ansible.builtin.import_tasks: preflight.yml
   tags: [preflight, deploy]
 
+- name: Initialize deployment outcome tracking
+  ansible.builtin.set_fact:
+    ecs_express_deploy_result: succeeded
+    ecs_express_deploy_failure_task: ''
+    ecs_express_deploy_failure_message: ''
+    ecs_express_deploy_backend_update_required: false
+    ecs_express_deploy_frontend_update_required: false
+    ecs_express_deploy_backend_health_result: not-reached
+    ecs_express_deploy_frontend_health_result: not-reached
+    ecs_express_deploy_backend_rollback_result: not-required
+    ecs_express_deploy_frontend_rollback_result: not-required
+    ecs_express_deploy_backend_rollback_health_result: not-required
+  tags: [deploy]
+
 - name: Deploy backend, verify it, then deploy frontend
   block:
     - name: Deploy and verify backend
@@ -13,12 +27,44 @@
       ansible.builtin.import_tasks: frontend.yml
       tags: [frontend, verify, deploy]
   rescue:
-    - name: Restore prior task definitions after a deployment failure
+    - name: Preserve the original deployment failure
+      ansible.builtin.set_fact:
+        ecs_express_deploy_result: failed
+        ecs_express_deploy_failure_task: '{{ ansible_failed_task.name | default("unknown task") }}'
+        ecs_express_deploy_failure_message: >-
+          {{ ansible_failed_result.msg
+             | default('See the preceding Ansible task output for the original failure.') }}
+        ecs_express_deploy_backend_health_result: >-
+          {{ 'failed'
+             if ansible_failed_task.name | default('')
+                == 'Verify backend application health endpoint'
+             else ecs_express_deploy_backend_health_result }}
+        ecs_express_deploy_frontend_health_result: >-
+          {{ 'failed'
+             if ansible_failed_task.name | default('')
+                == 'Verify frontend HTTP availability'
+             else ecs_express_deploy_frontend_health_result }}
+
+    - name: Collect safe ECS failure diagnostics
+      ansible.builtin.import_tasks: diagnostics.yml
+      tags: [deploy, diagnostics]
+
+    - name: Restore and verify prior task definitions
       ansible.builtin.import_tasks: rollback.yml
       tags: [deploy, rollback]
+  always:
+    - name: Record the deployment and rollback summary
+      ansible.builtin.import_tasks: summary.yml
+      tags: [deploy, summary]
 
-    - name: Fail after rollback has been requested
-      ansible.builtin.fail:
-        msg: >-
-          Deployment validation failed. The previous task definitions were requested
-          for every service changed by this playbook; inspect ECS service events.
+- name: Fail with the original deployment context after rollback verification
+  ansible.builtin.fail:
+    msg: >-
+      Deployment failed at "{{ ecs_express_deploy_failure_task }}":
+      {{ ecs_express_deploy_failure_message }}
+      Rollback results:
+      backend={{ ecs_express_deploy_backend_rollback_result }},
+      backend_health={{ ecs_express_deploy_backend_rollback_health_result }},
+      frontend={{ ecs_express_deploy_frontend_rollback_result }}.
+  when: ecs_express_deploy_result == 'failed'
+  tags: [deploy]
