@@ -1,8 +1,7 @@
-const http = require('http');
-const https = require('https');
 const incidentModel = require('../models/incidentModel');
 const db = require('../config/db');
 const geminiService = require('../services/geminiService');
+const googleSpeechService = require('../services/googleSpeechService');
 const {
   buildMapData,
   mapIncident,
@@ -11,10 +10,6 @@ const {
 } = require('../helpers/incidentPresenter');
 
 const statuses = ['Draft', 'Pending Review', 'Completed', 'Escalated'];
-const REALTIME_STT_HEALTH_URL = process.env.REALTIME_STT_HEALTH_URL || 'http://127.0.0.1:8010/health';
-// Leave the browser URL blank by default so the frontend can use the hostname
-// that the user used to open the dashboard (localhost or the laptop's LAN IP).
-const REALTIME_STT_WS_URL = process.env.REALTIME_STT_WS_URL || '';
 
 function renderPage(res, view, options) {
   res.render('layout', {
@@ -28,67 +23,6 @@ function renderPage(res, view, options) {
   });
 }
 
-// Done by: Khin (25036933)
-// Check whether the external real-time transcription service is reachable before the UI shows it as available.
-function requestTranscriptionHealth() {
-  return new Promise((resolve) => {
-    let healthUrl;
-
-    try {
-      healthUrl = new URL(REALTIME_STT_HEALTH_URL);
-    } catch (error) {
-      resolve({
-        available: false,
-        error: 'RealtimeSTT health URL is invalid.'
-      });
-      return;
-    }
-
-    if (!['http:', 'https:'].includes(healthUrl.protocol)) {
-      resolve({
-        available: false,
-        error: 'RealtimeSTT health URL must use HTTP or HTTPS.'
-      });
-      return;
-    }
-
-    const client = healthUrl.protocol === 'https:' ? https : http;
-    const request = client.get(healthUrl, { timeout: 1500 }, (response) => {
-      let body = '';
-
-      response.on('data', (chunk) => {
-        body += chunk;
-      });
-
-      response.on('end', () => {
-        let data = {};
-
-        try {
-          data = body ? JSON.parse(body) : {};
-        } catch (error) {
-          data = { raw: body };
-        }
-
-        resolve({
-          available: response.statusCode >= 200 && response.statusCode < 500,
-          statusCode: response.statusCode,
-          data
-        });
-      });
-    });
-
-    request.on('timeout', () => {
-      request.destroy(new Error('Transcription health check timed out.'));
-    });
-
-    request.on('error', (error) => {
-      resolve({
-        available: false,
-        error: error.message
-      });
-    });
-  });
-}
 
 function withTimeout(promise, timeoutMs, message) {
   let timeout;
@@ -339,28 +273,24 @@ exports.showAnalytics = async (req, res, next) => {
 exports.showTranscription = (req, res) => {
   renderPage(res, 'transcription', {
     pageTitle: 'Live Call Intake',
-    activePage: 'transcription',
-    realtimeSttWsUrl: REALTIME_STT_WS_URL
+    activePage: 'transcription'
   });
-};
-
-exports.checkTranscriptionHealth = async (req, res) => {
-  const health = await requestTranscriptionHealth();
-  res.json(health);
 };
 
 // Done by: Khin (25036933)
 // Gather the current health of transcription, AI cleanup, and the database so the page can show a reliable system status.
 exports.checkSystemStatus = async (req, res) => {
-  const [transcriptionHealth, aiHealth, databaseHealth] = await Promise.all([
-    requestTranscriptionHealth(),
+  const [speechHealth, aiHealth, databaseHealth] = await Promise.all([
+    googleSpeechService.checkHealth(),
     geminiService.checkHealth(),
     checkDatabaseHealth()
   ]);
 
   res.json({
-    realtimeStt: {
-      available: transcriptionHealth.available
+    speechToText: {
+      available: speechHealth.available,
+      provider: speechHealth.provider,
+      error: speechHealth.error
     },
     ai: {
       available: aiHealth.available,
