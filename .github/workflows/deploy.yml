@@ -20,6 +20,11 @@ on:
         required: true
         default: false
         type: boolean
+      inject_health_failure:
+        description: 'FA practice only: return HTTP 503 from backend /health (requires deploy=true)'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -374,6 +379,8 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Create task-definition revisions for both ECS services
+        env:
+          FA_DEMO_HEALTH_FAILURE_REQUESTED: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy && inputs.inject_health_failure && 'true' || 'false' }}
         run: |
           set -euo pipefail
           resolve_active_task_definition() {
@@ -433,7 +440,8 @@ jobs:
 
           jq \
             --arg name "${backend_container_name}" \
-            --arg image "${BACKEND_ECR_IMAGE}" '
+            --arg image "${BACKEND_ECR_IMAGE}" \
+            --arg inject_health_failure "${FA_DEMO_HEALTH_FAILURE_REQUESTED}" '
             del(
               .taskDefinitionArn,
               .revision,
@@ -445,7 +453,23 @@ jobs:
               .deregisteredAt
             )
             | .containerDefinitions = (
-                .containerDefinitions | map(if .name == $name then .image = $image else . end)
+                .containerDefinitions
+                | map(
+                    if .name == $name then
+                      .image = $image
+                      | .environment = (
+                          ((.environment // [])
+                            | map(select(.name != "FA_DEMO_HEALTH_FAILURE")))
+                          + (if $inject_health_failure == "true" then
+                               [{"name": "FA_DEMO_HEALTH_FAILURE", "value": "true"}]
+                             else
+                               []
+                             end)
+                        )
+                    else
+                      .
+                    end
+                  )
               )
           ' backend-task-definition.json > new-backend-task-definition.json
 

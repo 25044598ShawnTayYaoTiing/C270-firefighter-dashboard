@@ -57,6 +57,13 @@ app.use((req, res, next) => {
 });
 
 app.get('/health', (req, res) => {
+  if (process.env.FA_DEMO_HEALTH_FAILURE === 'true') {
+    return res.status(503).json({
+      status: 'unhealthy',
+      reason: 'fa-demo-health-failure'
+    });
+  }
+
   res.json({ status: 'ok' });
 });
 
@@ -99,7 +106,11 @@ app.use((error, req, res, next) => {
   res.status(500).send('Something went wrong while loading the dashboard.');
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`Firefighter Smart Incident Dashboard running at http://localhost:${PORT}`);
-});
-attachLiveTranscriptionGateway(server);
+if (require.main === module) {
+  const server = app.listen(PORT, () => {
+    console.log(`Firefighter Smart Incident Dashboard running at http://localhost:${PORT}`);
+  });
+  attachLiveTranscriptionGateway(server);
+}
+
+module.exports = app;
