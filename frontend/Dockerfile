@@ -8,3 +8,6 @@ COPY frontend/validate-backend-url.sh /docker-entrypoint.d/05-validate-backend-u
 RUN chmod +x /docker-entrypoint.d/05-validate-backend-url.sh
 
 EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -q -O - http://127.0.0.1/health | grep -q '"status":"ok"' || exit 1

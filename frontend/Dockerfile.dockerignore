@@ -1,0 +1,7 @@
+# Frontend-only build context: the image needs static assets and two runtime files.
+**
+!public/
+!public/**
+!frontend/
+!frontend/nginx.conf.template
+!frontend/validate-backend-url.sh
