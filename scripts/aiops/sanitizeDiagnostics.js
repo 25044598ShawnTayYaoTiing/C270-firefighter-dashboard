@@ -153,6 +153,19 @@ function sanitizeDiagnostics(value) {
   const github = value.github && typeof value.github === 'object' && !Array.isArray(value.github)
     ? value.github
     : {};
+  const deployment = value.deployment
+    && typeof value.deployment === 'object'
+    && !Array.isArray(value.deployment)
+    ? value.deployment
+    : {};
+  const pipeline = value.pipeline
+    && typeof value.pipeline === 'object'
+    && !Array.isArray(value.pipeline)
+    ? value.pipeline
+    : {};
+  const images = value.images && typeof value.images === 'object' && !Array.isArray(value.images)
+    ? value.images
+    : {};
   const failure = value.failure && typeof value.failure === 'object' && !Array.isArray(value.failure)
     ? value.failure
     : {};
@@ -185,6 +198,22 @@ function sanitizeDiagnostics(value) {
       runId: sanitizeScalar(github.runId),
       commitSha: sanitizeScalar(github.commitSha),
       branch: sanitizeScalar(github.branch)
+    },
+    deployment: {
+      outcome: sanitizeScalar(deployment.outcome || value.deploymentResult),
+      durationSeconds: sanitizeScalar(deployment.durationSeconds)
+    },
+    pipeline: {
+      tests: sanitizeScalar(pipeline.tests),
+      securityGates: sanitizeScalar(pipeline.securityGates),
+      containerScanning: sanitizeScalar(pipeline.containerScanning),
+      ecsStabilization: sanitizeScalar(pipeline.ecsStabilization),
+      backendHealth: sanitizeScalar(pipeline.backendHealth),
+      frontendSmoke: sanitizeScalar(pipeline.frontendSmoke)
+    },
+    images: {
+      backend: sanitizeScalar(images.backend),
+      frontend: sanitizeScalar(images.frontend)
     },
     failure: {
       stage: sanitizeScalar(failure.stage),

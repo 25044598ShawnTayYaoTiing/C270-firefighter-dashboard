@@ -72,7 +72,7 @@ Local development uses Google Application Default Credentials (ADC). The ECS bac
 | Containers | Docker and Docker Compose |
 | Delivery | GitHub Actions, Amazon ECR, Amazon ECS Express Mode, Ansible |
 | DevSecOps | Gitleaks, Semgrep, `npm audit`, Trivy, GitHub OIDC |
-| Advisory AIOps | Sanitized deployment-failure analysis using Gemini with mandatory human review |
+| Advisory AIOps | Sanitized post-deployment assessment and failure analysis using Gemini |
 | PR assistance | Optional CodeRabbit AI-assisted pull-request review |
 
 ## Deployed Architecture
@@ -301,10 +301,10 @@ See [Ansible ECS Express Deployment](docs/FA-ANSIBLE-CLOUD-DEPLOYMENT.md).
 
 ## Advisory AIOps
 
-The AIOps feature analyzes deployment failures but cannot deploy or remediate them.
+The AIOps feature assesses every completed deployment but cannot deploy or remediate anything.
 
 ```text
-Ansible/ECS deployment failure
+Completed Ansible/ECS deployment
           |
           v
 Allowlisted and sanitized diagnostics
@@ -319,7 +319,7 @@ Gemini structured analysis
 GitHub Actions Summary
           |
           v
-Mandatory human review
+Risk-based human-review result
 ```
 
 Safety boundaries include:
@@ -328,7 +328,7 @@ Safety boundaries include:
 - bounded individual strings and total payload size;
 - a dedicated `AIOPS_GEMINI_API_KEY`, separate from the application's Gemini credential;
 - model-response schema validation and validated evidence paths;
-- `humanReviewRequired: true`;
+- mandatory human review for failures and any successful deployment warning;
 - no AWS credentials, OIDC permission, AWS API access, Ansible execution, command execution, rollback authority, or automatic remediation in the analysis job;
 - preserved deployment failure semantics even if analysis succeeds.
 
@@ -342,13 +342,17 @@ This uses synthetic failure data and a mocked Gemini client. It performs no AWS,
 
 ### GitHub Actions FA Demonstration
 
-The `AIOps FA Demonstration` workflow is manual, restricted to `main`, and has only `contents: read`. It prepares synthetic sanitized diagnostics and uses live Gemini analysis when the dedicated secret is available, with a schema-validated mocked fallback when live analysis is unavailable. It has no deployment authority.
+Every completed deployment runs the isolated AIOps assessment. A successful all-pass deployment is reported as `HEALTHY_DEPLOYMENT / LOW`, while a real failure retains its failure classification, rollback evidence, and mandatory human review. If Gemini is unavailable, deterministic sanitized evidence produces an explicitly labelled fallback summary.
 
-### Production Failure Path
+For an integrated presentation, manually run `DevSecOps CI/CD` with `run_aiops_demo=true`. The workflow runs every normal gate, deploys and verifies AWS normally, writes the real success assessment, then adds clearly labelled synthetic failure evidence. The summary keeps the real deployment `SUCCESS` separate from the synthetic scenario `FAILED`. The AIOps job still has only `contents: read` and no AWS, OIDC, deployment, rollback, or remediation authority.
 
-The production AIOps job can run only after a real deployment job fails and a sanitized diagnostic artifact is available. It remains advisory and cannot change the failed deployment or rollback result.
+The standalone `AIOps FA Demonstration` workflow remains available when a deployment is not required. Both demonstration paths use live Gemini when the dedicated secret is available and a schema-validated mocked fallback otherwise.
 
-The repository implementation proves the guarded workflow and simulation paths; it does not by itself prove that a real failed ECS rollout has already completed live Gemini analysis. See [AIOps Deployment-Failure Analysis](docs/FA-AIOPS-DEPLOYMENT-FAILURE-ANALYSIS.md).
+### Production Assessment Paths
+
+The production AIOps job runs when the deploy job finishes with `success` or `failure`. It receives only a bounded sanitized artifact. Failed CI/security gates leave deployment skipped, so they cannot trigger deployment or a misleading deployment assessment. AIOps remains advisory and cannot change a successful deployment, failed deployment, or rollback result.
+
+The repository implementation proves the guarded workflow and simulation paths; it does not by itself prove that a real failed ECS rollout has already completed live Gemini analysis. See [AIOps Deployment Assessment and Failure Analysis](docs/FA-AIOPS-DEPLOYMENT-FAILURE-ANALYSIS.md).
 
 ## Optional CodeRabbit Review
 
@@ -562,7 +566,7 @@ SECURITY.md              Security and credential-handling guidance
 | Cloud deployment | Separate backend/frontend images in Amazon ECR and services in ECS Express Mode |
 | Deployment automation | Idempotent, backend-first Ansible rollout with verification and rollback |
 | DevSecOps | Gitleaks, Semgrep, production `npm audit`, Trivy, and least-privilege OIDC workflow controls |
-| Advisory AIOps | Sanitized Gemini-assisted failure classification with mandatory human review |
+| Advisory AIOps | Sanitized Gemini-assisted deployment health assessment and failure classification |
 | AI-assisted review | Optional CodeRabbit pull-request review configuration |
 
 Together, these components demonstrate automated validation, immutable container promotion, short-lived cloud authentication, deterministic deployment, failure recovery, and security controls integrated before release.
@@ -574,7 +578,7 @@ Together, these components demonstrate automated validation, immutable container
 - [Docker Compose / Multi-container Orchestration](docs/FA-DOCKER-COMPOSE.md)
 - [Ansible ECS Express Deployment](docs/FA-ANSIBLE-CLOUD-DEPLOYMENT.md)
 - [FA L4 DevSecOps Evidence](docs/FA-L4-DEVSECOPS.md)
-- [AIOps Deployment-Failure Analysis](docs/FA-AIOPS-DEPLOYMENT-FAILURE-ANALYSIS.md)
+- [AIOps Deployment Assessment and Failure Analysis](docs/FA-AIOPS-DEPLOYMENT-FAILURE-ANALYSIS.md)
 - [FA DevOps Evidence Guide](docs/FA-DEVOPS-EVIDENCE-GUIDE.md)
 - [Security Policy](SECURITY.md)
 

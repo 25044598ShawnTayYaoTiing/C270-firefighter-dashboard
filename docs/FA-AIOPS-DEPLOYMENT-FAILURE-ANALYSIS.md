@@ -1,68 +1,131 @@
-# FA AIOps Deployment-Failure Analysis
+# FA AIOps Deployment Assessment and Failure Analysis
 
 ## Purpose
 
-This repository adds a small read-only AIOps layer to the existing deployment workflow. It does not replace deterministic CI/CD, deployment verification, or rollback.
+The repository adds a small read-only AIOps assessment after every completed
+AWS deployment job. It does not replace deterministic CI/CD, Ansible
+verification, or rollback.
 
 ```text
-Normal:
-GitHub Actions -> security gates -> ECR -> Ansible -> ECS -> success
-
-Failure:
-GitHub Actions
-  -> Ansible deployment or verification failure
-  -> deterministic rollback and rollback verification
-  -> allowlisted diagnostics
-  -> sanitizer
+Tests and security gates
+  -> build and Trivy
+  -> GitHub OIDC deployment job
+  -> ECR and ECS Express deployment
+  -> backend health and frontend smoke verification
+  -> sanitized deployment evidence
   -> isolated AIOps job
-  -> Gemini classification
-  -> advisory GitHub Actions summary
-  -> mandatory human review
+  -> Gemini or deterministic fallback
+  -> GitHub Actions Summary
 ```
 
-GitHub Actions remains the CI/CD orchestrator. Ansible remains solely responsible for backend-first deployment, `/health`, frontend smoke testing, and rollback. Gemini can only observe the resulting sanitized failure record and recommend a human next step.
+Successful deployments receive a concise health and risk assessment. Failed
+deployments retain the deeper failure classification, likely cause,
+recommended checks, rollback evidence, and mandatory human review. A failed
+deploy job remains failed regardless of the AIOps result.
 
-## Diagnostic artifact
+GitHub Actions remains the CI/CD orchestrator. Ansible remains solely
+responsible for backend-first deployment, bounded ECS stabilization, backend
+`/health`, frontend smoke testing, and rollback.
 
-After a tracked deployment or verification failure, and only after rollback results are known, Ansible writes `deployment-diagnostics.json` in its runner workspace. The fixed schema contains:
+## Sanitized evidence
 
-- run ID, commit SHA, branch, schema version, and timestamp;
-- failed stage, task, and failure message;
-- backend and frontend service identifiers;
-- previous, expected, and failure-time active task definitions;
-- bounded ECS status, status reason, and up to five recent deployment records;
-- backend health and frontend smoke-test outcomes; and
-- rollback attempted/result fields plus post-rollback backend health.
+`scripts/aiops/prepareDeploymentEvidence.js` creates one fixed evidence format
+for either outcome. For success it records only deterministic facts already
+known by the workflow:
 
-Unavailable values are represented explicitly. The document does not contain environment dumps, task-definition bodies, application payloads, transcripts, headers, cookies, database values, or credentials.
+- deployment outcome and bounded duration;
+- tests, security gates, and container scan results;
+- ECS stabilization, backend health, and frontend smoke results;
+- immutable backend and frontend image identifiers;
+- previous, requested, and active task-definition identifiers; and
+- run ID, commit SHA, branch, schema version, and timestamp.
 
-Before upload, `scripts/aiops/sanitizeDiagnostics.js` rebuilds the document from a nested allowlist, redacts credential-like text, strips control characters, limits deployment arrays, truncates individual strings, and enforces a total payload limit. Only this sanitized output is uploaded, with seven-day artifact retention. The analysis script applies the same sanitizer again after download.
+The deployment job can run only after the test, Gitleaks, Semgrep, dependency
+audit, build, and Trivy jobs pass. Therefore those recorded gate results are
+derived from enforced workflow dependencies, not model inference.
 
-## Guardrailed Gemini analysis
+For failure, the producer enriches the existing allowlisted Ansible diagnostic
+record with those same pipeline facts. Ansible remains responsible for
+collecting the failure stage, failed task, bounded ECS state, verification
+results, and rollback results.
 
-The separate AIOps job uses the existing locked `@google/genai` dependency with the dedicated `AIOPS_GEMINI_API_KEY` GitHub Actions secret. It does not use the application's `GEMINI_API_KEY`. The optional `AIOPS_GEMINI_MODEL` repository variable selects the model; otherwise the safe default is `gemini-3.5-flash-lite`. The request uses structured JSON output and omits deprecated sampling parameters.
+`scripts/aiops/sanitizeDiagnostics.js` then rebuilds either document from a
+nested allowlist before redaction. It strips unsupported fields, redacts
+credential-shaped text, removes control characters, limits deployment arrays,
+truncates individual strings, and enforces a total payload limit. The analyzer
+applies the same sanitizer again after download.
 
-The analyzer has a fixed instruction, no tools, no function calling, no shell capability, and no AWS client. Diagnostic strings are explicitly marked as untrusted data. The model must return one classification from:
+The artifact never includes environment dumps, task-definition bodies,
+application payloads, transcripts, headers, cookies, database values, API
+keys, AWS credentials, or tokens. Artifact retention is seven days.
 
-- `ECS_ROLLOUT_FAILURE`
-- `BACKEND_HEALTH_FAILURE`
-- `FRONTEND_SMOKE_FAILURE`
-- `ROLLBACK_FAILURE`
-- `AUTHORIZATION_FAILURE`
-- `CONFIGURATION_FAILURE`
-- `NETWORK_FAILURE`
-- `UNKNOWN`
+## Structured assessment
 
-The structured response also contains bounded confidence, evidence field paths, a likely cause, a recommended human next action, and `humanReviewRequired: true`. Evidence paths are validated and rendered using the original sanitized diagnostic values, preventing the model from supplying invented operational evidence. Unsupported fields, false human-review flags, invalid confidence, or malformed JSON make the result unavailable.
+The isolated job uses the dedicated `AIOPS_GEMINI_API_KEY` GitHub Actions
+secret. It never uses the application's `GEMINI_API_KEY`. The
+`AIOPS_GEMINI_MODEL` repository variable selects the model, with
+`gemini-3.5-flash-lite` as the default.
 
-If the Gemini request or response validation fails, the summary says `AI analysis unavailable`. This never changes the failed deploy job, Ansible rollback outcome, or workflow conclusion.
+The production analyzer uses a fixed instruction, structured JSON output, no
+tools, no function calling, and no autonomous action interface. Its validated
+response contains:
+
+- deployment outcome;
+- classification and risk level;
+- bounded confidence and evidence paths;
+- operational summary;
+- likely cause for failures;
+- notable observations;
+- recommended checks or actions for a human; and
+- whether human review is required.
+
+Success classifications are `HEALTHY_DEPLOYMENT` and `DEPLOYMENT_WARNING`.
+Existing failure classifications remain `ECS_ROLLOUT_FAILURE`,
+`BACKEND_HEALTH_FAILURE`, `FRONTEND_SMOKE_FAILURE`, `ROLLBACK_FAILURE`,
+`AUTHORIZATION_FAILURE`, `CONFIGURATION_FAILURE`, `NETWORK_FAILURE`, and
+`UNKNOWN`.
+
+The response must match the authoritative deployment outcome. A failed
+deployment must set `humanReviewRequired: true`. A successful assessment may
+set it to `false` only when every supplied pipeline check is `PASS`, the
+classification is `HEALTHY_DEPLOYMENT`, and risk is `LOW`. Any warning or
+incomplete evidence requires human review.
+
+If Gemini is unavailable, malformed, or returns unsupported evidence, the
+analyzer emits a clearly labelled `FALLBACK` assessment from deterministic
+pipeline facts. A complete successful all-pass record remains
+`HEALTHY_DEPLOYMENT / LOW`; failed or incomplete records require review. The
+fallback cannot change deployment state.
+
+## GitHub Actions summary
+
+Every completed deploy job produces `# AIOps Deployment Summary` with:
+
+- execution mode, model, outcome, classification, risk, and duration;
+- test, security, scan, stabilization, health, and smoke evidence;
+- safe image and task-definition identifiers;
+- operational summary, observations, and recommended checks;
+- failure cause and rollback evidence when applicable; and
+- the explicit no-authority safety boundary.
+
+The AIOps job condition is:
+
+```yaml
+always() &&
+(needs.deploy.result == 'success' ||
+ needs.deploy.result == 'failure')
+```
+
+Pull requests, scan-only manual runs, and runs where an upstream CI/security
+gate prevents the deploy job are excluded because the deploy job result is
+`skipped`, not `success` or `failure`.
 
 ## Security isolation
 
 ```text
 Deploy job
   -> contents: read + id-token: write
-  -> GitHub OIDC temporary AWS role
+  -> temporary GitHub OIDC AWS session
   -> ECR, task-definition registration, and Ansible/ECS
   -> no AIOPS_GEMINI_API_KEY
 
@@ -70,144 +133,52 @@ AIOps job
   -> contents: read only
   -> AIOPS_GEMINI_API_KEY only in the Gemini step
   -> no id-token: write
-  -> no AWS credential action
-  -> no deployment or rollback command
+  -> no AWS credential action or AWS API call
+  -> no Ansible, deployment, rollback, or remediation command
 ```
 
-GitHub Actions jobs have isolated workspaces and credentials. AWS OIDC credentials created in the deploy job are not available in the AIOps job. The AIOps job cannot deploy, rollback, modify IAM, edit infrastructure, or execute remediation.
+The analysis steps are non-blocking. A successful deployment cannot be turned
+into a failed deployment by an unavailable AI service. A failed deployment
+cannot be turned into success by Gemini, fallback analysis, or successful
+rollback. Deterministic workflow and Ansible results remain authoritative.
 
-## Trigger and output
+Diagnostic strings are explicitly treated as untrusted data. Evidence paths
+must refer to fields present in the sanitized document, model text is bounded
+and redacted before rendering, and model-supplied commands have no execution
+path.
 
-The advisory job runs only when all three conditions are true:
+## Safe FA demonstrations
 
-1. the authoritative deploy job finished;
-2. its result is `failure`; and
-3. the deploy job successfully produced and uploaded sanitized diagnostics.
-
-The GitHub Actions Summary is clearly labelled:
-
-> **AI-GENERATED OPERATIONAL ANALYSIS — ADVISORY ONLY**
-
-It displays the execution mode, selected Gemini model, validated classification, confidence, allowlisted evidence, likely cause, recommended human action, deterministic rollback status, and mandatory human-review status.
-
-## FA framing
-
-This is reasonably described as **AIOps deployment-failure analysis** and a **guardrailed agent-like operational workflow**. It demonstrates event-driven automation, telemetry minimization, AI-assisted classification, credential isolation, deterministic rollback, and human oversight. It is deliberately not described as a fully autonomous agent because it has no authority to make changes.
-
-## SIMULATED LOCAL FAILURE EVIDENCE
-
-Run the safe local demonstration from the repository root:
+Run the local synthetic failure demonstration with:
 
 ```powershell
 npm run aiops:demo
 ```
 
-The demonstration creates an in-memory simulated backend deployment failure:
+It uses fake failure evidence and a mocked Gemini client while exercising the
+production sanitizer, analyzer schema, prompt-injection boundary, and failed
+deployment invariants. It performs no AWS, Gemini, or other network request.
 
-- revision 29 repeatedly stops before `/health` becomes available;
-- the backend service fails to stabilize;
-- deterministic rollback evidence says revision 28 was restored successfully; and
-- the overall simulated deployment result remains `FAILED`.
+For an integrated presentation, manually run **DevSecOps CI/CD** with
+`run_aiops_demo=true`. The workflow first completes the real deployment and
+its normal AIOps success assessment. It then runs the synthetic scenario in
+the same isolated job and labels it:
 
-The raw fixture contains obviously fake sensitive and noisy data, including an
-Authorization value, AWS token, session secret, database password, environment
-object, raw task-definition fragment, oversized log text, transcript content,
-and prompt-injection-shaped diagnostic text. The production sanitizer rebuilds
-the document from its allowlist, removes unsupported fields and fake values,
-and applies the existing string and payload bounds.
+> **FA DEMO — SYNTHETIC FAILURE EVIDENCE**
 
-The sanitized document is then passed to the production `analyzeDiagnostics()`
-path with an in-process mocked Gemini client. The mock performs no network
-request, but its response must still pass the production schema and evidence
-validation. The demo fails if sanitization, data-boundary, schema,
-human-review, or failed-deployment invariants are violated.
+The summary keeps the real deployment `SUCCESS` separate from the synthetic
+scenario `FAILED`. The standalone **AIOps FA Demonstration** workflow remains
+available when a deployment is not desired.
 
-The presentation output explicitly reports:
-
-```text
-RAW SIMULATED FAILURE
-  -> SANITIZATION
-  -> SANITIZED DIAGNOSTICS
-  -> AIOPS ANALYSIS
-  -> HUMAN REVIEW REQUIRED: TRUE
-  -> DEPLOYMENT RESULT REMAINS: FAILED
-  -> NO AUTOMATIC ACTION TAKEN
-```
-
-This is **simulated local evidence**. It is not proof that a real failed ECS
-deployment has invoked Gemini in production. The command requires no AWS
-credentials, ECS access, network access, Gemini key, application process, or
-cloud resource.
-
-## GitHub Actions FA demonstration
-
-The dedicated
-`.github/workflows/aiops-demo.yml` workflow provides the same safe scenario in
-a real GitHub Actions execution environment. It is named
-`AIOps FA Demonstration` and can only be started manually with
-`workflow_dispatch`.
-
-```text
-GitHub Actions
-  -> synthetic revision 29 failure
-  -> production sanitizer
-  -> sanitization invariants
-  -> production analyzer and schema validation
-  -> advisory Actions Summary
-  -> mandatory human review
-```
-
-The job grants only `contents: read`. It has no `id-token: write`, AWS
-credential action, AWS CLI call, Ansible command, deployment command, rollback
-command, push operation, or automatic remediation capability.
-
-The analysis step receives only the dedicated `AIOPS_GEMINI_API_KEY` secret.
-When that secret is configured and Gemini returns a valid response, the summary
-labels the mode `LIVE GEMINI`. If the secret is unavailable, or live analysis
-is unavailable, the workflow uses the existing schema-validated local response
-and clearly labels the mode `MOCKED` or
-`MOCKED FALLBACK (LIVE GEMINI UNAVAILABLE)`. The application
-`GEMINI_API_KEY` is never used. The summary also displays the selected
-`AIOPS_GEMINI_MODEL` value (or the `gemini-3.5-flash-lite` default) and whether
-a live request was attempted.
-
-Fake credential values are removed before analysis. The prompt-injection-shaped
-diagnostic remains inside the analyzer's explicitly marked untrusted-data
-boundary so that the real prompt-injection guard is exercised, but the text is
-not rendered in the GitHub Actions Summary.
-
-This workflow is deliberately separate from `deploy.yml`:
-
-| Production | FA demonstration |
-|---|---|
-| Real failed deployment or verification | Synthetic backend revision failure |
-| Deterministic Ansible rollback first | Simulated successful rollback evidence |
-| Sanitized failure artifact | In-memory fixture sanitized in the runner |
-| Failure-only AIOps job | Manual demonstration job |
-| Failed deployment remains failed | Synthetic result remains `FAILED` |
-
-Synthetic evidence is used because deliberately breaking ECS purely for
-assessment evidence would create unnecessary production risk.
-
-### Presentation sequence
-
-1. Open GitHub Actions and select **AIOps FA Demonstration**.
-2. Select **Run workflow** on `main`.
-3. Open **Prepare synthetic sanitized diagnostics** and show the bounded,
-   secret-free result.
-4. Open **Run guarded AIOps analysis and write summary** and show the selected
-   `LIVE GEMINI` or explicitly labelled fallback mode.
-5. Open the run Summary and show the classification, human-review requirement,
-   preserved `FAILED` result, and zero AWS/deployment/rollback actions.
-6. Open `deploy.yml` and show that production AIOps remains conditioned on an
-   actual failed deploy with a prepared sanitized diagnostic artifact.
+Synthetic evidence is used because intentionally breaking ECS for assessment
+evidence would create unnecessary production risk.
 
 ## Limitations
 
-- Version 1 uses only the bounded data already produced by Ansible and ECS deployment APIs; it does not ingest CloudWatch or full application logs.
-- The diagnosis is probabilistic and advisory. Operators must validate it against authoritative AWS and application evidence.
-- Failures before the tracked Ansible deployment step do not produce this artifact and therefore do not invoke AIOps.
-- A missing or invalid AIOps Gemini secret produces an unavailable analysis without affecting deployment failure handling.
-- The local FA demonstration uses a mocked AI response to prove integration,
-  sanitization, schema validation, and safety boundaries without contacting
-  Gemini or AWS.
+- Evidence is intentionally limited to bounded workflow and Ansible/ECS
+  deployment facts; it does not ingest CloudWatch or full application logs.
+- Gemini recommendations are probabilistic and advisory.
+- A failure before evidence preparation receives a safe fallback summary with
+  unavailable fields rather than fabricated evidence.
+- External Gemini availability, credentials, quota, and model access remain
+  operational dependencies for `LIVE GEMINI` mode.

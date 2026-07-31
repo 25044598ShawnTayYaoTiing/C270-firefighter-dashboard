@@ -190,12 +190,13 @@ Primary reference: [`FA-L4-DEVSECOPS.md`](FA-L4-DEVSECOPS.md).
 
 Present the capability accurately:
 
-- implemented as deployment-failure analysis;
+- implemented as an assessment after every completed deployment;
 - covered by focused unit tests;
-- connected to the failed-deployment workflow path;
+- connected to both successful and failed deployment paths;
 - advisory only;
-- receives allowlisted and sanitized diagnostics;
-- requires human review;
+- receives allowlisted and sanitized evidence;
+- reports healthy successful deployments as low risk and requires human review
+  for failures or warnings;
 - has no AWS credentials, OIDC permission, deployment command, rollback
   command, or tool execution; and
 - has not been deliberately demonstrated through a real cloud deployment
@@ -204,6 +205,7 @@ Present the capability accurately:
 Show:
 
 - `scripts/aiops/sanitizeDiagnostics.js`;
+- `scripts/aiops/prepareDeploymentEvidence.js`;
 - `scripts/aiops/analyzeDeploymentFailure.js`;
 - `test/aiopsDiagnostics.test.js`;
 - the isolated `aiops-analysis` workflow job; and
@@ -215,11 +217,20 @@ sanitizer and analyzer validation. It does not obtain AWS credentials, call
 ECS or Gemini, invoke rollback, or intentionally fail production. Label this
 as **SIMULATED LOCAL FAILURE EVIDENCE**, not cloud-failure proof.
 
-For GitHub-hosted evidence, manually run **AIOps FA Demonstration**. Capture its
-sanitization step and Actions Summary, including the clearly labelled
-`LIVE GEMINI`, `MOCKED`, or fallback mode; the selected Gemini model; whether a
-live request was attempted; mandatory human review; preserved `FAILED` result;
-and zero AWS, deployment, rollback, and remediation actions.
+From any normal successful deployment, capture the executed
+`AIOps Deployment Assessment` job and `# AIOps Deployment Summary`. Show the
+successful outcome, `HEALTHY_DEPLOYMENT`, low risk, PASS evidence, selected
+`LIVE GEMINI` or `FALLBACK` mode, and zero AIOps AWS, deployment, rollback, and
+remediation actions.
+
+For integrated synthetic failure evidence, manually run **DevSecOps CI/CD**
+with `run_aiops_demo=true`. Capture the successful gates, normal AWS deployment,
+health/smoke verification, real success assessment, and the additional
+**FA DEMO — SYNTHETIC FAILURE EVIDENCE** section. Show real deployment
+`SUCCESS`, synthetic scenario `FAILED`, mandatory human review for the
+synthetic failure, and the same zero-authority boundary. The standalone
+**AIOps FA Demonstration** workflow remains available when a deployment is not
+required.
 
 ## CodeRabbit
 
@@ -251,7 +262,7 @@ demo code.
 | Evidence | Layer | Captured |
 |---|---|---|
 | Successful workflow graph | CI/CD | ☐ |
-| 86 automated tests | LOCAL/CI | ☐ |
+| Automated test suite passing | LOCAL/CI | ☐ |
 | npm audit PASS | LOCAL/CI | ☐ |
 | Gitleaks and Semgrep PASS | CI/CD | ☐ |
 | Backend and frontend Trivy PASS | CI/CD | ☐ |

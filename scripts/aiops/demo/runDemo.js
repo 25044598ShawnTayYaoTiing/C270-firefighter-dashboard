@@ -18,7 +18,9 @@ const {
 } = require('./simulatedFailure');
 
 const MOCK_ANALYSIS = Object.freeze({
+  deploymentOutcome: 'FAILED',
   classification: 'ECS_ROLLOUT_FAILURE',
+  riskLevel: 'HIGH',
   confidence: 0.94,
   evidence: [
     'failure.stage',
@@ -28,8 +30,14 @@ const MOCK_ANALYSIS = Object.freeze({
     'rollback.backend.result',
     'rollback.backend.postRollbackHealth'
   ],
+  operationalSummary:
+    'The backend revision failed to stabilize, and the deterministic rollback restored the previous healthy revision.',
   likelyRootCause:
     'Backend revision 29 tasks exited before becoming healthy, so the service could not stabilize.',
+  notableObservations: [
+    'The backend health endpoint was unavailable for the failed revision.',
+    'Rollback evidence reports that revision 28 was restored and passed health verification.'
+  ],
   recommendedNextAction:
     'A human operator should inspect safe startup logs, compare revision 29 runtime configuration with revision 28, and verify the health endpoint.',
   humanReviewRequired: true

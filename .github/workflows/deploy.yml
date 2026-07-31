@@ -15,6 +15,11 @@ on:
         required: true
         default: false
         type: boolean
+      run_aiops_demo:
+        description: Run the safe synthetic AIOps FA demo after a successful manual deployment
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -240,7 +245,8 @@ jobs:
       - build-and-scan
     if: >-
       github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' && inputs.deploy)
+      (github.event_name == 'workflow_dispatch' &&
+      (inputs.deploy || inputs.run_aiops_demo))
     runs-on: ubuntu-latest
     # Covers the bounded backend/frontend rollout checks plus verified rollback.
     timeout-minutes: 80
@@ -248,7 +254,7 @@ jobs:
       contents: read
       id-token: write
     outputs:
-      aiops_ready: ${{ steps.prepare-aiops.outputs.ready }}
+      aiops_ready: ${{ steps.aiops-evidence-status.outputs.ready }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -282,6 +288,9 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Record deployment assessment start time
+        run: echo "DEPLOYMENT_STARTED_AT_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
 
       - name: Download the exact scanned images
         uses: actions/download-artifact@v4
@@ -506,29 +515,63 @@ jobs:
             --extra-vars "ecs_express_deploy_github_commit_sha=${GITHUB_SHA}" \
             --extra-vars "ecs_express_deploy_github_branch=${GITHUB_REF_NAME}"
 
-      - name: Sanitize failed deployment diagnostics
+      - name: Prepare sanitized deployment evidence
         id: prepare-aiops
-        if: always() && steps.ansible-deploy.outcome == 'failure'
+        if: >-
+          always() &&
+          (steps.ansible-deploy.outcome == 'success' ||
+          steps.ansible-deploy.outcome == 'failure')
+        env:
+          ANSIBLE_DEPLOY_OUTCOME: ${{ steps.ansible-deploy.outcome }}
         run: |
           set -euo pipefail
           echo 'ready=false' >> "$GITHUB_OUTPUT"
-          if [ ! -f ansible/deployment-diagnostics.json ]; then
-            echo 'Ansible failure diagnostics were unavailable; advisory analysis will be skipped.'
+
+          if [ "${ANSIBLE_DEPLOY_OUTCOME}" = 'success' ]; then
+            evidence_outcome='SUCCESS'
+            input_arguments=()
+          else
+            evidence_outcome='FAILED'
+            if [ ! -f ansible/deployment-diagnostics.json ]; then
+              echo 'Ansible failure diagnostics were unavailable; AIOps will use a safe fallback summary.'
+              exit 0
+            fi
+            input_arguments=(ansible/deployment-diagnostics.json)
+          fi
+
+          if ! node scripts/aiops/prepareDeploymentEvidence.js \
+            "${evidence_outcome}" \
+            deployment-diagnostics.json \
+            "${input_arguments[@]}"; then
+            echo 'Sanitized deployment evidence could not be prepared; AIOps will use a safe fallback summary.'
             exit 0
           fi
-          node scripts/aiops/sanitizeDiagnostics.js \
-            ansible/deployment-diagnostics.json \
-            deployment-diagnostics.json
+
           echo 'ready=true' >> "$GITHUB_OUTPUT"
 
-      - name: Upload sanitized deployment diagnostics
+      - name: Upload sanitized deployment evidence
+        id: upload-aiops-evidence
         if: always() && steps.prepare-aiops.outputs.ready == 'true'
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: deployment-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: deployment-diagnostics.json
           if-no-files-found: error
           retention-days: 7
+
+      - name: Record AIOps evidence availability
+        id: aiops-evidence-status
+        if: always()
+        env:
+          EVIDENCE_PREPARED: ${{ steps.prepare-aiops.outputs.ready }}
+          EVIDENCE_UPLOAD_OUTCOME: ${{ steps.upload-aiops-evidence.outcome }}
+        run: |
+          ready=false
+          if [ "${EVIDENCE_PREPARED}" = 'true' ] && [ "${EVIDENCE_UPLOAD_OUTCOME}" = 'success' ]; then
+            ready=true
+          fi
+          echo "ready=${ready}" >> "$GITHUB_OUTPUT"
 
       - name: Write deployment summary
         if: always()
@@ -554,59 +597,128 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # FA responsibility: Shawn — read-only deployment-failure AIOps
+  # FA responsibility: Shawn — isolated deployment assessment and safe synthetic FA demo
   aiops-analysis:
-    name: Advisory AIOps deployment failure analysis
+    name: AIOps Deployment Assessment
     needs: deploy
     if: >-
       always() &&
-      needs.deploy.result == 'failure' &&
-      needs.deploy.outputs.aiops_ready == 'true'
+      (needs.deploy.result == 'success' ||
+      needs.deploy.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
     steps:
       - name: Check out analysis code
+        continue-on-error: true
         uses: actions/checkout@v4
 
       - name: Set up Node.js
+        continue-on-error: true
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
       - name: Install locked production dependencies
+        continue-on-error: true
         run: npm ci --omit=dev --ignore-scripts
 
-      - name: Download sanitized deployment diagnostics
+      - name: Download sanitized deployment evidence
+        id: download-aiops-evidence
+        if: needs.deploy.outputs.aiops_ready == 'true'
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: deployment-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - name: Generate read-only advisory analysis
+      - name: Generate read-only deployment assessment
+        if: always()
+        continue-on-error: true
         env:
           AIOPS_GEMINI_API_KEY: ${{ secrets.AIOPS_GEMINI_API_KEY }}
           AIOPS_GEMINI_MODEL: ${{ vars.AIOPS_GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
+          AIOPS_DEPLOYMENT_OUTCOME: ${{ needs.deploy.result }}
         run: |
           node scripts/aiops/analyzeDeploymentFailure.js \
             deployment-diagnostics.json \
             aiops-summary.md \
             aiops-analysis.json
 
-      - name: Write advisory analysis summary
+      - name: Write AIOps deployment summary
         if: always()
+        continue-on-error: true
+        env:
+          AIOPS_GEMINI_MODEL: ${{ vars.AIOPS_GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
+          DEPLOYMENT_OUTCOME: ${{ needs.deploy.result }}
         run: |
           if [ -f aiops-summary.md ]; then
             cat aiops-summary.md >> "$GITHUB_STEP_SUMMARY"
           else
+            normalized_outcome="${DEPLOYMENT_OUTCOME^^}"
+            fallback_risk='HIGH'
+            if [ "${normalized_outcome}" = 'SUCCESS' ]; then
+              fallback_risk='MEDIUM'
+            fi
             {
-              echo '## AIOps Deployment Failure Analysis'
+              echo '# AIOps Deployment Summary'
               echo
-              echo '> **AI-GENERATED OPERATIONAL ANALYSIS — ADVISORY ONLY**'
+              echo '> **AI-GENERATED OPERATIONAL ASSESSMENT — ADVISORY ONLY**'
               echo
-              echo '**Analysis:** AI analysis unavailable'
+              echo '## Execution'
+              echo '- Mode: **FALLBACK**'
+              echo "- Model: **${AIOPS_GEMINI_MODEL}**"
+              echo "- Deployment outcome: **${normalized_outcome}**"
+              echo '- Classification: **UNKNOWN**'
+              echo "- Risk level: **${fallback_risk}**"
               echo
-              echo '**Human review required:** YES'
+              echo '## Pipeline Evidence'
+              echo '- Tests: **UNAVAILABLE**'
+              echo '- Security gates: **UNAVAILABLE**'
+              echo '- Container scanning: **UNAVAILABLE**'
+              echo '- ECS stabilization: **UNAVAILABLE**'
+              echo '- Backend health: **UNAVAILABLE**'
+              echo '- Frontend smoke test: **UNAVAILABLE**'
+              echo
+              echo '## AI Assessment'
+              echo 'Operational summary: The AIOps assessment could not be generated; the deterministic deployment result remains authoritative.'
+              echo
+              echo 'Recommended checks/actions: Review the deployment job summary and authoritative Ansible result.'
+              echo
+              echo '## Safety'
+              echo '- Human review required: **YES**'
+              echo '- AWS credentials available to AI job: **NO**'
+              echo '- OIDC permission: **NO**'
+              echo '- AWS calls: **0**'
+              echo '- Deployment actions: **0**'
+              echo '- Rollback actions: **0**'
+              echo '- Automatic remediation: **0**'
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Prepare FA demo synthetic sanitized diagnostics
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs.run_aiops_demo &&
+          needs.deploy.result == 'success'
+        continue-on-error: true
+        run: >-
+          node scripts/aiops/demo/runWorkflowDemo.js
+          prepare
+          aiops-demo-sanitized.json
+
+      - name: Run FA demo synthetic advisory analysis
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs.run_aiops_demo &&
+          needs.deploy.result == 'success'
+        continue-on-error: true
+        env:
+          AIOPS_GEMINI_API_KEY: ${{ secrets.AIOPS_GEMINI_API_KEY }}
+          AIOPS_GEMINI_MODEL: ${{ vars.AIOPS_GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
+          AIOPS_DEMO_REAL_DEPLOYMENT_RESULT: SUCCESS
+        run: >-
+          node scripts/aiops/demo/runWorkflowDemo.js
+          analyze
+          aiops-demo-sanitized.json

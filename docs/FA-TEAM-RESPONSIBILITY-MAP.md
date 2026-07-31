@@ -34,7 +34,7 @@ Developer
   -> Frontend ECS Express update and stabilization             [Shawn]
   -> Frontend smoke test                                       [Shawn]
   -> Verified rollback and bounded diagnostics on failure      [Shawn]
-  -> Sanitized, read-only AIOps recommendation on failure      [Shawn]
+  -> Sanitized, read-only AIOps deployment assessment          [Shawn]
   -> Users
 
 Local development:
@@ -368,7 +368,7 @@ Shawn owns production cloud delivery after the CI/security gates:
 - idempotent no-op behavior when a service already uses the requested revision;
 - verified restoration of previous revisions after failure;
 - bounded ECS failure diagnostics and GitHub deployment summaries;
-- sanitized, isolated, advisory AIOps failure classification.
+- sanitized, isolated, advisory AIOps success assessment and failure classification.
 
 ### Secondary / Extended Ownership
 
@@ -385,12 +385,13 @@ Shawn's current scope is already the largest. The recommended focus is depth and
 | File or section | Classification | Responsibility |
 |---|---|---|
 | `.github/workflows/deploy.yml` — deploy job | Primary within shared workflow | OIDC, ECR, task definitions, Ansible invocation, and deployment summary |
-| `.github/workflows/deploy.yml` — `aiops-analysis` job | Primary within shared workflow | Failure-only advisory analysis and isolation |
+| `.github/workflows/deploy.yml` — `aiops-analysis` job | Primary within shared workflow | Post-deployment advisory assessment and isolation |
 | `ansible/deploy.yml` | Primary | Deployment entry point |
 | `ansible/ansible.cfg`, inventory, and requirements files | Primary | Local-runner Ansible configuration and constrained tooling |
 | `ansible/roles/ecs_express_deploy/defaults/main.yml` | Primary | Bounded retries, URLs, task definitions, and output paths |
 | `ansible/roles/ecs_express_deploy/tasks/` | Primary | Preflight, sequencing, waits, health, smoke test, rollback, diagnostics, and summaries |
 | `scripts/aiops/sanitizeDiagnostics.js` | Primary | Allowlisting, redaction, and payload bounds |
+| `scripts/aiops/prepareDeploymentEvidence.js` | Primary | Curated success/failure pipeline evidence without environment dumps |
 | `scripts/aiops/analyzeDeploymentFailure.js` | Primary | Schema-validated advisory Gemini analysis |
 | `test/aiopsDiagnostics.test.js` | Supporting | AIOps security-boundary regression coverage |
 | `docs/FA-ANSIBLE-CLOUD-DEPLOYMENT.md` | Primary evidence | Cloud deployment explanation |
@@ -416,7 +417,7 @@ Shawn should demonstrate:
 7. frontend smoke test;
 8. no-op rerun behavior;
 9. failed deployment, verified rollback, preserved original failure, and safe diagnostics;
-10. failure-only AIOps analysis with no AWS credentials or automatic actions.
+10. successful-deployment assessment and failure analysis with no AWS credentials or automatic actions.
 
 ### Technical Concepts to Explain
 

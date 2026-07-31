@@ -95,6 +95,23 @@ test('GitHub AIOps demo supports live mode through the production analyzer', asy
   }
 });
 
+test('integrated FA demo separates successful real deployment from failed synthetic evidence', async () => {
+  const prepared = prepareSyntheticDiagnostics();
+  const result = await runWorkflowAnalysis(prepared.sanitizedDiagnostics, {
+    apiKey: '',
+    realDeploymentResult: 'SUCCESS'
+  });
+  const summary = renderWorkflowSummary(result);
+
+  assert.equal(result.realDeploymentResult, 'SUCCESS');
+  assert.equal(result.deploymentResult, 'FAILED');
+  assert.match(summary, /FA DEMO — SYNTHETIC FAILURE EVIDENCE/);
+  assert.match(summary, /Real deployment result remains: \*\*SUCCESS\*\*/);
+  assert.match(summary, /Synthetic scenario result remains: \*\*FAILED\*\*/);
+  assert.doesNotMatch(summary, /real deployment (?:failed|failure)/i);
+  assert.match(summary, /Human review required: \*\*TRUE\*\*/);
+});
+
 test('GitHub AIOps demo clearly labels a mocked fallback after a live failure', async () => {
   const prepared = prepareSyntheticDiagnostics();
   const apiKey = ['test', 'fallback', 'placeholder'].join('-');
@@ -133,7 +150,7 @@ test('GitHub AIOps summary excludes fake values and untrusted prompt text', asyn
 
   assert.doesNotMatch(summary, new RegExp(PROMPT_INJECTION_TEXT));
   assert.match(summary, /Human review required: \*\*TRUE\*\*/);
-  assert.match(summary, /Deployment result remains: \*\*FAILED\*\*/);
+  assert.match(summary, /Synthetic scenario result remains: \*\*FAILED\*\*/);
   assert.match(summary, /AWS credentials available: \*\*NO\*\*/);
   assert.match(summary, /OIDC permission: \*\*NO\*\*/);
   assert.match(summary, /AWS calls: \*\*0\*\*/);

@@ -111,6 +111,15 @@ async function runWorkflowAnalysis(diagnostics, options = {}) {
   const apiKey = resolveOption(options, 'apiKey', 'AIOPS_GEMINI_API_KEY');
   const model = resolveOption(options, 'model', 'AIOPS_GEMINI_MODEL')
     || DEFAULT_AIOPS_GEMINI_MODEL;
+  const realDeploymentResult = resolveOption(
+    options,
+    'realDeploymentResult',
+    'AIOPS_DEMO_REAL_DEPLOYMENT_RESULT'
+  ).toUpperCase();
+
+  if (realDeploymentResult && realDeploymentResult !== 'SUCCESS') {
+    throw new Error('The verified real deployment result must be SUCCESS.');
+  }
 
   assertSanitizationChecks(sanitization);
 
@@ -148,6 +157,7 @@ async function runWorkflowAnalysis(diagnostics, options = {}) {
     mode,
     liveAttempted,
     selectedModel: model,
+    realDeploymentResult: realDeploymentResult || null,
     analysisResult,
     sanitization,
     deploymentResult: DETERMINISTIC_DEPLOYMENT_RESULT,
@@ -177,10 +187,16 @@ function yesNo(value) {
 
 function renderWorkflowSummary(result) {
   const analysis = result.analysisResult.analysis;
+  const realDeploymentLines = result.realDeploymentResult
+    ? [
+      `| Real deployment result | ${safeSummaryText(result.realDeploymentResult)} |`,
+      '| Synthetic scenario result | FAILED |'
+    ]
+    : ['| Synthetic scenario result | FAILED |'];
   const lines = [
     '# AIOps FA Demonstration',
     '',
-    '> **SIMULATED LOCAL FAILURE EVIDENCE RUN IN GITHUB ACTIONS**',
+    '> **FA DEMO — SYNTHETIC FAILURE EVIDENCE**',
     '',
     '| Item | Result |',
     '|---|---|',
@@ -188,6 +204,7 @@ function renderWorkflowSummary(result) {
     '| Failure source | Synthetic ECS deployment evidence |',
     '| Backend | Revision 29 → FAILED |',
     '| Rollback evidence | Revision 28 restored; health passed |',
+    ...realDeploymentLines,
     '',
     '## Sanitization',
     '',
@@ -213,7 +230,10 @@ function renderWorkflowSummary(result) {
     `- Likely cause: ${safeSummaryText(analysis.likelyRootCause)}`,
     `- Recommended checks: ${safeSummaryText(analysis.recommendedNextAction)}`,
     `- Human review required: **${analysis.humanReviewRequired ? 'TRUE' : 'FALSE'}**`,
-    `- Deployment result remains: **${safeSummaryText(result.deploymentResult)}**`,
+    ...(result.realDeploymentResult
+      ? [`- Real deployment result remains: **${safeSummaryText(result.realDeploymentResult)}**`]
+      : []),
+    `- Synthetic scenario result remains: **${safeSummaryText(result.deploymentResult)}**`,
     '',
     '## Authority boundary',
     '',
@@ -237,7 +257,11 @@ function renderWorkflowSummary(result) {
     'prompt-injection-shaped diagnostic text reached summary'
   );
   assert.match(summary, /Human review required: \*\*TRUE\*\*/);
-  assert.match(summary, /Deployment result remains: \*\*FAILED\*\*/);
+  assert.match(summary, /Synthetic scenario result remains: \*\*FAILED\*\*/);
+
+  if (result.realDeploymentResult) {
+    assert.match(summary, /Real deployment result remains: \*\*SUCCESS\*\*/);
+  }
 
   return summary;
 }
@@ -270,7 +294,7 @@ async function runCli() {
       `[AIOps FA Demo] Sanitized diagnostics bounded (${byteLength}/${MAX_TOTAL_BYTES} bytes; `
       + `${prepared.sanitizedDiagnostics.failure.message.length}/${MAX_STRING_LENGTH} message characters).`
     );
-    console.log('[AIOps FA Demo] Deployment result remains FAILED.');
+    console.log('[AIOps FA Demo] Synthetic scenario result remains FAILED.');
     return;
   }
 
@@ -284,7 +308,10 @@ async function runCli() {
     console.log(`[AIOps FA Demo] Selected Gemini model: ${result.selectedModel}.`);
     console.log(`[AIOps FA Demo] Classification: ${result.analysisResult.analysis.classification}.`);
     console.log('[AIOps FA Demo] Human review required: TRUE.');
-    console.log('[AIOps FA Demo] Deployment result remains FAILED.');
+    if (result.realDeploymentResult) {
+      console.log(`[AIOps FA Demo] Real deployment result remains ${result.realDeploymentResult}.`);
+    }
+    console.log('[AIOps FA Demo] Synthetic scenario result remains FAILED.');
     console.log('[AIOps FA Demo] AWS/OIDC/deployment authority: NONE.');
     return;
   }
