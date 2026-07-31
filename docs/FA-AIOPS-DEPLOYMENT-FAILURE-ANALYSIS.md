@@ -66,18 +66,32 @@ secret. It never uses the application's `GEMINI_API_KEY`. The
 `AIOPS_GEMINI_MODEL` repository variable selects the model, with
 `gemini-3.5-flash-lite` as the default.
 
-The production analyzer uses a fixed instruction, structured JSON output, no
-tools, no function calling, and no autonomous action interface. Its validated
-response contains:
+The production analyzer converts the sanitized diagnostic record into a
+deterministic evidence catalog. Each observed fact receives an identifier such
+as `E1`, while its allowlisted field name and sanitized value remain in the
+catalog. Gemini receives that catalog instead of the full diagnostic object.
+The response schema dynamically restricts `supportedEvidence` to the exact IDs
+available for that assessment.
+
+The analyzer uses a fixed instruction, structured JSON output, no tools, no
+function calling, and no autonomous action interface. Its validated response
+contains:
 
 - deployment outcome;
 - classification and risk level;
-- bounded confidence and evidence paths;
+- bounded confidence and one to six allowlisted evidence IDs;
 - operational summary;
 - likely cause for failures;
-- notable observations;
 - recommended checks or actions for a human; and
 - whether human review is required.
+
+Model-authored observation fields are not accepted. The summary renders the
+selected evidence IDs and their allowlisted field names deterministically.
+Operational summary and likely cause are explicitly analysis/inference fields;
+recommendations are labelled as human advice and never become observed
+evidence. The prompt requires `UNKNOWN` when the catalog is insufficient and
+forbids invented logs, metrics, AWS states, revisions, events, health results,
+or causes.
 
 Success classifications are `HEALTHY_DEPLOYMENT` and `DEPLOYMENT_WARNING`.
 Existing failure classifications remain `ECS_ROLLOUT_FAILURE`,
@@ -91,14 +105,20 @@ set it to `false` only when every supplied pipeline check is `PASS`, the
 classification is `HEALTHY_DEPLOYMENT`, and risk is `LOW`. Any warning or
 incomplete evidence requires human review.
 
-If Gemini is unavailable, malformed, or returns unsupported evidence, the
-analyzer emits a clearly labelled `FALLBACK` assessment from deterministic
-pipeline facts. The summary records whether LIVE Gemini was attempted and a
-bounded, redacted failure stage and category. API transport failures are kept
-separate from response parsing, schema validation, and evidence-path
-validation. Safe HTTP status and provider code fields are included when
-available; credentials, headers, raw response bodies, and environment data are
-never included. A complete successful all-pass record remains
+If the first response contains unsupported evidence IDs, the analyzer permits
+exactly one corrective request using the same catalog, the safe validation
+error, and an instruction to use only allowed IDs. There is no retry loop. A
+second invalid response remains `FALLBACK`.
+
+If Gemini is unavailable, malformed, or still returns unsupported evidence,
+the analyzer emits a clearly labelled `FALLBACK` assessment from deterministic
+pipeline facts. The summary records Gemini request, structured-validation, and
+evidence-validation status, whether the one corrective retry was used, and a
+bounded redacted failure category. API transport failures remain separate from
+response parsing, schema validation, and evidence-ID validation. Safe HTTP
+status and provider code fields are included when available; credentials,
+headers, raw response bodies, and environment data are never included. A
+complete successful all-pass record remains
 `HEALTHY_DEPLOYMENT / LOW`; failed or incomplete records require review. The
 fallback cannot change deployment state.
 
@@ -109,7 +129,8 @@ Every completed deploy job produces `# AIOps Deployment Summary` with:
 - execution mode, model, outcome, classification, risk, and duration;
 - test, security, scan, stabilization, health, and smoke evidence;
 - safe image and task-definition identifiers;
-- operational summary, observations, and recommended checks;
+- Gemini request and structured/evidence validation status;
+- selected allowlisted evidence IDs, operational summary, and recommended checks;
 - failure cause and rollback evidence when applicable; and
 - the explicit no-authority safety boundary.
 
@@ -193,7 +214,9 @@ variable. It has `contents: read` only, no OIDC permission, no AWS credentials,
 and no deployment or rollback commands. It uses small synthetic sanitized
 failure evidence and no mock client. A fallback writes its safe failure stage
 and category to the Actions summary and fails the smoke job without affecting
-ECS.
+ECS. A successful run reports `LIVE GEMINI`, request `SUCCESS`, structured
+validation `PASS`, evidence validation `PASS`, the selected model,
+classification, risk, evidence IDs, and human-review decision.
 
 Synthetic evidence is used because intentionally breaking ECS for assessment
 evidence would create unnecessary production risk.

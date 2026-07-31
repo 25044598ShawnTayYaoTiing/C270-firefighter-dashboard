@@ -109,7 +109,7 @@ function renderSmokeSummary(result) {
   return [
     '# AIOps LIVE Gemini Smoke Test',
     '',
-    '> **SYNTHETIC SANITIZED EVIDENCE — NO AWS OR DEPLOYMENT AUTHORITY**',
+    '> **SYNTHETIC SANITIZED EVIDENCE - NO AWS OR DEPLOYMENT AUTHORITY**',
     '',
     renderSummary(result).replace('# AIOps Deployment Summary', '## Production analyzer result')
   ].join('\n');
@@ -153,6 +153,12 @@ async function runCli() {
   if (result.available) {
     console.log(`[AIOps Smoke] LIVE GEMINI succeeded with model=${result.model}.`);
     console.log(`[AIOps Smoke] classification=${result.analysis.classification}.`);
+    console.log(
+      `[AIOps Smoke] request=${result.validation.geminiRequest} `
+      + `structured=${result.validation.structuredResponse} `
+      + `evidence=${result.validation.evidence} `
+      + `correctiveRetry=${result.validation.correctiveRetryAttempted ? 'YES' : 'NO'}.`
+    );
     return;
   }
 

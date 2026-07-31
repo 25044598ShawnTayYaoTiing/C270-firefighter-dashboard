@@ -62,7 +62,8 @@ test('local AIOps demo sends only sanitized untrusted data through the real anal
     request.contents.indexOf('untrusted data')
       < request.contents.indexOf(PROMPT_INJECTION_TEXT)
   );
-  assert.ok(request.contents.includes(JSON.stringify(demo.sanitizedDiagnostics)));
+  assert.match(request.contents, /<allowlisted-evidence>/);
+  assert.ok(request.contents.includes(JSON.stringify(demo.analysisResult.evidenceCatalog)));
 
   for (const value of Object.values(FAKE_SENSITIVE_VALUES)) {
     assert.doesNotMatch(request.contents, new RegExp(value));

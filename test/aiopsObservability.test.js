@@ -4,12 +4,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { sanitizeDiagnostics } = require('../scripts/aiops/sanitizeDiagnostics');
 const {
   DEFAULT_AIOPS_GEMINI_MODEL,
   FAILURE_CATEGORIES,
   FAILURE_STAGES,
   analyzeDiagnostics,
   classifyGeminiApiError,
+  createEvidenceCatalog,
   formatFailureForLog,
   renderSummary
 } = require('../scripts/aiops/analyzeDeploymentFailure');
@@ -19,32 +21,57 @@ const {
   runLiveSmokeTest
 } = require('../scripts/aiops/runLiveGeminiSmoke');
 
-function validFailureAnalysis(overrides = {}) {
+function evidenceIdsFor(diagnostics, fieldPaths) {
+  const catalog = createEvidenceCatalog(sanitizeDiagnostics(diagnostics));
+  return fieldPaths.map((fieldPath) => {
+    const entry = catalog.find((item) => item.field === fieldPath);
+    assert.ok(entry, `missing evidence catalog entry for ${fieldPath}`);
+    return entry.id;
+  });
+}
+
+function validFailureAnalysis(overrides = {}, diagnostics = createSyntheticSmokeDiagnostics()) {
   return {
     deploymentOutcome: 'FAILED',
     classification: 'ECS_ROLLOUT_FAILURE',
     riskLevel: 'HIGH',
     confidence: 0.94,
-    evidence: [
+    supportedEvidence: evidenceIdsFor(diagnostics, [
       'failure.stage',
-      'services.backend.status',
+      'services.backend.deploymentStatus',
       'rollback.backend.result',
       'rollback.backend.postRollbackHealth'
-    ],
+    ]),
     operationalSummary: 'The synthetic backend deployment failed and rolled back safely.',
     likelyRootCause: 'The synthetic deployment circuit breaker was triggered.',
-    notableObservations: ['The frontend deployment did not start.'],
     recommendedNextAction: 'Have an operator review the bounded deployment diagnostics.',
     humanReviewRequired: true,
     ...overrides
   };
 }
 
-function clientReturningText(text) {
+function clientReturningText(text, capture = null) {
   return {
     models: {
-      async generateContent() {
+      async generateContent(request) {
+        if (capture) {
+          capture.push(request);
+        }
         return { text };
+      }
+    }
+  };
+}
+
+function clientReturningSequence(responses, capture = []) {
+  let index = 0;
+  return {
+    models: {
+      async generateContent(request) {
+        capture.push(request);
+        const response = responses[Math.min(index, responses.length - 1)];
+        index += 1;
+        return { text: JSON.stringify(response) };
       }
     }
   };
@@ -193,7 +220,7 @@ test('API, parsing, schema, and evidence failures remain distinct fallback stage
   const evidenceFailure = await analyzeDiagnostics(diagnostics, {
     ...baseOptions,
     clientFactory: () => clientReturningText(JSON.stringify(validFailureAnalysis({
-      evidence: ['services.backend.unavailableRawSecret']
+      supportedEvidence: ['E999']
     })))
   });
 
@@ -219,6 +246,149 @@ test('API, parsing, schema, and evidence failures remain distinct fallback stage
     assert.equal(result.mode, 'FALLBACK');
     assert.equal(result.liveGeminiAttempted, true);
   }
+});
+
+test('valid allowlisted evidence IDs are accepted and enforced by the response schema', async () => {
+  const diagnostics = createSyntheticSmokeDiagnostics();
+  const capture = [];
+  const expected = validFailureAnalysis({}, diagnostics);
+  const result = await analyzeDiagnostics(diagnostics, {
+    apiKey: 'unit-test-key',
+    model: 'unit-test-model',
+    clientFactory: () => clientReturningText(JSON.stringify(expected), capture)
+  });
+  const schemaIds = capture[0].config.responseSchema
+    .properties.supportedEvidence.items.enum;
+  const summary = renderSmokeSummary(result);
+
+  assert.equal(result.available, true);
+  assert.equal(result.mode, 'LIVE GEMINI');
+  assert.deepEqual(result.analysis.supportedEvidence, expected.supportedEvidence);
+  assert.equal(result.validation.geminiRequest, 'SUCCESS');
+  assert.equal(result.validation.structuredResponse, 'PASS');
+  assert.equal(result.validation.evidence, 'PASS');
+  assert.equal(result.validation.correctiveRetryAttempted, false);
+  assert.deepEqual(schemaIds, result.evidenceCatalog.map((entry) => entry.id));
+  assert.ok(expected.supportedEvidence.every((evidenceId) => schemaIds.includes(evidenceId)));
+  assert.match(summary, /Mode: \*\*LIVE GEMINI\*\*/);
+  assert.match(summary, /Gemini request: \*\*SUCCESS\*\*/);
+  assert.match(summary, /Structured validation: \*\*PASS\*\*/);
+  assert.match(summary, /Evidence validation: \*\*PASS\*\*/);
+  assert.match(summary, /\*\*Evidence used:\*\*/);
+  assert.match(summary, /Human review required: \*\*YES\*\*/);
+});
+
+test('unknown evidence IDs remain rejected after one bounded correction attempt', async () => {
+  const capture = [];
+  const invalid = validFailureAnalysis({ supportedEvidence: ['E999'] });
+  const result = await analyzeDiagnostics(createSyntheticSmokeDiagnostics(), {
+    apiKey: 'unit-test-key',
+    model: 'unit-test-model',
+    clientFactory: () => clientReturningSequence([invalid, invalid], capture)
+  });
+
+  assert.equal(capture.length, 2);
+  assert.equal(result.available, false);
+  assert.equal(result.mode, 'FALLBACK');
+  assert.equal(result.failure.stage, FAILURE_STAGES.evidenceValidation);
+  assert.equal(result.failure.category, FAILURE_CATEGORIES.evidenceValidation);
+  assert.deepEqual(result.failure.unsupportedEvidenceIds, ['E999']);
+  assert.equal(result.validation.evidence, 'FAIL');
+  assert.equal(result.validation.correctiveRetryAttempted, true);
+});
+
+test('model-authored observation fields are rejected instead of becoming evidence', async () => {
+  const inventedObservation = {
+    ...validFailureAnalysis(),
+    notableObservations: ['An unrecorded metric crossed a threshold.']
+  };
+  const result = await analyzeDiagnostics(createSyntheticSmokeDiagnostics(), {
+    apiKey: 'unit-test-key',
+    model: 'unit-test-model',
+    clientFactory: () => clientReturningText(JSON.stringify(inventedObservation))
+  });
+
+  assert.equal(result.available, false);
+  assert.equal(result.mode, 'FALLBACK');
+  assert.equal(result.failure.stage, FAILURE_STAGES.schema);
+  assert.equal(result.failure.category, FAILURE_CATEGORIES.schemaValidation);
+});
+
+test('grounded inference is allowed only in analysis fields', async () => {
+  const inference = validFailureAnalysis({
+    operationalSummary: 'The selected evidence indicates a failed rollout followed by recovery.',
+    likelyRootCause: 'The circuit breaker likely reacted to the failed rollout evidence.'
+  });
+  const result = await analyzeDiagnostics(createSyntheticSmokeDiagnostics(), {
+    apiKey: 'unit-test-key',
+    model: 'unit-test-model',
+    clientFactory: () => clientReturningText(JSON.stringify(inference))
+  });
+
+  assert.equal(result.available, true);
+  assert.equal(result.analysis.operationalSummary, inference.operationalSummary);
+  assert.equal(result.analysis.likelyRootCause, inference.likelyRootCause);
+  assert.deepEqual(result.analysis.supportedEvidence, inference.supportedEvidence);
+  assert.equal(Object.hasOwn(result.analysis, 'notableObservations'), false);
+});
+
+test('recommendations are advice and never become observed evidence', async () => {
+  const recommendation = 'Have an operator inspect bounded startup diagnostics.';
+  const result = await analyzeDiagnostics(createSyntheticSmokeDiagnostics(), {
+    apiKey: 'unit-test-key',
+    model: 'unit-test-model',
+    clientFactory: () => clientReturningText(JSON.stringify(validFailureAnalysis({
+      recommendedNextAction: recommendation
+    })))
+  });
+  const summary = renderSummary(result);
+  const evidenceSection = summary.split('**Evidence used:**')[1]
+    .split('**Recommended checks/actions:**')[0];
+
+  assert.equal(result.available, true);
+  assert.ok(result.analysis.supportedEvidence.every((item) => /^E\d+$/.test(item)));
+  assert.doesNotMatch(evidenceSection, new RegExp(recommendation));
+  assert.match(summary, new RegExp(recommendation));
+});
+
+test('one corrective evidence retry can recover to validated LIVE mode', async () => {
+  const capture = [];
+  const invalid = validFailureAnalysis({ supportedEvidence: ['E999'] });
+  const valid = validFailureAnalysis();
+  const result = await analyzeDiagnostics(createSyntheticSmokeDiagnostics(), {
+    apiKey: 'unit-test-key',
+    model: 'unit-test-model',
+    clientFactory: () => clientReturningSequence([invalid, valid], capture)
+  });
+
+  assert.equal(capture.length, 2);
+  assert.equal(result.available, true);
+  assert.equal(result.mode, 'LIVE GEMINI');
+  assert.equal(result.validation.evidence, 'PASS');
+  assert.equal(result.validation.correctiveRetryAttempted, true);
+  assert.match(capture[1].contents, /CORRECTIVE RETRY/);
+  assert.match(capture[1].contents, /E999/);
+  assert.match(capture[1].contents, /using only IDs from the allowed supportedEvidence list/);
+});
+
+test('an invalid corrective response remains FALLBACK and can never report LIVE mode', async () => {
+  const capture = [];
+  const firstInvalid = validFailureAnalysis({ supportedEvidence: ['E999'] });
+  const secondInvalid = validFailureAnalysis({ supportedEvidence: ['E998'] });
+  const result = await analyzeDiagnostics(createSyntheticSmokeDiagnostics(), {
+    apiKey: 'unit-test-key',
+    model: 'unit-test-model',
+    clientFactory: () => clientReturningSequence([firstInvalid, secondInvalid], capture)
+  });
+
+  assert.equal(capture.length, 2);
+  assert.equal(result.available, false);
+  assert.notEqual(result.mode, 'LIVE GEMINI');
+  assert.equal(result.mode, 'FALLBACK');
+  assert.deepEqual(result.failure.unsupportedEvidenceIds, ['E998']);
+  assert.equal(result.validation.geminiRequest, 'SUCCESS');
+  assert.equal(result.validation.structuredResponse, 'PASS');
+  assert.equal(result.validation.evidence, 'FAIL');
 });
 
 test('fallback summary reports the safe live failure without exposing API credentials', async () => {

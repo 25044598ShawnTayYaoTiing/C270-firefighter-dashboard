@@ -8,7 +8,8 @@ const {
 } = require('../sanitizeDiagnostics');
 const {
   FIXED_SYSTEM_INSTRUCTION,
-  analyzeDiagnostics
+  analyzeDiagnostics,
+  createEvidenceCatalog
 } = require('../analyzeDeploymentFailure');
 const {
   DETERMINISTIC_DEPLOYMENT_RESULT,
@@ -17,31 +18,40 @@ const {
   createRawSimulatedFailure
 } = require('./simulatedFailure');
 
-const MOCK_ANALYSIS = Object.freeze({
-  deploymentOutcome: 'FAILED',
-  classification: 'ECS_ROLLOUT_FAILURE',
-  riskLevel: 'HIGH',
-  confidence: 0.94,
-  evidence: [
+function createMockAnalysis(diagnostics) {
+  const catalog = createEvidenceCatalog(diagnostics);
+  const supportedEvidence = [
     'failure.stage',
     'services.backend.expectedTaskDefinition',
     'services.backend.statusReason',
     'verification.backendHealth',
     'rollback.backend.result',
     'rollback.backend.postRollbackHealth'
-  ],
-  operationalSummary:
-    'The backend revision failed to stabilize, and the deterministic rollback restored the previous healthy revision.',
-  likelyRootCause:
-    'Backend revision 29 tasks exited before becoming healthy, so the service could not stabilize.',
-  notableObservations: [
-    'The backend health endpoint was unavailable for the failed revision.',
-    'Rollback evidence reports that revision 28 was restored and passed health verification.'
-  ],
-  recommendedNextAction:
-    'A human operator should inspect safe startup logs, compare revision 29 runtime configuration with revision 28, and verify the health endpoint.',
-  humanReviewRequired: true
-});
+  ].map((fieldPath) => {
+    const entry = catalog.find((item) => item.field === fieldPath);
+    assert.ok(entry, `mock analysis evidence is unavailable: ${fieldPath}`);
+    return entry.id;
+  });
+
+  return {
+    deploymentOutcome: 'FAILED',
+    classification: 'ECS_ROLLOUT_FAILURE',
+    riskLevel: 'HIGH',
+    confidence: 0.94,
+    supportedEvidence,
+    operationalSummary:
+      'The backend revision failed to stabilize, and the deterministic rollback restored the previous healthy revision.',
+    likelyRootCause:
+      'Backend revision 29 tasks likely exited before becoming healthy, so the service could not stabilize.',
+    recommendedNextAction:
+      'A human operator should inspect safe startup logs, compare revision 29 runtime configuration with revision 28, and verify the health endpoint.',
+    humanReviewRequired: true
+  };
+}
+
+const MOCK_ANALYSIS = Object.freeze(
+  createMockAnalysis(sanitizeDiagnostics(createRawSimulatedFailure()))
+);
 
 function createMockClientFactory(mockAnalysis, capture) {
   return () => ({
@@ -120,7 +130,8 @@ function assertDemoSafety(demo) {
     request.contents.indexOf('untrusted data')
       < request.contents.indexOf(PROMPT_INJECTION_TEXT)
   );
-  assert.ok(request.contents.includes(JSON.stringify(demo.sanitizedDiagnostics)));
+  assert.match(request.contents, /<allowlisted-evidence>/);
+  assert.ok(request.contents.includes(JSON.stringify(demo.analysisResult.evidenceCatalog)));
 
   for (const value of Object.values(FAKE_SENSITIVE_VALUES)) {
     assert.doesNotMatch(request.contents, new RegExp(value));
@@ -231,7 +242,7 @@ function formatDemoOutput(demo) {
     'AIOPS ANALYSIS (MOCKED AI RESPONSE, PRODUCTION VALIDATION PATH)',
     `Classification: ${analysis.classification}`,
     `Confidence: ${analysis.confidence.toFixed(2)}`,
-    `Evidence: ${analysis.evidence.join(', ')}`,
+    `Evidence IDs: ${analysis.supportedEvidence.join(', ')}`,
     `Likely cause: ${analysis.likelyRootCause}`,
     `Recommended checks: ${analysis.recommendedNextAction}`,
     '',

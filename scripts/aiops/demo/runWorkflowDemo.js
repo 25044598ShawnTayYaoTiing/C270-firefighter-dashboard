@@ -244,7 +244,7 @@ function renderWorkflowSummary(result) {
     ...liveFailureLines,
     `- Classification: **${safeSummaryText(analysis.classification)}**`,
     `- Confidence: **${analysis.confidence.toFixed(2)}**`,
-    `- Evidence fields: ${analysis.evidence.map((item) => `\`${safeSummaryText(item)}\``).join(', ')}`,
+    `- Evidence IDs: ${analysis.supportedEvidence.map((item) => `\`${safeSummaryText(item)}\``).join(', ')}`,
     `- Likely cause: ${safeSummaryText(analysis.likelyRootCause)}`,
     `- Recommended checks: ${safeSummaryText(analysis.recommendedNextAction)}`,
     `- Human review required: **${analysis.humanReviewRequired ? 'TRUE' : 'FALSE'}**`,
