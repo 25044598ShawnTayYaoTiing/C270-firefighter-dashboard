@@ -10,6 +10,8 @@ const {
   sanitizeDiagnostics
 } = require('./sanitizeDiagnostics');
 
+const DEFAULT_AIOPS_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+
 const CLASSIFICATIONS = Object.freeze([
   'ECS_ROLLOUT_FAILURE',
   'BACKEND_HEALTH_FAILURE',
@@ -228,11 +230,11 @@ function validateAnalysisResponse(value, availableEvidencePaths) {
   };
 }
 
-function unavailableResult(diagnostics = null) {
+function unavailableResult(diagnostics = null, model = null) {
   return {
     available: false,
     message: 'AI analysis unavailable',
-    model: null,
+    model,
     analysis: null,
     diagnostics,
     humanReviewRequired: true
@@ -252,11 +254,11 @@ async function analyzeDiagnostics(rawDiagnostics, options = {}) {
   const model = String(
     options.model
       || process.env.AIOPS_GEMINI_MODEL
-      || 'gemini-3.5-flash-lite'
+      || DEFAULT_AIOPS_GEMINI_MODEL
   ).trim();
 
   if (!apiKey || !model) {
-    return unavailableResult(diagnostics);
+    return unavailableResult(diagnostics, model || null);
   }
 
   const evidencePaths = collectEvidencePaths(diagnostics);
@@ -274,7 +276,6 @@ async function analyzeDiagnostics(rawDiagnostics, options = {}) {
       contents: buildPrompt(diagnostics, evidencePaths),
       config: {
         systemInstruction: FIXED_SYSTEM_INSTRUCTION,
-        temperature: 0,
         responseMimeType: 'application/json',
         responseSchema: RESPONSE_SCHEMA
       }
@@ -293,7 +294,7 @@ async function analyzeDiagnostics(rawDiagnostics, options = {}) {
       humanReviewRequired: true
     };
   } catch {
-    return unavailableResult(diagnostics);
+    return unavailableResult(diagnostics, model);
   }
 }
 
@@ -333,6 +334,10 @@ function renderSummary(result) {
   if (!result.available || !result.analysis) {
     return [
       ...heading,
+      '**Mode:** LIVE GEMINI UNAVAILABLE',
+      '',
+      `**Model:** \`${escapeMarkdown(result.model || UNAVAILABLE)}\``,
+      '',
       '**Analysis:** AI analysis unavailable',
       '',
       `**Rollback:** ${escapeMarkdown(formatRollback(result.diagnostics))}`,
@@ -352,6 +357,10 @@ function renderSummary(result) {
 
   return [
     ...heading,
+    '**Mode:** LIVE GEMINI',
+    '',
+    `**Model:** \`${escapeMarkdown(result.model || UNAVAILABLE)}\``,
+    '',
     `**Classification:** ${escapeMarkdown(result.analysis.classification)}`,
     '',
     `**Confidence:** ${formatConfidence(result.analysis.confidence)}`,
@@ -424,6 +433,7 @@ if (require.main === module) {
 
 module.exports = {
   CLASSIFICATIONS,
+  DEFAULT_AIOPS_GEMINI_MODEL,
   FIXED_SYSTEM_INSTRUCTION,
   RESPONSE_KEYS,
   analyzeDiagnostics,

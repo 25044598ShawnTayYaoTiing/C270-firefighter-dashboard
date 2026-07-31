@@ -1,763 +1,587 @@
 # Firefighter Smart Incident Dashboard
 
+The Firefighter Smart Incident Dashboard is a Node.js incident-management platform for emergency-response teams. It combines operational reporting, geospatial intelligence, live voice transcription, and AI-assisted report drafting with a containerised AWS deployment pipeline.
+
 ## Overview
 
-The Firefighter Smart Incident Dashboard is an SCDF-inspired school prototype for emergency incident reporting. It helps users capture emergency call information, clean raw transcripts, generate AI-assisted incident report drafts, review and edit report details, save reports to MySQL, and monitor operational records through dashboard, reports, map, and analytics pages.
+Emergency incident records can become incomplete, inconsistent, or difficult to review when responders must move quickly. This dashboard helps duty officers and supervisors capture calls, verify locations, prepare structured incident reports, monitor active incidents, and review operational trends from one authenticated interface.
 
-The project uses Node.js, Express.js, EJS, CSS, JavaScript, MySQL, Gemini Flash, Google Cloud Speech-to-Text V1, Leaflet, and OpenStreetMap.
+The application is designed to improve:
 
-## Problem Statement
+- situational awareness through live incident maps and status summaries;
+- incident-data quality through validation and officer review;
+- reporting efficiency through voice transcription and editable AI-generated drafts;
+- operational visibility through analytics, search, filters, and service diagnostics.
 
-Emergency incident reporting can be time-consuming when important details are captured manually. Duty officers need to record location, incident type, hazards, injured or trapped persons, response status, missing information, and officer notes. Missing or unclear details can slow down report review, documentation, and follow-up action.
+## Key Features
 
-This prototype reduces manual effort by supporting transcript intake, AI-assisted cleanup, AI-assisted draft generation, structured review, searchable MySQL storage, and live operational summaries.
+### Incident Management
 
-## Target Users
+- Create, view, search, edit, and delete incident reports stored in MySQL.
+- Track incident type, status, date and time, location, hazards, casualties, notes, and transcript evidence.
+- Enforce required fields and location verification before reports are saved.
+- Preserve officer review: AI-generated content remains editable and is never saved automatically.
+- Apply role-based permissions for duty officers, HR users, and higher-rank administrators.
 
-- SCDF emergency call operators
-- Dispatch officers
-- Incident report reviewers
-- Fire and rescue supervisors
-- Operations team members
+### Geospatial Intelligence
 
-## System Architecture
+- Display active incidents with Leaflet and OpenStreetMap tiles.
+- Switch between clustered markers and an incident heatmap.
+- Filter map data and show high-frequency location/type summaries.
+- Keep unmapped incidents visible for follow-up instead of silently dropping them.
+- Validate Singapore locations through the configured OneMap service, with repository-provided fallback location handling.
 
-![System Architecture](docs/images/system-architecture.png)
+### AI-Assisted Reporting
 
-The application keeps its existing server-rendered EJS architecture, with a small two-container boundary for local Compose. An Nginx UI gateway serves public assets and proxies same-origin page/API requests to the Node.js backend. The backend renders the existing EJS pages, handles authentication and report routes, calls Gemini, and reads/writes incident records in Railway MySQL.
+- Clean raw call transcripts through the backend Gemini integration.
+- Generate structured, editable incident-report drafts from reviewed transcript text.
+- Validate Gemini's structured response before it reaches the browser.
+- Use conservative manual fallbacks when AI is unavailable or returns an invalid response.
 
-```text
-Prototype Users
--> Frontend/UI container using Nginx, CSS, JavaScript, and same-origin proxying
--> Backend/API container using Node.js, Express.js, and EJS
--> Railway MySQL using incidents and officers tables
+Gemini is called only by the backend. API credentials are not sent to the browser or built into either container image.
 
-Backend/API container -> Gemini API
-Backend/API container -> Google Cloud Speech-to-Text V1 using Application Default Credentials
-```
+### Voice Transcription
 
-The UI gateway is intentionally a reverse proxy rather than a new SPA. Existing EJS views, form actions, browser API calls, sessions, map assets, AI flows, and report-completion behavior stay intact while the sensitive database and Gemini configuration remains in the backend container.
+- Capture browser microphone audio and stream PCM16 audio over WebSocket.
+- Use Google Cloud Speech-to-Text V1 with `en-SG`, automatic punctuation, and interim results.
+- Replace temporary interim text while preserving confirmed final transcript segments.
+- Support non-streaming transcription and a manual transcript fallback.
+- Keep the lightweight `/health` liveness route independent from external speech services; `/health/speech` performs the speech-specific diagnostic.
 
-Supporting services:
+Local development uses Google Application Default Credentials (ADC). The ECS backend uses its temporary AWS task-role credentials with Google Workload Identity Federation (WIF), Google STS, and service-account impersonation. No Google private key is stored in the repository or image.
 
-- Gemini Flash for AI transcript cleanup and AI-assisted incident draft generation
-- Google Cloud Speech-to-Text V1 for microphone transcription
-- Leaflet and OpenStreetMap for live incident map visualisation
-- OneMap, when configured, for Singapore coordinate lookup
+### Analytics and Operational Visibility
 
-## Main Prototype Workflow
-
-![Main Prototype Workflow](docs/images/main-workflow.png)
-
-```text
-Emergency Call Information
--> Transcript Intake
--> AI Transcript Cleanup
--> AI-Assisted Incident Draft
--> Duty Officer Review and Edit
--> Save Incident Report to MySQL
--> Dashboard / Reports / Map / Analytics Updated
-```
-
-## Features
-
-### Dashboard Overview
-
-The dashboard summarises current incident reporting activity using cards for:
-
-- All Incident Records
-- Awaiting Officer Review
-- Reviewed Reports
-- Urgent / Escalated Incidents
-- New Reports This Week
-
-Dashboard values are recalculated from MySQL whenever the page reloads. The database does not currently store response time, so the dashboard uses reports created this week instead of an average response-time metric.
-
-### Live Call Intake
-
-![Live Call Intake](docs/images/live-call-intake.png)
-
-The Live Call Intake page records a short microphone clip as mono PCM16, sends it to the authenticated backend, and displays the Google Speech-to-Text V1 result. It also supports manual transcript entry.
-
-- Recording/transcription progress for the current clip
-- Full Transcript for committed transcript text
-- Clean Transcript Text for AI-cleaned output
-- Send Raw Transcript to move raw text into Create Report
-- Send Clean Transcript to move reviewed cleaned text into Create Report
-
-If Speech-to-Text is unavailable, users can paste transcript text manually.
-
-### AI-Assisted Transcript Cleanup
-
-Gemini Flash helps clean raw transcript text for readability and clarity. The browser calls the Express backend, and the backend calls Gemini; the browser never calls Gemini directly.
-
-### AI-Assisted Incident Drafting
-
-Gemini Flash helps generate editable incident fields from a transcript, including:
-
-- Incident type
-- Location
-- Summary
-- Hazards
-- Injured or trapped persons
-- Missing information
-- Officer notes
-- Response status
-
-AI drafts must be reviewed by duty officers before saving. If Gemini is unavailable, the app keeps manual editing available and can return a conservative fallback draft.
-
-### Incident Report CRUD
-
-![Create Incident Report](docs/images/create-report.png)
-
-![Incident Reports](docs/images/incident-reports.png)
-
-![Incident Details](docs/images/incident-details.png)
-
-The dashboard keeps MySQL-backed incident report management:
-
-- Create report
-- View report
-- Edit report
-- Delete report
-- Search reports
-- Filter reports by status
-
-Officer login is backed by the MySQL `officers` table. New reports automatically save the logged-in officer as `reporting_officer_id`, and existing reports without an officer still display `Not assigned`.
-
-Report completion appears on Create Report, Edit Report, and Report Details. Completion is based on transcript, reporting officer, incident location, incident type, date and time, summary, hazards, injured or trapped persons, and non-draft response status. The logged-in officer is counted automatically on Create Report. The progress bar is advisory only and does not block the existing MySQL save flow.
-
-### Live Incident Map
-
-![Live Incident Map](docs/images/incident-map.png)
-
-The Dashboard includes a Live Incident Map built with Leaflet and OpenStreetMap. It uses current MySQL incident rows and does not rely on hardcoded sample markers.
-
-Map rules:
-
-- Incidents appear only when they have finite `latitude` and `longitude` values.
-- Escalated or urgent incidents are red.
-- Pending or awaiting review incidents are orange.
-- Active, ongoing, dispatched, or in-progress incidents are blue.
-- Completed, reviewed, closed, or resolved reports are hidden from the live map.
-- Live incidents without usable coordinates appear under Unmapped Incidents.
-
-Coordinate resolution order:
-
-1. Existing valid latitude and longitude.
-2. OneMap Search API, when `ONEMAP_EMAIL` and `ONEMAP_PASSWORD` are configured.
-3. Local Singapore fallback matching from location, transcript, or summary.
-4. `null` if no match is found.
-
-To backfill old reports that are missing coordinates:
-
-```powershell
-node scripts/backfillIncidentCoordinates.js
-```
-
-For backend-only map payload debugging in non-production:
-
-```text
-GET /dev/map-payload
-```
-
-When `GEOCODING_DEBUG=true`, dashboard rendering logs map payload counts to the Node.js console. OneMa
-es are recalculated from MySQL and show:
-
-- Incident type distribution
-- Response status overview
-- High-frequency locations
-- Pending review count
-- Reviewed report count
-- Escalated incident count
-- Reports created this week
-
-Percentages are calculated as `group count / total report count`.
-
-### Search and Filtering
-
-Search uses backend MySQL `LIKE` queries with parameters. It checks:
-
-- Incident ID
-- Incident Type
-- Location
-- Status
-- Incident Summary
-- Hazards
-- Injured or Trapped Persons
-- Missing Information
-- Officer Notes
-- Transcript
-- Reporting Officer Name and Role
-
-Search routes:
-
-```text
-GET /incidents?search=smoke
-GET /incidents?status=Completed&search=vehicle
-GET /api/incidents?search=smoke
-GET /api/incidents?status=Completed&search=vehicle
-```
+- Summarise incident totals and status/type/location distributions.
+- Present incident trends and hotspot information.
+- Show database, Gemini, and Google Speech service availability in the authenticated system-status view.
+- Retain lightweight container liveness checks even when an external dependency is unavailable.
 
 ## Technology Stack
 
-| Area | Technology |
+| Area | Current implementation |
 |---|---|
-| Frontend | EJS, CSS, JavaScript |
-| Backend | Node.js, Express.js |
-| Database | MySQL |
-| AI | Gemini Flash |
-| Speech-to-Text | Google Cloud Speech-to-Text V1 |
-| Map | Leaflet + OpenStreetMap |
-| Version Control | GitHub |
+| Backend | Node.js 22, Express, EJS, WebSocket (`ws`) |
+| Browser UI | HTML, CSS, browser JavaScript, Leaflet, Leaflet.heat, Leaflet.markercluster |
+| Frontend gateway | Nginx with runtime proxy configuration |
+| Data | External MySQL-compatible database through `mysql2` |
+| Authentication | Express sessions, bcrypt password hashing, role-based permissions |
+| AI | Gemini through `@google/genai` |
+| Speech | Google Cloud Speech-to-Text V1 through `@google-cloud/speech` |
+| Maps and location | OpenStreetMap tiles, Leaflet, optional OneMap integration |
+| Containers | Docker and Docker Compose |
+| Delivery | GitHub Actions, Amazon ECR, Amazon ECS Express Mode, Ansible |
+| DevSecOps | Gitleaks, Semgrep, `npm audit`, Trivy, GitHub OIDC |
+| Advisory AIOps | Sanitized deployment-failure analysis using Gemini with mandatory human review |
+| PR assistance | Optional CodeRabbit AI-assisted pull-request review |
 
-## Database Design
+## Deployed Architecture
 
-Database name: `firefighter_dashboard`
+```text
+User browser
+     |
+     v
+Frontend ECS Express service
+Nginx container
+  - static assets
+  - runtime BACKEND_URL
+  - HTTP and WebSocket proxy
+     |
+     | page, /api/*, and WebSocket traffic
+     v
+Backend ECS Express service
+Node.js / Express / EJS
+     |
+     +----> External MySQL database
+     +----> Gemini API
+     +----> OneMap API (when configured)
+     |
+     +----> ECS backend task role
+               |
+               v
+          Google WIF -> Google STS
+               -> service-account impersonation
+               -> Google Speech-to-Text V1
+```
 
-Main table: `incidents`
+The frontend and backend run as separate images and separate ECS services. Nginx provides the browser-facing entry point and forwards dynamic page, API, and WebSocket traffic to the backend origin supplied through `BACKEND_URL`.
 
-| Field | Purpose |
+The repository deploys into existing AWS resources. It does not provision IAM roles, ECR repositories, ECS services, or networking. Those resources are managed externally; this repository automates image delivery and application rollout.
+
+## Local Docker Architecture
+
+```text
+Browser
+  |
+  v
+127.0.0.1:3000
+Frontend container :80
+  |
+  | http://backend:3000
+  v
+Docker service DNS / firefighter-network
+  |
+  v
+Backend container :3000
+  |
+  +---- host access: 127.0.0.1:3001
+  +---- external MySQL and optional cloud services
+```
+
+The base Compose configuration provides:
+
+- frontend access on host port `3000`;
+- optional direct backend access on host port `3001`;
+- backend service discovery through the Compose DNS name `backend`;
+- a private bridge network for container-to-container traffic;
+- health-aware frontend startup through `depends_on`;
+- independent frontend and backend health checks;
+- bounded shutdown grace periods and `restart: unless-stopped`;
+- no database container—the configured MySQL database remains external.
+
+An optional Compose overlay mounts an existing local Google ADC file read-only. It does not copy credentials into the repository or image. See [Docker Compose / Multi-container Orchestration](docs/FA-DOCKER-COMPOSE.md) for the detailed design and recovery demonstration.
+
+## Container Architecture
+
+### Frontend Container
+
+The frontend image uses a digest-pinned Nginx Alpine base. It contains browser assets and an Nginx template that is rendered at container startup.
+
+Key behavior:
+
+- requires and validates an `http://` or `https://` `BACKEND_URL` origin;
+- rejects credentials, paths, queries, fragments, whitespace, and invalid ports in that value;
+- serves static assets and proxies pages and API calls to the backend;
+- forwards WebSocket upgrade headers for live transcription;
+- exposes a local JSON `/health` endpoint;
+- sets response hardening headers and hides the Nginx version;
+- includes a Docker health check.
+
+See [Frontend Dockerisation](docs/FA-FRONTEND-DOCKER.md).
+
+### Backend Container
+
+The backend uses a two-stage, digest-pinned Docker build:
+
+1. a Node.js 22 dependency stage runs `npm ci --omit=dev`;
+2. a distroless Node.js 22 runtime receives only production dependencies and required application files.
+
+The runtime:
+
+- runs as non-root UID `65532`;
+- contains no package manager or interactive shell;
+- excludes tests, documentation, local configuration, and build-only files;
+- exposes port `3000`;
+- implements a lightweight Node-based Docker health check against `/health`;
+- receives secrets and environment configuration only at runtime.
+
+See [Backend Dockerisation](docs/FA-BACKEND-DOCKER.md).
+
+## CI/CD Pipeline
+
+The main workflow is [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
+
+```text
+Pull request / push / manual run
+              |
+              v
+Tests + production npm audit
+Gitleaks
+Semgrep
+              |
+              v
+Build backend and frontend images
+              |
+              v
+Trivy HIGH/CRITICAL image gates
+              |
+              v
+Export exact scanned images + SHA-256 metadata
+              |
+       deployment eligible?
+          /           \
+        no             yes
+   validation only      |
+                        v
+             GitHub OIDC -> AWS role
+                        |
+                        v
+              Push SHA-tagged images to
+              separate ECR repositories
+                        |
+                        v
+              Register new task revisions
+                        |
+                        v
+              Ansible backend-first rollout
+                        |
+                        v
+              Health check + smoke test
+```
+
+Pipeline behavior:
+
+- pull requests to `main` run tests, security checks, image builds, and image scans but cannot deploy;
+- pushes to `main` deploy only after every required CI and security job succeeds;
+- manual workflow runs default to scan-only unless deployment is explicitly enabled;
+- AWS authentication occurs only in the deployment job;
+- images are tagged with the Git commit SHA;
+- the exact image archives scanned by Trivy are checksummed, transferred as artifacts, verified, and then pushed—deployment does not rebuild a different image;
+- task-definition revisions are derived from active service definitions so existing runtime configuration, secrets, task roles, and execution roles are preserved.
+
+## DevSecOps Controls
+
+| Control | Purpose | Deployment effect |
+|---|---|---|
+| `npm audit --omit=dev --audit-level=high` | Detect HIGH/CRITICAL production dependency vulnerabilities | Blocks the quality gate |
+| Gitleaks | Scan repository content and history for secrets | Blocks the secret-scanning gate |
+| Semgrep | Scan JavaScript with JavaScript and OWASP rules | Blocks the source-security gate |
+| Trivy | Scan both container images for HIGH/CRITICAL OS and library vulnerabilities | Blocks image promotion |
+| GitHub OIDC | Exchange the workflow identity for short-lived AWS role credentials | Removes the need for stored AWS access keys |
+| Job-scoped permissions | Restrict OIDC and pull-request access to jobs that need them | Reduces workflow authority |
+
+These controls run before production deployment. CodeRabbit is documented separately because it is review assistance, not an enforced security gate.
+
+See [FA L4 DevSecOps Evidence](docs/FA-L4-DEVSECOPS.md) and [Security Policy](SECURITY.md).
+
+## AWS Deployment
+
+```text
+GitHub Actions
+      |
+      | GitHub OIDC
+      v
+Existing GitHubActionsDeployRole
+      |
+      +----> Backend ECR repository
+      +----> Frontend ECR repository
+      |
+      v
+New backend/frontend task-definition revisions
+      |
+      v
+Ansible
+  -> backend ECS service
+  -> backend stabilization
+  -> backend /health
+  -> frontend ECS service
+  -> frontend stabilization
+  -> frontend smoke test
+  -> verified rollback on failure
+```
+
+The deployment workflow:
+
+- verifies that separate backend/frontend ECR repositories and ECS service ARNs are configured;
+- pushes immutable commit-SHA image tags;
+- discovers application container names from each active task definition;
+- preserves existing ECS runtime environment, secret references, roles, and service configuration;
+- registers new task-definition revisions in GitHub Actions;
+- delegates rollout sequencing and verification to Ansible.
+
+`GitHubActionsDeployRole` is manually managed in AWS IAM and is assumed through GitHub OIDC. If deployment resources change, its trust and least-privilege permissions must be updated in AWS IAM. The repository does not create or recreate that role.
+
+## Ansible Deployment Automation
+
+GitHub Actions and Ansible have separate responsibilities:
+
+| GitHub Actions | Ansible |
 |---|---|
-| id | Primary key |
-| incident_id | Unique incident reference |
-| reporting_officer_id | Officer from the login session; nullable for older reports |
-| incident_type | Type of emergency |
-| location | Incident location |
-| incident_datetime | Date and time of incident |
-| incident_summary | Summary of the incident |
-| hazards | Hazards at the scene |
-| injured_or_trapped_persons | Injured or trapped person details |
-| response_status | Current report status |
-| missing_information | Information still required |
-| officer_notes | Reviewing officer notes |
-| transcript | Original call transcript |
-| latitude | Map latitude |
-| longitude | Map longitude |
-| created_at | Record creation time |
-| updated_at | Last updated time |
+| Run CI and security gates | Validate deployment preconditions |
+| Build, scan, and publish images | Roll out the backend first |
+| Authenticate to AWS through OIDC | Wait for the exact backend revision to become active |
+| Inspect active task definitions | Verify backend `/health` |
+| Register new task-definition revisions | Roll out and stabilize the frontend |
+| Supply immutable revision inputs | Run the frontend smoke test |
+| Publish workflow summaries/artifacts | Collect bounded diagnostics and perform verified rollback |
 
-Supporting table: `officers`
+The Ansible role is idempotent: when a service already uses the requested task definition, the update is skipped while verification still runs. Stabilization and HTTP retries are bounded. If a rollout fails, the role preserves the original error, gathers non-secret service diagnostics, requests the previous task revisions, verifies rollback state, and reports both the deployment and rollback outcomes.
 
-| Field | Purpose |
-|---|---|
-| id | Primary key |
-| username | Unique officer login username |
-| password_hash | Bcrypt password hash |
-| officer_name | Reporting officer name |
-| officer_role | Permission role: `Duty Officer`, `HR`, or `Higher Rank/Admin` |
-| is_active | Whether the officer can log in |
-| created_at | Record creation time |
+See [Ansible ECS Express Deployment](docs/FA-ANSIBLE-CLOUD-DEPLOYMENT.md).
 
-## Getting Started
+## Advisory AIOps
 
-Follow these steps when setting up the project from zero on Windows.
+The AIOps feature analyzes deployment failures but cannot deploy or remediate them.
+
+```text
+Ansible/ECS deployment failure
+          |
+          v
+Allowlisted and sanitized diagnostics
+          |
+          v
+Isolated AIOps job
+          |
+          v
+Gemini structured analysis
+          |
+          v
+GitHub Actions Summary
+          |
+          v
+Mandatory human review
+```
+
+Safety boundaries include:
+
+- allowlisting before redaction;
+- bounded individual strings and total payload size;
+- a dedicated `AIOPS_GEMINI_API_KEY`, separate from the application's Gemini credential;
+- model-response schema validation and validated evidence paths;
+- `humanReviewRequired: true`;
+- no AWS credentials, OIDC permission, AWS API access, Ansible execution, command execution, rollback authority, or automatic remediation in the analysis job;
+- preserved deployment failure semantics even if analysis succeeds.
+
+### Local Simulation
+
+```powershell
+npm run aiops:demo
+```
+
+This uses synthetic failure data and a mocked Gemini client. It performs no AWS, Google, or other network operation.
+
+### GitHub Actions FA Demonstration
+
+The `AIOps FA Demonstration` workflow is manual, restricted to `main`, and has only `contents: read`. It prepares synthetic sanitized diagnostics and uses live Gemini analysis when the dedicated secret is available, with a schema-validated mocked fallback when live analysis is unavailable. It has no deployment authority.
+
+### Production Failure Path
+
+The production AIOps job can run only after a real deployment job fails and a sanitized diagnostic artifact is available. It remains advisory and cannot change the failed deployment or rollback result.
+
+The repository implementation proves the guarded workflow and simulation paths; it does not by itself prove that a real failed ECS rollout has already completed live Gemini analysis. See [AIOps Deployment-Failure Analysis](docs/FA-AIOPS-DEPLOYMENT-FAILURE-ANALYSIS.md).
+
+## Optional CodeRabbit Review
+
+The root [`.coderabbit.yaml`](.coderabbit.yaml) configures concise automatic pull-request reviews focused on:
+
+- correctness and regression risk;
+- security and data-integrity defects;
+- reliability and missing validation;
+- Docker, Compose, GitHub Actions, AWS deployment, and Ansible risks;
+- AIOps trust boundaries and maintainability.
+
+Style-only feedback is intentionally de-emphasized. CodeRabbit requires its GitHub App to be installed and authorized for the repository; the configuration file alone does not run reviews. It is not AIOps, an enforced scanner, or a replacement for Gitleaks, Semgrep, `npm audit`, or Trivy.
+
+## Local Setup
 
 ### Prerequisites
 
-- Node.js and npm
-- MySQL running locally or reachable from this machine
-- Gemini API key for AI cleanup and report drafting
-- PowerShell on Windows
-- Google Cloud project plus Application Default Credentials for microphone transcription
-- Docker Desktop with Docker Compose for the containerised local stack
+- Node.js 22 and npm
+- access to a MySQL-compatible database
+- Docker Desktop with Docker Compose for container workflows
+- optional: Google Cloud CLI with local ADC for Speech-to-Text
+- optional: Gemini and OneMap credentials for their respective features
 
-### 1. Open the Project Folder
+### 1. Configure the Environment
 
-```powershell
-cd C:\Users\goati\Downloads\firefighter-dashboard-prototype-fixed
-```
-
-### 2. Install Dependencies
+Copy the example file and fill in your own local values:
 
 ```powershell
-npm install
+Copy-Item .env.example .env
 ```
 
-### 3. Set Up MySQL
+On macOS or Linux:
 
-Use the existing Railway MySQL database. No database container is created by Compose. For a fresh MySQL database, the application and seed scripts create or upgrade the required tables.
-
-```sql
-CREATE DATABASE IF NOT EXISTS firefighter_dashboard;
-USE firefighter_dashboard;
-
-CREATE TABLE IF NOT EXISTS incidents (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  incident_id VARCHAR(20) UNIQUE NOT NULL,
-  incident_type VARCHAR(100) NOT NULL,
-  location VARCHAR(255) NOT NULL,
-  incident_datetime DATETIME NOT NULL,
-  incident_summary TEXT NOT NULL,
-  hazards TEXT,
-  injured_or_trapped_persons TEXT,
-  response_status VARCHAR(50) NOT NULL,
-  missing_information TEXT,
-  officer_notes TEXT,
-  transcript TEXT,
-  latitude DECIMAL(10, 8) NULL,
-  longitude DECIMAL(11, 8) NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    ON UPDATE CURRENT_TIMESTAMP
-);
+```bash
+cp .env.example .env
 ```
 
-For a fresh database, create the required tables:
+At minimum, configure a strong `SESSION_SECRET` and the `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` values needed for the external database. Leave optional service credentials blank when those integrations are not being tested.
 
-```sql
-CREATE TABLE IF NOT EXISTS officers (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  username VARCHAR(50) UNIQUE NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  officer_name VARCHAR(100) NOT NULL,
-  officer_role VARCHAR(100) NOT NULL,
-  is_active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+Never commit `.env`, ADC files, API keys, database passwords, session secrets, or cloud credentials.
 
-CREATE TABLE IF NOT EXISTS incidents (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  incident_id VARCHAR(20) NOT NULL UNIQUE,
-  reporting_officer_id INT NULL,
-  incident_type VARCHAR(100) NOT NULL,
-  location VARCHAR(255) NOT NULL,
-  incident_datetime DATETIME NULL,
-  incident_summary TEXT NULL,
-  hazards TEXT NULL,
-  injured_or_trapped_persons TEXT NULL,
-  response_status VARCHAR(50) DEFAULT 'Draft',
-  missing_information TEXT NULL,
-  officer_notes TEXT NULL,
-  transcript TEXT NULL,
-  latitude DECIMAL(10, 7) NULL,
-  longitude DECIMAL(10, 7) NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_incidents_reporting_officer_id ON incidents (reporting_officer_id);
-```
-
-For an existing database, add the reporting officer column only if it is missing:
-
-```sql
-SHOW COLUMNS FROM incidents LIKE 'reporting_officer_id';
-ALTER TABLE incidents ADD COLUMN reporting_officer_id INT NULL;
-```
-
-The app, `npm run seed`, and `npm run seed:users` also check/create the `officers` table, add missing login columns, bcrypt-hash demo passwords, and add `reporting_officer_id` when the configured database already exists.
-
-### 4. Create `.env`
-
-Create `.env` in the project root:
-
-```env
-DB_HOST=localhost
-DB_USER=root
-DB_PASSWORD=your_password
-DB_NAME=firefighter_dashboard
-DB_PORT=3306
-SESSION_SECRET=replace_with_a_long_random_string
-
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash-lite
-
-ONEMAP_EMAIL=
-ONEMAP_PASSWORD=
-ONEMAP_BASE_URL=https://www.onemap.gov.sg
-GEOCODING_DEBUG=false
-```
-
-Replace `your_password` with your local MySQL password and set `SESSION_SECRET` to a long random value for local sessions. OneMap credentials are optional; if they are blank, report creation, report editing, and coordinate backfill use the local Singapore fallback resolver. Do not commit `.env` or expose private credentials.
-
-### 5. Configure Gemini AI
-
-Set `GEMINI_API_KEY` to your private Gemini API key and `GEMINI_MODEL` to the supported Flash model used by the deployment.
-
-For the current cloud AI flow:
-
-```env
-GEMINI_MODEL=gemini-3.5-flash-lite
-```
-
-### 6. Start the Dashboard Only
-
-```powershell
-npm start
-```
-
-Open:
-
-```text
-http://localhost:3000
-```
-
-Google Speech-to-Text requires `GOOGLE_CLOUD_PROJECT` and Application Default Credentials; manual transcript input remains available when it is not configured.
-
-### Run the Complete Local Stack with Docker Compose
-
-The dashboard Compose file runs exactly two application containers: `frontend` (Nginx UI gateway) and `backend` (Node.js/Express). Railway MySQL, Gemini, and Google Speech-to-Text remain external and are not containerised.
-
-Copy `.env.example` to `.env`, then enter private Railway and session values only in `.env`. Never commit that file.
-
-Build and start the complete stack:
-
-```powershell
-docker compose down
-docker compose up -d --build
-docker compose ps
-```
-
-Open `http://localhost:3000`, sign in, record a short clip on Live Call Intake, test Clean Transcript, and generate an AI report on Create Report.
-
-Use these values for the supported execution modes:
-
-```env
-# Backend container or Node.js running directly on the host
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash-lite
-GOOGLE_CLOUD_PROJECT=project-1e4380d5-44ee-49d4-b26
-```
-
-Inside Docker, Node.js calls Gemini and Google Speech-to-Text. Use the optional `docker-compose.gcp.yml` overlay to mount an existing ADC file read-only; never copy credentials into the image.
-
-Useful checks:
-
-```powershell
-docker compose config --quiet
-docker compose ps
-docker compose logs --tail 100 frontend backend
-Invoke-RestMethod http://localhost:3001/health
-npm run compose:smoke
-```
-
-The smoke test uses an isolated Compose project, temporary local ports, and
-non-production placeholder configuration. It builds both images, verifies
-service-name DNS and proxy communication, demonstrates backend stop/recovery,
-and removes its containers afterward. See
-[FA Docker Compose](docs/FA-DOCKER-COMPOSE.md) for the architecture,
-validation commands, and Ji Xun's FA demonstration procedure.
-
-Stop or restart without deleting model volumes:
-
-```powershell
-docker compose stop
-docker compose start
-docker compose restart
-docker compose down
-```
-
-If Gemini is unavailable or not configured, cleanup preserves the original transcript and report generation supplies a conservative editable fallback. If Google Speech-to-Text is unavailable, manual transcript entry remains available.
-
-## DevSecOps pipeline
-
-GitHub Actions now uses a fail-closed pipeline: automated tests, Gitleaks repository/history scanning, production dependency audit, Semgrep SAST, and Trivy HIGH/CRITICAL image scanning all run before AWS authentication, ECR push, or ECS deployment. Pull requests to `main` build and scan but never deploy. Pushes to `main` deploy the exact SHA-tagged backend image that Trivy scanned, then verify ECS and the public health/smoke endpoints.
-
-Run the core checks locally:
+### 2. Install and Test
 
 ```powershell
 npm ci
 npm test
-npm audit --omit=dev --audit-level=high
-docker build -t firefighter-dashboard-backend:local .
-docker build -f frontend/Dockerfile -t firefighter-dashboard-frontend:local .
-docker compose config
 ```
 
-See [FA L4 DevSecOps evidence](docs/FA-L4-DEVSECOPS.md) for the full gate design, AWS OIDC setup, proof steps, rollback procedure, and required GitHub configuration. See [SECURITY.md](SECURITY.md) for vulnerability reporting and secret-handling rules.
-
-### 7. Seed Sample Reports
+If the database needs the repository's demonstration schema/data:
 
 ```powershell
 npm run seed
-```
-
-This also seeds the demo officer logins:
-
-| Username | Password | Officer |
-|---|---|---|
-| `admin1` | `password123` | Admin Duty Officer 1, Higher Rank/Admin |
-| `admin2` | `password123` | Admin Duty Officer 2, HR |
-| `admin3` | `password123` | Admin Duty Officer 3, Duty Officer |
-| `admin4` | `password123` | Admin Duty Officer 4, Duty Officer |
-| `admin5` | `password123` | Admin Duty Officer 5, Duty Officer |
-
-To refresh only the demo officer users:
-
-```powershell
 npm run seed:users
 ```
 
-User accounts are managed internally at `/users`; there is no public self-registration route. HR can create and edit Duty Officer accounts. Higher Rank/Admin can create all approved roles, edit managed accounts, and deactivate accounts while preserving incident history.
+Use only non-production data for local demonstrations.
 
-### Role-based permissions
-
-| Feature | Duty Officer | HR | Higher Rank/Admin |
-|---|---|---|---|
-| Dashboard and incident workflow | Yes | Yes | Yes |
-| User Management | No | Limited | Full |
-| Add Duty Officer accounts | No | Yes | Yes |
-| Add HR or Higher Rank/Admin accounts | No | No | Yes |
-| Edit Duty Officer account details | No | Yes | Yes |
-| Edit HR or Higher Rank/Admin accounts | No | No | Yes |
-| Deactivate accounts | No | No | Yes |
-| Backdate incident date/time | No | No | Yes |
-
-All checks are enforced in Express controllers/middleware and in account-model business rules. The sidebar is only a presentation convenience and is not the security boundary. Active account status and current roles are reloaded from MySQL on authenticated requests, so deactivation and permission changes also apply to existing sessions.
-
-The existing schema already includes the fields required by account management. For older installations, the application's schema setup adds equivalent missing columns automatically. The corresponding manual migration is:
-
-```sql
-ALTER TABLE officers ADD COLUMN officer_role VARCHAR(100) NULL AFTER officer_name;
-ALTER TABLE officers ADD COLUMN is_active BOOLEAN DEFAULT TRUE AFTER officer_role;
-ALTER TABLE officers ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-
-UPDATE officers
-SET officer_role = 'Duty Officer'
-WHERE officer_role IS NULL OR officer_role IN ('Officer', 'Normal Officer');
-```
-
-Run only the `ALTER TABLE` statements for columns that do not already exist. Passwords continue to use bcrypt hashes in `password_hash`; account forms never store plain-text passwords.
-
-### 8. Run the Full Demo
+### 3. Start the Node Application
 
 ```powershell
-npm run demo
-```
-
-The demo launcher opens the dashboard in a PowerShell window and opens the browser. It does not start MySQL or configure Google credentials.
-
-## Environment Variables
-
-The dashboard reads local configuration from `.env`. Keep this file in the project root, keep it private, and never commit it.
-
-| Variable | Purpose |
-|---|---|
-| `FRONTEND_PORT` | Host port for the Nginx UI container; defaults to `3000` |
-| `BACKEND_PORT` | Host port for the backend container; defaults to `3001` |
-| `BACKEND_URL` | Internal UI-gateway URL for the backend; defaults to `http://backend:3000` |
-| `CORS_ORIGIN` | Allowed frontend origin for browser API calls; defaults to `http://localhost:3000` |
-| `DB_HOST` | Railway MySQL host |
-| `DB_USER` | MySQL username |
-| `DB_PASSWORD` | MySQL password |
-| `DB_NAME` | Database name, `firefighter_dashboard` |
-| `DB_PORT` | MySQL port, usually `3306` |
-| `SESSION_SECRET` | Secret used by `express-session` to sign login cookies |
-| `GEMINI_API_KEY` | Private Gemini API key used by the backend only |
-| `GEMINI_MODEL` | Gemini Flash model used for cleanup and draft generation |
-| `GEMINI_TIMEOUT_MS` | Optional per-attempt Gemini timeout in milliseconds; defaults to `30000` |
-| `GOOGLE_CLOUD_PROJECT` | Google Cloud project used by Speech-to-Text V1 through ADC |
-| `ONEMAP_EMAIL` | Optional OneMap email |
-| `ONEMAP_PASSWORD` | Optional OneMap password |
-| `ONEMAP_BASE_URL` | OneMap API base URL |
-| `GEOCODING_DEBUG` | Enables backend map payload logging when `true` |
-
-## Run the Full Local Demo
-
-Use this flow to start the dashboard demo. The script checks whether `GOOGLE_CLOUD_PROJECT` is configured without printing credentials.
-
-1. Start or confirm MySQL is reachable.
-2. Confirm `.env` exists in the project root.
-3. Run `npm install` if `node_modules` is missing.
-4. Run the demo launcher:
-
-   ```powershell
-   npm run demo
-   ```
-
-The demo uses:
-
-- Dashboard on `http://localhost:3000`
-- Google Speech-to-Text V1 through the backend service
-- Gemini AI through the backend service
-- MySQL from the configured Railway connection
-
-The launcher opens a dashboard PowerShell window and the browser. It does not start MySQL or provision Google credentials.
-
-## Recommended Demo Testing Flow
-
-Use this flow to test the main prototype path end to end:
-
-1. Confirm MySQL connectivity through the `DB_*` values.
-2. Confirm `GEMINI_API_KEY` and `GEMINI_MODEL` are configured.
-3. Run `npm install`.
-4. Run `npm run seed`.
-5. Run `npm start` or `npm run demo`.
-6. Open `http://localhost:3000`.
-7. Log in with one demo officer account.
-8. Check the Dashboard cards.
-9. Go to Live Call Intake.
-10. Paste or capture a transcript.
-11. Click Clean Transcript.
-12. Send the transcript to Create Report.
-13. Click Generate AI Report.
-14. Review and edit the generated fields.
-15. Save the report.
-16. Confirm Report Details shows the logged-in officer.
-17. Log out and confirm protected pages redirect to `/login`.
-18. Refresh Dashboard, Map, and Analytics after logging back in.
-
-## Seed Sample Incident Reports
-
-The dashboard and analytics read from the MySQL `incidents` table. To load realistic school-prototype data:
-
-```powershell
-npm run seed
-```
-
-The seed script creates or upgrades the `officers` table, stores bcrypt password hashes for demo users, adds `reporting_officer_id` to `incidents` when missing, and inserts or refreshes 10 sample reports with IDs `INC-1001` through `INC-1010`. The sample reports include residential fires, kitchen fire, road traffic accident, lift rescues, gas leak, electrical fire, rubbish chute fire, and vehicle fire. The script uses MySQL `ON DUPLICATE KEY UPDATE`, so running it again refreshes those same sample records instead of creating duplicates.
-
-After seeding, open `http://localhost:3000/dashboard` and `http://localhost:3000/analytics` to confirm totals, charts, and percentages update.
-
-## How Each Feature Works
-
-### Live Call Intake Flow
-
-Open `http://localhost:3000/transcription` or choose Live Call Intake from the sidebar.
-
-1. Confirm `GOOGLE_CLOUD_PROJECT` and ADC are configured, then click Start Transcription.
-2. Allow microphone access, then speak into the microphone for up to 40 seconds.
-3. Stop Transcription. The browser sends PCM16 audio to `POST /api/transcribe`; the backend calls Google Speech-to-Text V1.
-4. The returned transcript appears in Full Transcript.
-5. If transcription is unavailable, paste text into Manual Transcript Input.
-6. Click Clean Transcript to send the transcript to Gemini for cleanup.
-7. Click Send Raw Transcript or Send Clean Transcript to open Create Report with the transcript loaded.
-
-Manual transcript input remains available if Google Speech-to-Text is unavailable.
-
-### AI Report Flow
-
-Open Create Report from the sidebar or send a transcript from Live Call Intake.
-
-1. Confirm the Transcript field contains raw or cleaned call text.
-2. Click Generate AI Report.
-3. The backend sends the transcript to Gemini.
-4. The form fills an editable AI-assisted incident draft.
-5. Review and edit the generated fields.
-6. Save the report with Save Draft or Save Report.
-
-Backend AI endpoints:
-
-```text
-POST /api/ai/clean-transcript
-POST /api/reports/generate
-```
-
-Both endpoints call Gemini using `GEMINI_API_KEY` and `GEMINI_MODEL`. The browser never receives the Gemini API key.
-
-### Incident CRUD Flow
-
-Use the report pages to manage MySQL-backed incident records:
-
-1. Open Create Report to add a new incident.
-2. Fill or generate the report fields.
-3. Save the report to MySQL.
-4. Open Incident Reports to view saved reports.
-5. Use search or status filtering to find a report.
-6. Open Report Details or Edit Report to review and update a report.
-7. Delete a report only when it is no longer needed.
-8. Refresh Dashboard and Analytics to see updated totals.
-
-### Map Flow
-
-Open Dashboard to view the Live Incident Map.
-
-1. Create or edit a report with a clear incident location.
-2. The backend resolves latitude and longitude when possible.
-3. Coordinates are saved to MySQL.
-4. The dashboard sends active incident map data to the browser.
-5. Leaflet displays markers for incidents with valid coordinates.
-6. Completed, reviewed, closed, and resolved reports are hidden from the live map.
-
-### Analytics Flow
-
-Open Analytics from the sidebar.
-
-1. The backend reads current MySQL incident records.
-2. It groups reports by type, status, and location.
-3. It calculates totals and percentages.
-4. The Analytics page displays the latest summary after refresh.
-
-## Troubleshooting
-
-### Port 8010 Already in Use
-
-Google Speech-to-Text requests are sent through the dashboard backend. Check the backend logs and verify Application Default Credentials when transcription fails.
-
-Stop the process by replacing `<PID_NUMBER>` with the PID from the last column:
-
-```powershell
-taskkill /PID <PID_NUMBER> /F
-```
-
-### Map Marker Does Not Appear
-
-Check whether recent reports have coordinates:
-
-```sql
-SELECT incident_id, location, response_status, latitude, longitude
-FROM incidents
-ORDER BY id DESC
-LIMIT 10;
-```
-
-Reports need valid `latitude` and `longitude` values to appear on the map. Completed, reviewed, closed, and resolved reports are intentionally hidden from the live map.
-
-To backfill missing coordinates:
-
-```powershell
-node scripts/backfillIncidentCoordinates.js
-```
-
-### Dashboard Does Not Connect to MySQL
-
-Confirm MySQL is running and that `.env` contains the correct `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and `DB_PORT` values.
-
-In MySQL, check the database and tables:
-
-```sql
-SHOW DATABASES;
-USE firefighter_dashboard;
-SHOW TABLES;
-```
-
-The demo script only checks whether MySQL is reachable; it does not start MySQL.
-
-### Gemini AI Not Configured or Unavailable
-
-Confirm `.env` or the cloud environment contains both required Gemini variables:
-
-```env
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash-lite
-```
-
-If Gemini is unavailable, transcript cleanup returns the original transcript and AI report generation returns a conservative editable fallback report. Manual report editing remains available.
-
-### Google Speech-to-Text Not Available
-
-The Live Call Intake page records a short microphone clip in the browser as mono PCM16 and posts it to `POST /api/transcribe`. The Node.js backend sends that audio to Google Cloud Speech-to-Text V1 using `LINEAR16`, the browser sample rate, and `en-SG`. The browser never receives Google credentials or calls Google directly.
-
-For local Node.js development, configure the project and Application Default Credentials:
-
-```powershell
-$env:GOOGLE_CLOUD_PROJECT='project-1e4380d5-44ee-49d4-b26'
-gcloud auth application-default login
 npm start
 ```
 
-For Docker Compose, mount the locally created ADC file read-only rather than copying it into the image:
+The default direct-development URL is `http://localhost:3000`. The complete application requires a reachable database; Gemini, Speech-to-Text, and OneMap remain optional integrations with safe fallback behavior where implemented.
+
+### 4. Optional Local Speech ADC
+
+Authenticate locally without creating a service-account key:
+
+```powershell
+gcloud auth application-default login
+```
+
+Set `GOOGLE_CLOUD_PROJECT` in `.env`. Direct Node.js development resolves ADC automatically; `GOOGLE_APPLICATION_CREDENTIALS` is not required for the normal host-based local flow.
+
+## Docker Compose Startup
+
+After creating `.env`:
+
+```powershell
+docker compose up -d --build
+```
+
+Open:
+
+- frontend gateway: `http://localhost:3000`
+- direct backend health: `http://localhost:3001/health`
+
+Stop the stack with:
+
+```powershell
+docker compose down
+```
+
+### Optional ADC Overlay
+
+After `gcloud auth application-default login`, point the overlay at the existing host ADC file:
 
 ```powershell
 $env:GOOGLE_APPLICATION_CREDENTIALS_HOST="$env:APPDATA\gcloud\application_default_credentials.json"
-docker compose -f docker-compose.yml -f docker-compose.gcp.yml up --build
+docker compose -f docker-compose.yml -f docker-compose.gcp.yml up -d --build
 ```
 
-For ECS, configure an ADC-compatible workload identity or inject a credential reference at runtime through the platform's secret/identity configuration. Do not add a credential JSON file to this repository or Docker image.
+The overlay mounts that file read-only at runtime. It is not copied into either image.
 
-The previous external RealtimeSTT WebSocket service on port 8010 is no longer used by the dashboard.
+## Validation & Testing
 
-### Raw Transcript Does Not Send
+| Command | What it validates |
+|---|---|
+| `npm test` | Full Node.js unit and integration-style test suite with external services mocked where appropriate |
+| `npm audit --omit=dev --audit-level=high` | Production dependency HIGH/CRITICAL vulnerability gate |
+| `npm run frontend:container-test` | Frontend image configuration, proxy, health, failure, and recovery behavior |
+| `npm run compose:smoke` | Two-container build, service DNS, proxying, health ordering, failure, and recovery |
+| `npm run aiops:demo` | Local synthetic diagnostics sanitization, schema validation, and advisory AIOps boundary |
+| `docker compose config --quiet` | Resolved Compose configuration after required `.env` values are present |
 
-Confirm there is text in Live Transcript, Full Transcript, Clean Transcript Text, or the manual transcript field before sending. Sent transcripts are stored in `localStorage`, then loaded into the Create Report transcript field.
+Docker-based checks require a running Docker engine. Cloud deployment is intentionally not part of local README validation.
+
+## Environment and Configuration
+
+Use [`.env.example`](.env.example) as the local configuration reference.
+
+### Local Application and Compose
+
+| Category | Variables |
+|---|---|
+| Runtime | `NODE_ENV`, `FRONTEND_PORT`, `BACKEND_PORT`, `CORS_ORIGIN`, `SESSION_SECRET`, `SESSION_COOKIE_NAME` |
+| Database | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` |
+| Gemini | `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_TIMEOUT_MS` |
+| Speech | `GOOGLE_CLOUD_PROJECT`, optional local-overlay `GOOGLE_APPLICATION_CREDENTIALS_HOST` |
+| Location | `ONEMAP_EMAIL`, `ONEMAP_PASSWORD`, `ONEMAP_BASE_URL`, `GEOCODING_DEBUG` |
+
+`BACKEND_URL` is the frontend image's runtime contract. The base Compose file deliberately sets it to `http://backend:3000` so traffic uses Docker service discovery.
+
+### GitHub Repository Variables
+
+Production deployment expects:
+
+- `AWS_REGION`
+- `AWS_ROLE_TO_ASSUME`
+- `ECR_BACKEND_REPOSITORY`
+- `ECR_FRONTEND_REPOSITORY`
+- `ECS_BACKEND_SERVICE_ARN`
+- `ECS_FRONTEND_SERVICE_ARN`
+- `APP_HEALTH_URL`
+- `APP_SMOKE_URL`
+- optional `AIOPS_GEMINI_MODEL`
+
+### GitHub Repository Secrets
+
+- `AIOPS_GEMINI_API_KEY` is available only to the advisory AIOps analysis/demo step that needs it.
+
+The application `GEMINI_API_KEY`, database credentials, and session secret remain ECS runtime configuration. The workflow preserves those settings from active task definitions rather than receiving them as Docker build arguments.
+
+### ECS Runtime
+
+- frontend: a valid backend service origin through `BACKEND_URL`;
+- backend: application/database variables, optional Gemini and OneMap configuration, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_AUTH_MODE=aws-wif`, and the expected AWS region;
+- speech authentication: temporary credentials supplied automatically by the backend ECS task role, not static credential variables.
+
+## Security Notes
+
+- The backend runs as a non-root user in a minimal distroless image.
+- Base container images are pinned by digest.
+- The frontend validates `BACKEND_URL` before Nginx starts and emits hardening headers.
+- Production requires an explicit session secret; cookies are HTTP-only, same-site, and secure in production.
+- The optional local ADC mount is read-only and stays outside the build context.
+- `.env`, key files, logs, and generated diagnostic artifacts are ignored by Git.
+- Gitleaks, Semgrep, production `npm audit`, and Trivy run before deployment.
+- GitHub OIDC supplies short-lived AWS credentials only to the deployment job.
+- Google WIF uses temporary ECS task-role credentials; no Google service-account private key is required.
+- The AIOps job receives sanitized operational data and has no cloud or remediation authority.
+
+These controls reduce risk but do not replace external IAM review, secret rotation, database security, network controls, or operational monitoring.
+
+## Repository Structure
+
+```text
+.github/
+  workflows/             CI/CD and manual AIOps demonstration workflows
+ansible/                 ECS Express rollout, verification, diagnostics, rollback
+config/                  Application and database configuration
+controllers/             HTTP request handling
+docs/                    Detailed FA implementation and evidence guides
+frontend/                Nginx image, proxy template, runtime URL validation
+helpers/                 Location and incident mapping helpers
+middleware/              Authentication and role-based authorization
+models/                  MySQL data access
+public/                  Browser JavaScript, CSS, and static assets
+routes/                  Page and API route definitions
+scripts/
+  aiops/                 Diagnostics sanitizer, analyzer, and safe simulations
+services/                Gemini, Speech-to-Text, WIF, and WebSocket services
+test/                    Automated regression and infrastructure-config tests
+views/                   EJS page templates
+Dockerfile               Backend multi-stage distroless image
+docker-compose.yml       Local frontend/backend orchestration
+docker-compose.gcp.yml   Optional read-only local ADC overlay
+package.json             Node.js dependencies and validation scripts
+SECURITY.md              Security and credential-handling guidance
+```
+
+## FA DevOps Implementation
+
+| Area | Implementation |
+|---|---|
+| CI/CD | Gated GitHub Actions pipeline |
+| Frontend Dockerisation | Digest-pinned Nginx container with runtime proxy validation |
+| Backend Dockerisation | Multi-stage, distroless, non-root Node.js container |
+| Multi-container orchestration | Health-aware Docker Compose topology and recovery smoke test |
+| Cloud deployment | Separate backend/frontend images in Amazon ECR and services in ECS Express Mode |
+| Deployment automation | Idempotent, backend-first Ansible rollout with verification and rollback |
+| DevSecOps | Gitleaks, Semgrep, production `npm audit`, Trivy, and least-privilege OIDC workflow controls |
+| Advisory AIOps | Sanitized Gemini-assisted failure classification with mandatory human review |
+| AI-assisted review | Optional CodeRabbit pull-request review configuration |
+
+Together, these components demonstrate automated validation, immutable container promotion, short-lived cloud authentication, deterministic deployment, failure recovery, and security controls integrated before release.
+
+## Documentation
+
+- [Frontend Dockerisation](docs/FA-FRONTEND-DOCKER.md)
+- [Backend Dockerisation](docs/FA-BACKEND-DOCKER.md)
+- [Docker Compose / Multi-container Orchestration](docs/FA-DOCKER-COMPOSE.md)
+- [Ansible ECS Express Deployment](docs/FA-ANSIBLE-CLOUD-DEPLOYMENT.md)
+- [FA L4 DevSecOps Evidence](docs/FA-L4-DEVSECOPS.md)
+- [AIOps Deployment-Failure Analysis](docs/FA-AIOPS-DEPLOYMENT-FAILURE-ANALYSIS.md)
+- [FA DevOps Evidence Guide](docs/FA-DEVOPS-EVIDENCE-GUIDE.md)
+- [Security Policy](SECURITY.md)
+
+## Scope and External Dependencies
+
+- AWS IAM, ECR repositories, ECS Express services, networking, and runtime secret stores are existing external resources and are not provisioned by this repository.
+- The application requires an externally reachable MySQL-compatible database for full functionality.
+- Gemini, Google Speech-to-Text, OneMap, AWS, and GitHub App behavior depends on external accounts, permissions, quotas, configuration, and service availability.
+- CodeRabbit reviews require separate GitHub App installation/authorization.
+- AIOps recommendations are probabilistic and advisory; deterministic deployment checks and human review remain authoritative.

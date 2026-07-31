@@ -217,8 +217,9 @@ as **SIMULATED LOCAL FAILURE EVIDENCE**, not cloud-failure proof.
 
 For GitHub-hosted evidence, manually run **AIOps FA Demonstration**. Capture its
 sanitization step and Actions Summary, including the clearly labelled
-`LIVE GEMINI`, `MOCKED`, or fallback mode; mandatory human review; preserved
-`FAILED` result; and zero AWS, deployment, rollback, and remediation actions.
+`LIVE GEMINI`, `MOCKED`, or fallback mode; the selected Gemini model; whether a
+live request was attempted; mandatory human review; preserved `FAILED` result;
+and zero AWS, deployment, rollback, and remediation actions.
 
 ## CodeRabbit
 

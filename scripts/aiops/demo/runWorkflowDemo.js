@@ -12,6 +12,7 @@ const {
   truncateString
 } = require('../sanitizeDiagnostics');
 const {
+  DEFAULT_AIOPS_GEMINI_MODEL,
   analyzeDiagnostics
 } = require('../analyzeDeploymentFailure');
 const {
@@ -109,7 +110,7 @@ async function runWorkflowAnalysis(diagnostics, options = {}) {
   const sanitization = evaluateSanitization(rawDiagnostics, normalizedDiagnostics);
   const apiKey = resolveOption(options, 'apiKey', 'AIOPS_GEMINI_API_KEY');
   const model = resolveOption(options, 'model', 'AIOPS_GEMINI_MODEL')
-    || 'gemini-3.5-flash-lite';
+    || DEFAULT_AIOPS_GEMINI_MODEL;
 
   assertSanitizationChecks(sanitization);
 
@@ -146,6 +147,7 @@ async function runWorkflowAnalysis(diagnostics, options = {}) {
   return {
     mode,
     liveAttempted,
+    selectedModel: model,
     analysisResult,
     sanitization,
     deploymentResult: DETERMINISTIC_DEPLOYMENT_RESULT,
@@ -203,6 +205,8 @@ function renderWorkflowSummary(result) {
     '## AIOps',
     '',
     `- Mode: **${safeSummaryText(result.mode)}**`,
+    `- Selected Gemini model: **${safeSummaryText(result.selectedModel)}**`,
+    `- Live Gemini attempted: **${yesNo(result.liveAttempted)}**`,
     `- Classification: **${safeSummaryText(analysis.classification)}**`,
     `- Confidence: **${analysis.confidence.toFixed(2)}**`,
     `- Evidence fields: ${analysis.evidence.map((item) => `\`${safeSummaryText(item)}\``).join(', ')}`,
@@ -277,6 +281,7 @@ async function runCli() {
 
     appendWorkflowSummary(summary);
     console.log(`[AIOps FA Demo] Analysis mode: ${result.mode}.`);
+    console.log(`[AIOps FA Demo] Selected Gemini model: ${result.selectedModel}.`);
     console.log(`[AIOps FA Demo] Classification: ${result.analysisResult.analysis.classification}.`);
     console.log('[AIOps FA Demo] Human review required: TRUE.');
     console.log('[AIOps FA Demo] Deployment result remains FAILED.');

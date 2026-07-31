@@ -10,6 +10,7 @@ const {
   sanitizeDiagnostics
 } = require('../scripts/aiops/sanitizeDiagnostics');
 const {
+  DEFAULT_AIOPS_GEMINI_MODEL,
   FIXED_SYSTEM_INSTRUCTION,
   analyzeDiagnostics,
   buildPrompt,
@@ -226,8 +227,9 @@ test('prompt-like diagnostic text is retained only inside an explicitly untruste
 test('valid Gemini structured analysis is accepted without tools or function calling', async () => {
   const capture = {};
   let suppliedApiKey;
+  const apiKey = 'unit-test-key';
   const result = await analyzeDiagnostics(createDiagnostics(), {
-    apiKey: 'unit-test-key',
+    apiKey,
     model: 'unit-test-model',
     clientFactory(apiKey) {
       suppliedApiKey = apiKey;
@@ -238,11 +240,17 @@ test('valid Gemini structured analysis is accepted without tools or function cal
   assert.equal(result.available, true);
   assert.equal(result.analysis.classification, 'BACKEND_HEALTH_FAILURE');
   assert.equal(result.analysis.humanReviewRequired, true);
-  assert.equal(suppliedApiKey, 'unit-test-key');
+  assert.equal(suppliedApiKey, apiKey);
   assert.equal(capture.request.model, 'unit-test-model');
   assert.equal('tools' in capture.request, false);
   assert.equal('tools' in capture.request.config, false);
   assert.equal('functionCallingConfig' in capture.request.config, false);
+  assert.equal('temperature' in capture.request.config, false);
+  assert.equal(capture.request.config.responseMimeType, 'application/json');
+  assert.equal(capture.request.config.systemInstruction, FIXED_SYSTEM_INSTRUCTION);
+  assert.ok(capture.request.config.responseSchema);
+  assert.doesNotMatch(JSON.stringify(result), new RegExp(apiKey));
+  assert.doesNotMatch(renderSummary(result), new RegExp(apiKey));
 });
 
 test('invalid Gemini response is rejected and becomes a non-blocking unavailable result', async () => {
@@ -258,6 +266,7 @@ test('invalid Gemini response is rejected and becomes a non-blocking unavailable
 
   assert.equal(result.available, false);
   assert.equal(result.message, 'AI analysis unavailable');
+  assert.equal(result.model, 'unit-test-model');
   assert.equal(result.humanReviewRequired, true);
 });
 
@@ -287,6 +296,9 @@ test('Gemini failure does not throw or change the deterministic deployment resul
 
   assert.equal(result.available, false);
   assert.equal(result.message, 'AI analysis unavailable');
+  assert.equal(result.model, 'unit-test-model');
+  assert.match(summary, /\*\*Mode:\*\* LIVE GEMINI UNAVAILABLE/);
+  assert.match(summary, /\*\*Model:\*\* `unit-test-model`/);
   assert.match(summary, /The deployment remains failed/);
   assert.match(summary, /Deterministic Ansible diagnostics and rollback results remain authoritative/);
 });
@@ -330,6 +342,9 @@ test('workflow isolates AIOps and runs it only for a prepared failed deployment'
   assert.match(aiopsJob, /needs\.deploy\.outputs\.aiops_ready == 'true'/);
   assert.match(aiopsJob, /permissions:\s*\n\s+contents: read/);
   assert.match(aiopsJob, /secrets\.AIOPS_GEMINI_API_KEY/);
+  assert.match(aiopsJob, /vars\.AIOPS_GEMINI_MODEL/);
+  assert.match(aiopsJob, new RegExp(DEFAULT_AIOPS_GEMINI_MODEL));
+  assert.doesNotMatch(aiopsJob, /secrets\.GEMINI_API_KEY/);
   assert.doesNotMatch(aiopsJob, /id-token:\s*write/);
   assert.doesNotMatch(aiopsJob, /configure-aws-credentials/);
   assert.doesNotMatch(aiopsJob, /\baws\s+(?:ecs|ecr|sts)\b/);

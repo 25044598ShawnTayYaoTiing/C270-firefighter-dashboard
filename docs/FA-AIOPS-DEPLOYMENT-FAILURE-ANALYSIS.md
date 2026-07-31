@@ -40,7 +40,7 @@ Before upload, `scripts/aiops/sanitizeDiagnostics.js` rebuilds the document from
 
 ## Guardrailed Gemini analysis
 
-The separate AIOps job uses the existing locked `@google/genai` dependency with the dedicated `AIOPS_GEMINI_API_KEY` GitHub Actions secret. It does not use the application's `GEMINI_API_KEY`. The optional `AIOPS_GEMINI_MODEL` repository variable can select the Flash model; otherwise the repository's current Flash default is used.
+The separate AIOps job uses the existing locked `@google/genai` dependency with the dedicated `AIOPS_GEMINI_API_KEY` GitHub Actions secret. It does not use the application's `GEMINI_API_KEY`. The optional `AIOPS_GEMINI_MODEL` repository variable selects the model; otherwise the safe default is `gemini-3.5-flash-lite`. The request uses structured JSON output and omits deprecated sampling parameters.
 
 The analyzer has a fixed instruction, no tools, no function calling, no shell capability, and no AWS client. Diagnostic strings are explicitly marked as untrusted data. The model must return one classification from:
 
@@ -88,7 +88,7 @@ The GitHub Actions Summary is clearly labelled:
 
 > **AI-GENERATED OPERATIONAL ANALYSIS — ADVISORY ONLY**
 
-It displays the validated classification, confidence, allowlisted evidence, likely cause, recommended human action, deterministic rollback status, and mandatory human-review status.
+It displays the execution mode, selected Gemini model, validated classification, confidence, allowlisted evidence, likely cause, recommended human action, deterministic rollback status, and mandatory human-review status.
 
 ## FA framing
 
@@ -167,7 +167,9 @@ labels the mode `LIVE GEMINI`. If the secret is unavailable, or live analysis
 is unavailable, the workflow uses the existing schema-validated local response
 and clearly labels the mode `MOCKED` or
 `MOCKED FALLBACK (LIVE GEMINI UNAVAILABLE)`. The application
-`GEMINI_API_KEY` is never used.
+`GEMINI_API_KEY` is never used. The summary also displays the selected
+`AIOPS_GEMINI_MODEL` value (or the `gemini-3.5-flash-lite` default) and whether
+a live request was attempted.
 
 Fake credential values are removed before analysis. The prompt-injection-shaped
 diagnostic remains inside the analyzer's explicitly marked untrusted-data
