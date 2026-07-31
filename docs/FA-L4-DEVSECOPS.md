@@ -135,7 +135,7 @@ aws ecs describe-express-gateway-service \
 | Gitleaks reports a real historic credential | Rotate/revoke it first, then follow [`SECURITY.md`](../SECURITY.md). Do not silence the scan. |
 | Semgrep fails | Inspect the SARIF artifact, fix the insecure pattern, and rerun. The workflow scans only `ERROR` severity rules to avoid cosmetic style failures. |
 | Trivy finds HIGH/CRITICAL vulnerability | Update the affected Node/Nginx base image or dependency, rebuild, and rescan. Do not add a broad `.trivyignore`. |
-| OIDC `AccessDenied` | Verify the role template parameters, GitHub owner/repository/branch, `AWS_ROLE_TO_ASSUME`, and job `id-token: write` permission. |
+| OIDC `AccessDenied` | Verify the existing `GitHubActionsDeployRole` trust policy allows this repository and branch, its scoped IAM permissions cover the required ECR/ECS resources, `AWS_ROLE_TO_ASSUME` contains its ARN, and the deploy job has `id-token: write`. |
 | ECS service/task definition not selected | Verify `ECS_BACKEND_SERVICE_ARN` and `ECS_FRONTEND_SERVICE_ARN`; the workflow resolves each service's exact container name from its active task definition. |
 | Health or smoke test times out | Check `APP_HEALTH_URL` returns JSON `{ "status": "ok" }`, `APP_SMOKE_URL` is publicly reachable, TLS is valid, and ECS service events show a healthy deployment. |
 | Frontend starts but proxy fails | Set ECS frontend `BACKEND_URL` to its real HTTPS backend origin without a trailing slash, path, query, or fragment. |
@@ -158,9 +158,18 @@ Runtime application values such as MySQL credentials, `SESSION_SECRET`, and `GEM
 
 ## 10. Required AWS IAM configuration
 
-`GitHubActionsDeployRole` is manually configured in AWS IAM and is assumed by GitHub Actions through GitHub's OIDC provider. Keep its trust policy restricted to this repository's `main` branch and keep its least-privilege permissions scoped to the two ECR repositories, two ECS services, task-definition registration, and the existing task roles.
+The current authentication flow is:
 
-When deployment resources or permissions change, update `GitHubActionsDeployRole` directly in AWS IAM. This repository does not create or update that role through CloudFormation, and no AWS access keys are used by the workflow. The `AWS_ROLE_TO_ASSUME` GitHub repository variable must contain the existing role ARN. Existing legacy GitHub AWS secrets are not used by this workflow and should remain untouched until that deployment has been independently confirmed.
+```text
+GitHub Actions deploy job
+  -> GitHub OIDC token
+  -> existing manually managed GitHubActionsDeployRole
+  -> short-lived AWS credentials
+```
+
+`GitHubActionsDeployRole` exists in AWS IAM and is assumed through GitHub's OIDC provider. Keep its trust policy restricted to this repository's `main` branch and keep its least-privilege permissions scoped to the two ECR repositories, two ECS services, task-definition registration, and the existing task roles.
+
+When deployment resources or permissions change, update `GitHubActionsDeployRole` directly in AWS IAM. The repository does not provision this role through CloudFormation, Terraform, or another Infrastructure-as-Code definition, so this IAM configuration must not be presented as IaC. No AWS access keys are stored or used by the workflow. The `AWS_ROLE_TO_ASSUME` GitHub repository variable contains only the existing role ARN; GitHub exchanges its OIDC identity for temporary AWS credentials at run time.
 
 ECS Express deployment monitoring is performed by the backend-first Ansible stability loop rather than the AWS CLI monitor flags. Keep the following scoped read permissions on the live `GitHubActionsDeployRole`; they allow AWS to report deployment and revision state. Replace `AWS_REGION`, `AWS_ACCOUNT_ID`, and each cluster name with the values from the two existing service ARNs; do not replace these resources with `*`.
 
@@ -242,11 +251,11 @@ trivy image --scanners vuln --pkg-types os,library --severity HIGH,CRITICAL `
 4. Immutable SHA image URI and ECS task-definition verification in the Actions summary.
 5. ECS service health/deployment view after a successful deployment.
 6. Running local Compose frontend/backend containers and their `/health` responses.
-7. The OIDC template trust-policy and least-privilege permissions excerpt.
+7. The existing `GitHubActionsDeployRole` trust-policy condition and scoped permission summary from AWS IAM, with account identifiers and unrelated details redacted. State clearly that the role is manually managed.
 
 ## 13. Individual contribution narrative
 
-I converted the existing test-and-deploy job into an explicit fail-closed DevSecOps pipeline. My contribution includes connecting Gitleaks, production dependency audit, Semgrep, and Trivy as required jobs; ensuring the scanned Docker artifact is the one sent to ECR; adding ECS deployment verification, retrying HTTP smoke checks, and a safe rollback path; hardening the runtime Docker image; and producing the OIDC least-privilege template and repeatable evidence documentation. The key technical decision was to place cloud authentication only after every local security gate, so a vulnerable or secret-bearing change cannot obtain deployment credentials through this workflow.
+I converted the existing test-and-deploy job into an explicit fail-closed DevSecOps pipeline. My contribution includes connecting Gitleaks, production dependency audit, Semgrep, and Trivy as required jobs; ensuring the scanned Docker artifact is the one sent to ECR; adding ECS deployment verification, retrying HTTP smoke checks, and a safe rollback path; hardening the runtime Docker image; and documenting the existing manually managed OIDC role and its least-privilege requirements. The key technical decision was to place cloud authentication only after every local security gate, so a vulnerable or secret-bearing change cannot obtain deployment credentials through this workflow.
 
 ## 14. Scope and limitations
 
