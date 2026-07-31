@@ -1,13 +1,16 @@
+# FA responsibility: Ji Xun — Docker Compose / Multi-container Orchestration
+name: firefighter-dashboard
+
 services:
   frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
     environment:
-      # Nginx resolves this inside the Compose network.
-      BACKEND_URL: ${BACKEND_URL:-http://backend:3000}
+      # Local container traffic always uses Compose service discovery.
+      BACKEND_URL: http://backend:3000
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
     depends_on:
       backend:
         condition: service_healthy
@@ -25,6 +28,7 @@ services:
       retries: 10
       start_period: 10s
     restart: unless-stopped
+    stop_grace_period: 15s
 
   backend:
     build:
@@ -36,23 +40,22 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET must be set in .env}
       SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-firefighter.sid}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
-      DB_HOST: ${DB_HOST:-}
+      DB_HOST: ${DB_HOST:?DB_HOST must be set in .env}
       DB_PORT: ${DB_PORT:-3306}
-      DB_USER: ${DB_USER:-}
-      DB_PASSWORD: ${DB_PASSWORD:-}
-      DB_NAME: ${DB_NAME:-}
+      DB_USER: ${DB_USER:?DB_USER must be set in .env}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+      DB_NAME: ${DB_NAME:?DB_NAME must be set in .env}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
       GEMINI_TIMEOUT_MS: ${GEMINI_TIMEOUT_MS:-30000}
       GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
       GOOGLE_AUTH_MODE: ${GOOGLE_AUTH_MODE:-}
-      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
       ONEMAP_EMAIL: ${ONEMAP_EMAIL:-}
       ONEMAP_PASSWORD: ${ONEMAP_PASSWORD:-}
       ONEMAP_BASE_URL: ${ONEMAP_BASE_URL:-https://www.onemap.gov.sg}
       GEOCODING_DEBUG: ${GEOCODING_DEBUG:-false}
     ports:
-      - "${BACKEND_PORT:-3001}:3000"
+      - "127.0.0.1:${BACKEND_PORT:-3001}:3000"
     networks:
       - firefighter-network
     extra_hosts:
@@ -62,12 +65,19 @@ services:
         - CMD
         - /nodejs/bin/node
         - -e
-        - fetch('http://127.0.0.1:3000/health').then(response => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))
+        - >-
+          fetch('http://127.0.0.1:3000/health')
+          .then(async response => {
+            const body = await response.json();
+            if (!response.ok || body.status !== 'ok') process.exit(1);
+          })
+          .catch(() => process.exit(1))
       interval: 15s
       timeout: 5s
       retries: 10
       start_period: 20s
     restart: unless-stopped
+    stop_grace_period: 15s
 
 networks:
   firefighter-network:

@@ -1,3 +1,4 @@
+# FA responsibility: Fatin — dependency and supply-chain update governance
 version: 2
 updates:
   - package-ecosystem: npm
