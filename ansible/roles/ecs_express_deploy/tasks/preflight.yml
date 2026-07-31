@@ -33,7 +33,7 @@
       - --service-arn
       - '{{ ecs_express_deploy_backend_service_arn }}'
       - --query
-      - 'service.{status:status.statusCode,taskDefinition:activeConfigurations[0].taskDefinitionArn}'
+      - 'service.{status:status.statusCode,taskDefinition:activeConfigurations[0].taskDefinitionArn,serviceRevision:activeConfigurations[0].serviceRevisionArn}'
       - --output
       - json
   changed_when: false
@@ -50,7 +50,7 @@
       - --service-arn
       - '{{ ecs_express_deploy_frontend_service_arn }}'
       - --query
-      - 'service.{status:status.statusCode,taskDefinition:activeConfigurations[0].taskDefinitionArn}'
+      - 'service.{status:status.statusCode,taskDefinition:activeConfigurations[0].taskDefinitionArn,serviceRevision:activeConfigurations[0].serviceRevisionArn}'
       - --output
       - json
   changed_when: false
@@ -68,6 +68,8 @@
       - ecs_express_deploy_frontend_service_state.status == 'ACTIVE'
       - ecs_express_deploy_backend_service_state.taskDefinition | default('') | length > 0
       - ecs_express_deploy_frontend_service_state.taskDefinition | default('') | length > 0
+      - ecs_express_deploy_backend_service_state.serviceRevision | default('') | length > 0
+      - ecs_express_deploy_frontend_service_state.serviceRevision | default('') | length > 0
     fail_msg: Existing ECS Express services must be active before deployment; Ansible will not create missing resources.
 
 - name: Report safe deployment targets

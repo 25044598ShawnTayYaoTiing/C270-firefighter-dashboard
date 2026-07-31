@@ -16,9 +16,10 @@ ecs_express_deploy_github_run_id: unavailable
 ecs_express_deploy_github_commit_sha: unavailable
 ecs_express_deploy_github_branch: unavailable
 
-# Service polling is bounded at approximately 15 minutes per phase.
-ecs_express_deploy_stabilization_retries: 90
-ecs_express_deploy_stabilization_delay: 10
+# Express Mode performs canary traffic shifts and bake periods. Allow up to
+# 30 minutes for the specific ECS service deployment, polling every 10 seconds.
+ecs_express_deploy_stabilization_timeout_seconds: 1800
+ecs_express_deploy_stabilization_poll_interval_seconds: 10
 # HTTP checks are bounded and retain the existing ten-second request timeout.
 ecs_express_deploy_health_retries: 18
 ecs_express_deploy_health_delay: 10

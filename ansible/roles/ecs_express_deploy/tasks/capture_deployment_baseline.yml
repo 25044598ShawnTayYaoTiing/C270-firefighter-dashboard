@@ -1,0 +1,27 @@
+---
+- name: Snapshot ECS service deployments before update - {{ ecs_express_deploy_baseline_label }}
+  ansible.builtin.command:
+    argv:
+      - aws
+      - ecs
+      - list-service-deployments
+      - --region
+      - '{{ ecs_express_deploy_aws_region }}'
+      - --service
+      - '{{ ecs_express_deploy_baseline_service_arn }}'
+      - --query
+      - serviceDeployments[].serviceDeploymentArn
+      - --output
+      - json
+      - --no-cli-pager
+      - --cli-connect-timeout
+      - '5'
+      - --cli-read-timeout
+      - '15'
+  register: ecs_express_deploy_baseline_command
+  changed_when: false
+
+- name: Record ECS deployment baseline - {{ ecs_express_deploy_baseline_label }}
+  ansible.builtin.set_fact:
+    '{{ ecs_express_deploy_baseline_fact }}': >-
+      {{ ecs_express_deploy_baseline_command.stdout | from_json }}

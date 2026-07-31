@@ -85,8 +85,17 @@ function buildServiceEvidence(rawService, environment, prefix, outcome) {
       : service.activeTaskDefinition,
     status: outcome === 'SUCCESS' ? 'ACTIVE' : service.status,
     statusReason: outcome === 'SUCCESS'
-      ? 'Expected task definition became active within the bounded stabilization check.'
+      ? 'The correlated ECS service deployment reached SUCCESSFUL before application verification.'
       : service.statusReason,
+    serviceDeploymentArn: service.serviceDeploymentArn,
+    targetServiceRevisionArn: service.targetServiceRevisionArn,
+    deploymentStatus: outcome === 'SUCCESS' ? 'SUCCESSFUL' : service.deploymentStatus,
+    deploymentStatusReason: outcome === 'SUCCESS'
+      ? 'The authoritative ECS service deployment completed successfully.'
+      : service.deploymentStatusReason,
+    deploymentLifecycleStage: service.deploymentLifecycleStage,
+    requestedTaskDefinitionArn: expectedTaskDefinition,
+    circuitBreakerStatus: service.circuitBreakerStatus,
     recentDeployments: Array.isArray(service.recentDeployments)
       ? service.recentDeployments
       : []

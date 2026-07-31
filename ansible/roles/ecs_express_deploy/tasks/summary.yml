@@ -8,6 +8,8 @@
           {{ ecs_express_deploy_previous_backend_task_definition_arn }}
           -> {{ ecs_express_deploy_backend_task_definition_arn }}
         updateRequired: '{{ ecs_express_deploy_backend_update_required | bool }}'
+        serviceDeployment: '{{ ecs_express_deploy_backend_deployment_result.serviceDeploymentArn | default("unavailable") }}'
+        deploymentState: '{{ ecs_express_deploy_backend_deployment_result.status | default("unavailable") }}'
         health: '{{ ecs_express_deploy_backend_health_result }}'
         rollback: '{{ ecs_express_deploy_backend_rollback_result }}'
         rollbackHealth: '{{ ecs_express_deploy_backend_rollback_health_result }}'
@@ -16,6 +18,8 @@
           {{ ecs_express_deploy_previous_frontend_task_definition_arn }}
           -> {{ ecs_express_deploy_frontend_task_definition_arn }}
         updateRequired: '{{ ecs_express_deploy_frontend_update_required | bool }}'
+        serviceDeployment: '{{ ecs_express_deploy_frontend_deployment_result.serviceDeploymentArn | default("unavailable") }}'
+        deploymentState: '{{ ecs_express_deploy_frontend_deployment_result.status | default("unavailable") }}'
         smokeTest: '{{ ecs_express_deploy_frontend_health_result }}'
         rollback: '{{ ecs_express_deploy_frontend_rollback_result }}'
 
@@ -29,11 +33,15 @@
       - Result: `{{ ecs_express_deploy_result }}`
       - Backend revision: `{{ ecs_express_deploy_previous_backend_task_definition_arn }}` -> `{{ ecs_express_deploy_backend_task_definition_arn }}`
       - Backend update required: `{{ ecs_express_deploy_backend_update_required | bool }}`
+      - Backend service deployment: `{{ ecs_express_deploy_backend_deployment_result.serviceDeploymentArn | default('unavailable') }}`
+      - Backend deployment state: `{{ ecs_express_deploy_backend_deployment_result.status | default('unavailable') }}`
       - Backend health: `{{ ecs_express_deploy_backend_health_result }}`
       - Backend rollback: `{{ ecs_express_deploy_backend_rollback_result }}`
       - Backend health after rollback: `{{ ecs_express_deploy_backend_rollback_health_result }}`
       - Frontend revision: `{{ ecs_express_deploy_previous_frontend_task_definition_arn }}` -> `{{ ecs_express_deploy_frontend_task_definition_arn }}`
       - Frontend update required: `{{ ecs_express_deploy_frontend_update_required | bool }}`
+      - Frontend service deployment: `{{ ecs_express_deploy_frontend_deployment_result.serviceDeploymentArn | default('unavailable') }}`
+      - Frontend deployment state: `{{ ecs_express_deploy_frontend_deployment_result.status | default('unavailable') }}`
       - Frontend smoke test: `{{ ecs_express_deploy_frontend_health_result }}`
       - Frontend rollback: `{{ ecs_express_deploy_frontend_rollback_result }}`
       {% if ecs_express_deploy_result == 'failed' %}

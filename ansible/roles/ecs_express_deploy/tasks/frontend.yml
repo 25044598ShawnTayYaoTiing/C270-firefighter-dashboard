@@ -5,6 +5,14 @@
       {{ ecs_express_deploy_frontend_service_state.taskDefinition
          != ecs_express_deploy_frontend_task_definition_arn }}
 
+- name: Snapshot frontend deployments before requesting the new revision
+  ansible.builtin.include_tasks: capture_deployment_baseline.yml
+  vars:
+    ecs_express_deploy_baseline_label: frontend
+    ecs_express_deploy_baseline_service_arn: '{{ ecs_express_deploy_frontend_service_arn }}'
+    ecs_express_deploy_baseline_fact: ecs_express_deploy_frontend_deployment_baseline
+  when: ecs_express_deploy_frontend_update_required | bool
+
 - name: Deploy frontend ECS Express service revision
   # ECS Express uses UpdateExpressGatewayService, which is not managed by the
   # standard ECS Ansible service module. This command changes only the revision.
@@ -19,8 +27,28 @@
       - '{{ ecs_express_deploy_frontend_service_arn }}'
       - --task-definition-arn
       - '{{ ecs_express_deploy_frontend_task_definition_arn }}'
+      - --query
+      - 'service.targetConfiguration.{serviceRevisionArn:serviceRevisionArn,taskDefinitionArn:taskDefinitionArn}'
+      - --output
+      - json
+      - --no-cli-pager
+  register: ecs_express_deploy_frontend_update_command
   when: ecs_express_deploy_frontend_update_required | bool
   changed_when: true
+
+- name: Record frontend target service revision returned by ECS
+  ansible.builtin.set_fact:
+    ecs_express_deploy_frontend_target_configuration: >-
+      {{ ecs_express_deploy_frontend_update_command.stdout | from_json }}
+  when: ecs_express_deploy_frontend_update_required | bool
+
+- name: Verify frontend update response matches the requested task definition
+  ansible.builtin.assert:
+    that:
+      - ecs_express_deploy_frontend_target_configuration.serviceRevisionArn is match('^arn:aws:ecs:')
+      - ecs_express_deploy_frontend_target_configuration.taskDefinitionArn == ecs_express_deploy_frontend_task_definition_arn
+    fail_msg: ECS did not return a target service revision for the requested frontend task definition.
+  when: ecs_express_deploy_frontend_update_required | bool
 
 - name: Wait for frontend ECS Express service stability
   ansible.builtin.include_tasks: wait_for_service.yml
@@ -28,6 +56,11 @@
     ecs_express_deploy_service_label: frontend
     ecs_express_deploy_service_arn: '{{ ecs_express_deploy_frontend_service_arn }}'
     ecs_express_deploy_expected_task_definition_arn: '{{ ecs_express_deploy_frontend_task_definition_arn }}'
+    ecs_express_deploy_expected_service_revision_arn: '{{ ecs_express_deploy_frontend_target_configuration.serviceRevisionArn }}'
+    ecs_express_deploy_baseline_deployment_arns: '{{ ecs_express_deploy_frontend_deployment_baseline }}'
+    ecs_express_deploy_wait_operation: deployment
+    ecs_express_deploy_wait_result_fact: ecs_express_deploy_frontend_deployment_result
+  when: ecs_express_deploy_frontend_update_required | bool
 
 - name: Verify frontend HTTP availability
   ansible.builtin.uri:

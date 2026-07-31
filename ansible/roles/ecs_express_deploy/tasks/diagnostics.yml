@@ -34,7 +34,7 @@
       - --max-results
       - '5'
       - --query
-      - 'serviceDeployments[].{status:status,statusReason:statusReason,targetServiceRevisionArn:targetServiceRevisionArn,startedAt:startedAt,finishedAt:finishedAt}'
+      - 'serviceDeployments[].{serviceDeploymentArn:serviceDeploymentArn,status:status,statusReason:statusReason,targetServiceRevisionArn:targetServiceRevisionArn,startedAt:startedAt,finishedAt:finishedAt}'
       - --output
       - json
       - --cli-connect-timeout
@@ -80,7 +80,7 @@
       - --max-results
       - '5'
       - --query
-      - 'serviceDeployments[].{status:status,statusReason:statusReason,targetServiceRevisionArn:targetServiceRevisionArn,startedAt:startedAt,finishedAt:finishedAt}'
+      - 'serviceDeployments[].{serviceDeploymentArn:serviceDeploymentArn,status:status,statusReason:statusReason,targetServiceRevisionArn:targetServiceRevisionArn,startedAt:startedAt,finishedAt:finishedAt}'
       - --output
       - json
       - --cli-connect-timeout
@@ -108,6 +108,7 @@
          if (ecs_express_deploy_backend_deployments_command.rc == 0
              and ecs_express_deploy_backend_deployments_command.stdout | trim | length > 0)
          else ([{
+           'serviceDeploymentArn': 'unavailable',
            'status': 'unavailable',
            'statusReason': 'deployment history unavailable',
            'targetServiceRevisionArn': 'unavailable',
@@ -129,6 +130,7 @@
          if (ecs_express_deploy_frontend_deployments_command.rc == 0
              and ecs_express_deploy_frontend_deployments_command.stdout | trim | length > 0)
          else ([{
+           'serviceDeploymentArn': 'unavailable',
            'status': 'unavailable',
            'statusReason': 'deployment history unavailable',
            'targetServiceRevisionArn': 'unavailable',

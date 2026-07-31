@@ -16,6 +16,36 @@
     ecs_express_deploy_backend_rollback_result: not-required
     ecs_express_deploy_frontend_rollback_result: not-required
     ecs_express_deploy_backend_rollback_health_result: not-required
+    ecs_express_deploy_backend_deployment_result:
+      outcome: not-required
+      status: NOT_REQUIRED
+      serviceDeploymentArn: unavailable
+      targetServiceRevisionArn: unavailable
+      requestedTaskDefinitionArn: '{{ ecs_express_deploy_backend_task_definition_arn }}'
+      statusReason: No backend update was required.
+      lifecycleStage: unavailable
+    ecs_express_deploy_frontend_deployment_result:
+      outcome: not-required
+      status: NOT_REQUIRED
+      serviceDeploymentArn: unavailable
+      targetServiceRevisionArn: unavailable
+      requestedTaskDefinitionArn: '{{ ecs_express_deploy_frontend_task_definition_arn }}'
+      statusReason: No frontend update was required.
+      lifecycleStage: unavailable
+    ecs_express_deploy_backend_rollback_deployment_result:
+      outcome: not-required
+      status: NOT_REQUIRED
+      serviceDeploymentArn: unavailable
+      targetServiceRevisionArn: unavailable
+      statusReason: Backend rollback was not required.
+      lifecycleStage: unavailable
+    ecs_express_deploy_frontend_rollback_deployment_result:
+      outcome: not-required
+      status: NOT_REQUIRED
+      serviceDeploymentArn: unavailable
+      targetServiceRevisionArn: unavailable
+      statusReason: Frontend rollback was not required.
+      lifecycleStage: unavailable
   tags: [deploy]
 
 - name: Deploy backend, verify it, then deploy frontend

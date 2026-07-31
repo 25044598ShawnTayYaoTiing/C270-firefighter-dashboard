@@ -60,7 +60,15 @@ function createDiagnostics() {
         activeTaskDefinition: 'arn:aws:ecs:task-definition/backend:16',
         status: 'ACTIVE',
         statusReason: 'Deployment completed.',
+        serviceDeploymentArn: 'arn:aws:ecs:service-deployment/backend/new',
+        targetServiceRevisionArn: 'arn:aws:ecs:service-revision/backend/16',
+        deploymentStatus: 'ROLLBACK_SUCCESSFUL',
+        deploymentStatusReason: 'Health alarm initiated rollback.',
+        deploymentLifecycleStage: 'CLEAN_UP',
+        requestedTaskDefinitionArn: 'arn:aws:ecs:task-definition/backend:16',
+        circuitBreakerStatus: 'TRIGGERED',
         recentDeployments: [{
+          serviceDeploymentArn: 'arn:aws:ecs:service-deployment/backend/new',
           status: 'SUCCESSFUL',
           statusReason: 'Service revision is active.',
           targetServiceRevisionArn: 'arn:aws:ecs:service-revision/backend/16',
@@ -87,11 +95,17 @@ function createDiagnostics() {
       backend: {
         attempted: true,
         result: 'succeeded',
-        postRollbackHealth: 'passed'
+        postRollbackHealth: 'passed',
+        serviceDeploymentArn: 'arn:aws:ecs:service-deployment/backend/rollback',
+        deploymentStatus: 'SUCCESSFUL',
+        deploymentStatusReason: 'Previous revision restored.'
       },
       frontend: {
         attempted: false,
-        result: 'not-required'
+        result: 'not-required',
+        serviceDeploymentArn: 'unavailable',
+        deploymentStatus: 'NOT_REQUIRED',
+        deploymentStatusReason: 'Frontend was not updated.'
       }
     }
   };
@@ -159,6 +173,15 @@ test('diagnostic sanitizer uses a nested allowlist before redaction', () => {
   assert.equal('rawTaskDefinition' in sanitized, false);
   assert.equal('transcript' in sanitized, false);
   assert.equal('credentials' in sanitized.services.backend, false);
+  assert.equal(
+    sanitized.services.backend.serviceDeploymentArn,
+    'arn:aws:ecs:service-deployment/backend/new'
+  );
+  assert.equal(sanitized.services.backend.deploymentStatus, 'ROLLBACK_SUCCESSFUL');
+  assert.equal(
+    sanitized.rollback.backend.serviceDeploymentArn,
+    'arn:aws:ecs:service-deployment/backend/rollback'
+  );
   assert.equal(
     'unsupportedRawField' in sanitized.services.backend.recentDeployments[0],
     false

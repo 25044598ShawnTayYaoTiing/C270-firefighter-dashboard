@@ -1,25 +1,88 @@
 ---
-- name: Wait for ECS Express service to use the expected task definition - {{ ecs_express_deploy_service_label }}
+- name: Assert authoritative ECS deployment tracking inputs - {{ ecs_express_deploy_service_label }}
+  ansible.builtin.assert:
+    that:
+      - ecs_express_deploy_expected_task_definition_arn is match('^arn:aws:ecs:')
+      - ecs_express_deploy_expected_service_revision_arn is match('^arn:aws:ecs:')
+      - ecs_express_deploy_baseline_deployment_arns is iterable
+      - ecs_express_deploy_wait_operation in ['deployment', 'rollback']
+      - ecs_express_deploy_wait_result_fact | length > 0
+    fail_msg: The ECS deployment waiter requires an exact task definition, service revision, operation, and pre-update deployment baseline.
+
+- name: Wait for authoritative ECS service deployment state - {{ ecs_express_deploy_service_label }}
   ansible.builtin.command:
     argv:
-      - aws
-      - ecs
-      - describe-express-gateway-service
+      - node
+      - '{{ role_path }}/files/waitForServiceDeployment.js'
       - --region
       - '{{ ecs_express_deploy_aws_region }}'
       - --service-arn
       - '{{ ecs_express_deploy_service_arn }}'
-      - --query
-      - 'service.{status:status.statusCode,taskDefinition:activeConfigurations[0].taskDefinitionArn}'
-      - --output
-      - json
-  register: ecs_express_deploy_service_status
+      - --expected-task-definition-arn
+      - '{{ ecs_express_deploy_expected_task_definition_arn }}'
+      - --expected-service-revision-arn
+      - '{{ ecs_express_deploy_expected_service_revision_arn }}'
+      - --baseline-deployment-arns-json
+      - '{{ ecs_express_deploy_baseline_deployment_arns | to_json }}'
+      - --operation
+      - '{{ ecs_express_deploy_wait_operation }}'
+      - --timeout-seconds
+      - '{{ ecs_express_deploy_stabilization_timeout_seconds | string }}'
+      - --poll-interval-seconds
+      - '{{ ecs_express_deploy_stabilization_poll_interval_seconds | string }}'
+  register: ecs_express_deploy_waiter_command
   changed_when: false
   failed_when: false
-  retries: '{{ ecs_express_deploy_stabilization_retries }}'
-  delay: '{{ ecs_express_deploy_stabilization_delay }}'
-  until:
-    - ecs_express_deploy_service_status.rc == 0
-    - >-
-      '"status": "ACTIVE"' in ecs_express_deploy_service_status.stdout
-    - ecs_express_deploy_expected_task_definition_arn in ecs_express_deploy_service_status.stdout
+
+- name: Record authoritative ECS deployment result - {{ ecs_express_deploy_service_label }}
+  ansible.builtin.set_fact:
+    ecs_express_deploy_wait_result: >-
+      {{ (ecs_express_deploy_waiter_command.stdout | from_json)
+         if ecs_express_deploy_waiter_command.stdout | trim | length > 0
+         else {
+           'outcome': 'failure',
+           'serviceDeploymentArn': 'unavailable',
+           'targetServiceRevisionArn': ecs_express_deploy_expected_service_revision_arn,
+           'requestedTaskDefinitionArn': ecs_express_deploy_expected_task_definition_arn,
+           'status': 'WAITER_ERROR',
+           'statusReason': 'The deployment waiter returned no structured result.',
+           'lifecycleStage': 'unavailable',
+           'reason': 'The deployment waiter returned no structured result.'
+         } }}
+    '{{ ecs_express_deploy_wait_result_fact }}': >-
+      {{ (ecs_express_deploy_waiter_command.stdout | from_json)
+         if ecs_express_deploy_waiter_command.stdout | trim | length > 0
+         else {
+           'outcome': 'failure',
+           'serviceDeploymentArn': 'unavailable',
+           'targetServiceRevisionArn': ecs_express_deploy_expected_service_revision_arn,
+           'requestedTaskDefinitionArn': ecs_express_deploy_expected_task_definition_arn,
+           'status': 'WAITER_ERROR',
+           'statusReason': 'The deployment waiter returned no structured result.',
+           'lifecycleStage': 'unavailable',
+           'reason': 'The deployment waiter returned no structured result.'
+         } }}
+
+- name: Report authoritative ECS deployment result - {{ ecs_express_deploy_service_label }}
+  ansible.builtin.debug:
+    msg:
+      serviceDeploymentArn: '{{ ecs_express_deploy_wait_result.serviceDeploymentArn }}'
+      targetServiceRevisionArn: '{{ ecs_express_deploy_wait_result.targetServiceRevisionArn }}'
+      requestedTaskDefinitionArn: '{{ ecs_express_deploy_wait_result.requestedTaskDefinitionArn }}'
+      state: '{{ ecs_express_deploy_wait_result.status }}'
+      stateReason: '{{ ecs_express_deploy_wait_result.statusReason }}'
+      lifecycleStage: '{{ ecs_express_deploy_wait_result.lifecycleStage }}'
+      outcome: '{{ ecs_express_deploy_wait_result.outcome }}'
+
+- name: Require authoritative ECS deployment success - {{ ecs_express_deploy_service_label }}
+  ansible.builtin.assert:
+    that:
+      - ecs_express_deploy_waiter_command.rc == 0
+      - ecs_express_deploy_wait_result.outcome == 'success'
+    fail_msg: >-
+      ECS deployment verification failed for {{ ecs_express_deploy_service_label }}:
+      deployment={{ ecs_express_deploy_wait_result.serviceDeploymentArn }},
+      revision={{ ecs_express_deploy_wait_result.targetServiceRevisionArn }},
+      state={{ ecs_express_deploy_wait_result.status }},
+      reason={{ ecs_express_deploy_wait_result.statusReason }},
+      waiter={{ ecs_express_deploy_wait_result.reason }}.

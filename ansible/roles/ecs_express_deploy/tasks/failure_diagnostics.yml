@@ -40,6 +40,27 @@
               statusReason: >-
                 {{ ecs_express_deploy_backend_failure_state_document.statusReason
                    | default('unavailable', true) }}
+              serviceDeploymentArn: >-
+                {{ ecs_express_deploy_backend_deployment_result.serviceDeploymentArn
+                   | default('unavailable', true) }}
+              targetServiceRevisionArn: >-
+                {{ ecs_express_deploy_backend_deployment_result.targetServiceRevisionArn
+                   | default('unavailable', true) }}
+              deploymentStatus: >-
+                {{ ecs_express_deploy_backend_deployment_result.status
+                   | default('unavailable', true) }}
+              deploymentStatusReason: >-
+                {{ ecs_express_deploy_backend_deployment_result.statusReason
+                   | default('unavailable', true) }}
+              deploymentLifecycleStage: >-
+                {{ ecs_express_deploy_backend_deployment_result.lifecycleStage
+                   | default('unavailable', true) }}
+              requestedTaskDefinitionArn: >-
+                {{ ecs_express_deploy_backend_deployment_result.requestedTaskDefinitionArn
+                   | default(ecs_express_deploy_backend_task_definition_arn, true) }}
+              circuitBreakerStatus: >-
+                {{ ecs_express_deploy_backend_deployment_result.circuitBreakerStatus
+                   | default('unavailable', true) }}
               recentDeployments: >-
                 {{ ecs_express_deploy_backend_recent_deployments_document }}
             frontend:
@@ -55,6 +76,27 @@
               statusReason: >-
                 {{ ecs_express_deploy_frontend_failure_state_document.statusReason
                    | default('unavailable', true) }}
+              serviceDeploymentArn: >-
+                {{ ecs_express_deploy_frontend_deployment_result.serviceDeploymentArn
+                   | default('unavailable', true) }}
+              targetServiceRevisionArn: >-
+                {{ ecs_express_deploy_frontend_deployment_result.targetServiceRevisionArn
+                   | default('unavailable', true) }}
+              deploymentStatus: >-
+                {{ ecs_express_deploy_frontend_deployment_result.status
+                   | default('unavailable', true) }}
+              deploymentStatusReason: >-
+                {{ ecs_express_deploy_frontend_deployment_result.statusReason
+                   | default('unavailable', true) }}
+              deploymentLifecycleStage: >-
+                {{ ecs_express_deploy_frontend_deployment_result.lifecycleStage
+                   | default('unavailable', true) }}
+              requestedTaskDefinitionArn: >-
+                {{ ecs_express_deploy_frontend_deployment_result.requestedTaskDefinitionArn
+                   | default(ecs_express_deploy_frontend_task_definition_arn, true) }}
+              circuitBreakerStatus: >-
+                {{ ecs_express_deploy_frontend_deployment_result.circuitBreakerStatus
+                   | default('unavailable', true) }}
               recentDeployments: >-
                 {{ ecs_express_deploy_frontend_recent_deployments_document }}
           verification:
@@ -65,9 +107,27 @@
               attempted: '{{ ecs_express_deploy_backend_update_required | bool }}'
               result: '{{ ecs_express_deploy_backend_rollback_result }}'
               postRollbackHealth: '{{ ecs_express_deploy_backend_rollback_health_result }}'
+              serviceDeploymentArn: >-
+                {{ ecs_express_deploy_backend_rollback_deployment_result.serviceDeploymentArn
+                   | default('unavailable', true) }}
+              deploymentStatus: >-
+                {{ ecs_express_deploy_backend_rollback_deployment_result.status
+                   | default('unavailable', true) }}
+              deploymentStatusReason: >-
+                {{ ecs_express_deploy_backend_rollback_deployment_result.statusReason
+                   | default('unavailable', true) }}
             frontend:
               attempted: '{{ ecs_express_deploy_frontend_update_required | bool }}'
               result: '{{ ecs_express_deploy_frontend_rollback_result }}'
+              serviceDeploymentArn: >-
+                {{ ecs_express_deploy_frontend_rollback_deployment_result.serviceDeploymentArn
+                   | default('unavailable', true) }}
+              deploymentStatus: >-
+                {{ ecs_express_deploy_frontend_rollback_deployment_result.status
+                   | default('unavailable', true) }}
+              deploymentStatusReason: >-
+                {{ ecs_express_deploy_frontend_rollback_deployment_result.statusReason
+                   | default('unavailable', true) }}
       no_log: true
 
     - name: Write structured deployment failure diagnostics

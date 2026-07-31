@@ -37,7 +37,8 @@ ansible/
   deploy.yml
   roles/ecs_express_deploy/
     defaults/main.yml
-    tasks/{preflight,backend,frontend,wait_for_service,rollback}.yml
+    files/waitForServiceDeployment.js
+    tasks/{preflight,backend,frontend,capture_deployment_baseline,wait_for_service,rollback}.yml
 ```
 
 The production inventory contains only localhost with a local connection. Ansible never creates EC2 instances and never SSHs into ECS tasks.
@@ -48,10 +49,11 @@ The official `amazon.aws` collection performs the OIDC credential preflight. ECS
 
 1. Ansible asserts the existing non-secret inputs, verifies temporary OIDC credentials, and reads both existing ECS Express services. It fails before mutation if a service is missing or inactive.
 2. It updates the backend only when the active revision differs from the requested immutable revision.
-3. It waits up to 90 ten-second attempts for backend `ACTIVE` status on that exact revision, then retries the JSON `/health` endpoint 18 times with a ten-second delay.
-4. Only after backend health passes does it update and verify the frontend.
-5. It accepts the same frontend HTTP success or intentional login redirect statuses as the prior workflow.
-6. If a changed service subsequently fails deployment or validation, Ansible requests that service's saved prior task definition and fails the pipeline.
+3. Before each update it snapshots existing service-deployment ARNs. The update response supplies the target service-revision ARN, `describe-service-revisions` verifies that revision uses the requested task definition, and `list-service-deployments` identifies the new deployment absent from the snapshot.
+4. It polls that exact deployment with `describe-service-deployments` for up to 30 minutes. Only `SUCCESSFUL` passes; pending, in-progress, stop-requested, and rollback-in-progress states continue polling, while stopped or failed/complete rollback outcomes fail the requested deployment.
+5. After authoritative deployment success, it retries the backend JSON `/health` endpoint 18 times with a ten-second delay.
+6. Only after backend health passes does it update and verify the frontend with the same deployment-aware waiter and existing HTTP smoke test.
+7. If ECS already completed an automatic rollback to the exact saved prior service revision, Ansible verifies that authoritative result. Otherwise it requests the saved task definition, tracks the new rollback deployment rather than an older successful deployment, and verifies backend health afterward. The original deployment remains failed even when rollback succeeds.
 
 The playbook does not force a deployment, recreate services, change networking, load balancers, roles, secrets, task-definition properties, deployment-controller settings, managed database, Gemini, or Google Speech-to-Text/WIF configuration.
 

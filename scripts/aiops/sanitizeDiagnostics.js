@@ -77,6 +77,7 @@ function sanitizeBoolean(value) {
 function sanitizeRecentDeployments(value) {
   if (!Array.isArray(value)) {
     return [{
+      serviceDeploymentArn: UNAVAILABLE,
       status: UNAVAILABLE,
       statusReason: UNAVAILABLE,
       targetServiceRevisionArn: UNAVAILABLE,
@@ -91,6 +92,7 @@ function sanitizeRecentDeployments(value) {
       : {};
 
     return {
+      serviceDeploymentArn: sanitizeScalar(safeDeployment.serviceDeploymentArn),
       status: sanitizeScalar(safeDeployment.status),
       statusReason: sanitizeScalar(safeDeployment.statusReason),
       targetServiceRevisionArn: sanitizeScalar(safeDeployment.targetServiceRevisionArn),
@@ -110,6 +112,13 @@ function sanitizeService(value) {
     activeTaskDefinition: sanitizeScalar(service.activeTaskDefinition),
     status: sanitizeScalar(service.status),
     statusReason: sanitizeScalar(service.statusReason),
+    serviceDeploymentArn: sanitizeScalar(service.serviceDeploymentArn),
+    targetServiceRevisionArn: sanitizeScalar(service.targetServiceRevisionArn),
+    deploymentStatus: sanitizeScalar(service.deploymentStatus),
+    deploymentStatusReason: sanitizeScalar(service.deploymentStatusReason),
+    deploymentLifecycleStage: sanitizeScalar(service.deploymentLifecycleStage),
+    requestedTaskDefinitionArn: sanitizeScalar(service.requestedTaskDefinitionArn),
+    circuitBreakerStatus: sanitizeScalar(service.circuitBreakerStatus),
     recentDeployments: sanitizeRecentDeployments(service.recentDeployments)
   };
 }
@@ -232,11 +241,17 @@ function sanitizeDiagnostics(value) {
       backend: {
         attempted: sanitizeBoolean(backendRollback.attempted),
         result: sanitizeScalar(backendRollback.result),
-        postRollbackHealth: sanitizeScalar(backendRollback.postRollbackHealth)
+        postRollbackHealth: sanitizeScalar(backendRollback.postRollbackHealth),
+        serviceDeploymentArn: sanitizeScalar(backendRollback.serviceDeploymentArn),
+        deploymentStatus: sanitizeScalar(backendRollback.deploymentStatus),
+        deploymentStatusReason: sanitizeScalar(backendRollback.deploymentStatusReason)
       },
       frontend: {
         attempted: sanitizeBoolean(frontendRollback.attempted),
-        result: sanitizeScalar(frontendRollback.result)
+        result: sanitizeScalar(frontendRollback.result),
+        serviceDeploymentArn: sanitizeScalar(frontendRollback.serviceDeploymentArn),
+        deploymentStatus: sanitizeScalar(frontendRollback.deploymentStatus),
+        deploymentStatusReason: sanitizeScalar(frontendRollback.deploymentStatusReason)
       }
     }
   };
