@@ -1,0 +1,50 @@
+name: AIOps FA Demonstration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aiops-fa-demo-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  demonstrate:
+    name: Synthetic deployment-failure analysis
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out demonstration code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install locked production dependencies
+        run: npm ci --omit=dev --ignore-scripts
+
+      - name: Prepare synthetic sanitized diagnostics
+        run: >-
+          node scripts/aiops/demo/runWorkflowDemo.js
+          prepare
+          aiops-demo-sanitized.json
+
+      - name: Run guarded AIOps analysis and write summary
+        env:
+          AIOPS_GEMINI_API_KEY: ${{ secrets.AIOPS_GEMINI_API_KEY }}
+          AIOPS_GEMINI_MODEL: ${{ vars.AIOPS_GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
+        run: >-
+          node scripts/aiops/demo/runWorkflowDemo.js
+          analyze
+          aiops-demo-sanitized.json
