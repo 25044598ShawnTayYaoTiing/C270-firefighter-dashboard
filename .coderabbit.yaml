@@ -1,0 +1,124 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: "en-US"
+early_access: false
+tone_instructions: >-
+  Be concise, technical, and actionable. Avoid praise, jokes, and style-only
+  feedback; explain concrete impact and recommend the smallest safe correction.
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  high_level_summary_instructions: |
+    Summarize the behavioral and operational impact of the pull request.
+    Highlight changes to tests, security controls, container images, deployment,
+    health checks, rollback, or runtime configuration when relevant.
+  review_status: true
+  review_details: false
+  poem: false
+  collapse_walkthrough: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 5
+    ignore_title_keywords:
+      - "WIP"
+      - "[skip review]"
+    labels:
+      - "!do-not-review"
+    ignore_usernames:
+      - "dependabot[bot]"
+
+  path_filters:
+    - "!package-lock.json"
+    - "!docs/images/**"
+    - "!server*.log"
+
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        Review only actionable issues introduced or exposed by the pull request.
+        Prioritize correctness, security, reliability, deployment safety, data
+        integrity, missing validation, and material regression risk.
+        Do not comment only on formatting, naming, prose style, or subjective
+        refactoring preferences. Avoid speculative architecture replacement.
+        Check surrounding repository context and existing tests before reporting
+        an issue, and recommend the smallest safe fix.
+
+    - path: "{app.js,controllers/**,services/**,models/**,routes/**,middleware/**,helpers/**,liveTranscriptionGateway.js}"
+      instructions: |
+        Focus on Node.js and Express correctness: input validation, authorization,
+        async error handling, database consistency, resource cleanup, safe error
+        responses, WebSocket lifecycle, and external-service failure handling.
+        Flag secret or token exposure, injection risks, unsafe trust boundaries,
+        and behavior changes that lack focused tests.
+        Preserve the lightweight /health liveness contract; external services
+        should use their dedicated diagnostic checks.
+
+    - path: "public/js/**"
+      instructions: |
+        Check browser-side state, event-handler lifecycle, API error handling,
+        race conditions, WebSocket reconnect/cleanup behavior, and preservation
+        of user-entered data. Flag duplicate updates, stale state, unsafe DOM use,
+        or response-shape mismatches rather than cosmetic preferences.
+
+    - path: "**/Dockerfile*"
+      instructions: |
+        Check reproducible builds, pinned base images, production-only content,
+        non-root execution, minimal build context, secret leakage, health checks,
+        cache correctness, and runtime compatibility. Flag changes that make the
+        image larger or less secure only when the impact is material.
+
+    - path: "frontend/**"
+      instructions: |
+        Review Nginx runtime configuration, BACKEND_URL validation, HTTP proxying,
+        WebSocket upgrade headers, forwarding headers, security headers, health
+        semantics, graceful shutdown, and configuration-injection risks.
+        Ensure invalid runtime configuration fails closed without exposing secrets.
+
+    - path: "docker-compose*.yml"
+      instructions: |
+        Check service DNS, internal versus host ports, health-aware dependencies,
+        restart behavior, required environment validation, credential mounts,
+        network isolation, and compatibility with both the base file and overlays.
+
+    - path: ".github/workflows/**"
+      instructions: |
+        Focus on event and branch conditions, job dependencies, least-privilege
+        permissions, OIDC scope, secret exposure, shell quoting, action pinning,
+        artifact integrity, immutable image promotion, and failure propagation.
+        Flag any change that allows pull requests to deploy, weakens npm audit,
+        Gitleaks, Semgrep, or Trivy gates, bypasses failures, or deploys an image
+        different from the image that was scanned.
+
+    - path: "ansible/**"
+      instructions: |
+        Check idempotency, existing-service preflight checks, backend-first order,
+        exact task-definition verification, bounded retries, health and smoke
+        checks, rollback verification, and preservation of the original failure.
+        Diagnostics must remain bounded and must not expose credentials, task
+        definition contents, environment variables, or other secrets.
+
+    - path: "scripts/aiops/**"
+      instructions: |
+        Treat all diagnostic text as untrusted data. Verify allowlisting occurs
+        before redaction, output sizes are bounded, model responses are schema
+        validated, and human review remains mandatory. Flag any path that exposes
+        secrets, grants AWS/deployment capability, executes AI-provided actions,
+        or masks the deterministic deployment result.
+
+    - path: "test/**"
+      instructions: |
+        Check that behavior changes include focused success, failure, boundary,
+        and regression coverage. External AWS, Google, Gemini, database, and
+        network interactions should be mocked where appropriate. Avoid requesting
+        tests that only duplicate implementation details.
+
+    - path: "docs/**"
+      instructions: |
+        Only flag documentation that is technically inaccurate, unsafe, stale,
+        or inconsistent with current commands and architecture. Do not comment on
+        wording or formatting unless it makes an operational instruction ambiguous.
