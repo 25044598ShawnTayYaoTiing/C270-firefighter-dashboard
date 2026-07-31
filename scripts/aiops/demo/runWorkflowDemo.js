@@ -125,6 +125,7 @@ async function runWorkflowAnalysis(diagnostics, options = {}) {
 
   let mode = MODES.mocked;
   let liveAttempted = false;
+  let liveFailure = null;
   let analysisResult;
 
   if (apiKey) {
@@ -138,11 +139,13 @@ async function runWorkflowAnalysis(diagnostics, options = {}) {
       liveOptions.clientFactory = options.liveClientFactory;
     }
 
-    analysisResult = await analyzeDiagnostics(normalizedDiagnostics, liveOptions);
-    if (analysisResult.available) {
+    const liveResult = await analyzeDiagnostics(normalizedDiagnostics, liveOptions);
+    if (liveResult.available) {
       mode = MODES.live;
+      analysisResult = liveResult;
     } else {
       mode = MODES.mockedFallback;
+      liveFailure = liveResult.failure;
       analysisResult = await runMockedAnalysis(normalizedDiagnostics);
     }
   } else {
@@ -156,6 +159,7 @@ async function runWorkflowAnalysis(diagnostics, options = {}) {
   return {
     mode,
     liveAttempted,
+    liveFailure,
     selectedModel: model,
     realDeploymentResult: realDeploymentResult || null,
     analysisResult,
@@ -187,6 +191,19 @@ function yesNo(value) {
 
 function renderWorkflowSummary(result) {
   const analysis = result.analysisResult.analysis;
+  const liveFailureLines = result.liveFailure
+    ? [
+      `- Live failure stage: **${safeSummaryText(result.liveFailure.stage)}**`,
+      `- Live safe failure category: **${safeSummaryText(result.liveFailure.category)}**`,
+      ...(result.liveFailure.httpStatus !== null
+        ? [`- Live HTTP status: **${safeSummaryText(result.liveFailure.httpStatus)}**`]
+        : []),
+      ...(result.liveFailure.providerCode
+        ? [`- Live provider error code: **${safeSummaryText(result.liveFailure.providerCode)}**`]
+        : []),
+      `- Live safe failure message: ${safeSummaryText(result.liveFailure.message)}`
+    ]
+    : [];
   const realDeploymentLines = result.realDeploymentResult
     ? [
       `| Real deployment result | ${safeSummaryText(result.realDeploymentResult)} |`,
@@ -224,6 +241,7 @@ function renderWorkflowSummary(result) {
     `- Mode: **${safeSummaryText(result.mode)}**`,
     `- Selected Gemini model: **${safeSummaryText(result.selectedModel)}**`,
     `- Live Gemini attempted: **${yesNo(result.liveAttempted)}**`,
+    ...liveFailureLines,
     `- Classification: **${safeSummaryText(analysis.classification)}**`,
     `- Confidence: **${analysis.confidence.toFixed(2)}**`,
     `- Evidence fields: ${analysis.evidence.map((item) => `\`${safeSummaryText(item)}\``).join(', ')}`,

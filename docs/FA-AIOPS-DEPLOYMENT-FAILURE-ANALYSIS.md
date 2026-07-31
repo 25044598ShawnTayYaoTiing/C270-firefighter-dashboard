@@ -93,7 +93,12 @@ incomplete evidence requires human review.
 
 If Gemini is unavailable, malformed, or returns unsupported evidence, the
 analyzer emits a clearly labelled `FALLBACK` assessment from deterministic
-pipeline facts. A complete successful all-pass record remains
+pipeline facts. The summary records whether LIVE Gemini was attempted and a
+bounded, redacted failure stage and category. API transport failures are kept
+separate from response parsing, schema validation, and evidence-path
+validation. Safe HTTP status and provider code fields are included when
+available; credentials, headers, raw response bodies, and environment data are
+never included. A complete successful all-pass record remains
 `HEALTHY_DEPLOYMENT / LOW`; failed or incomplete records require review. The
 fallback cannot change deployment state.
 
@@ -169,6 +174,26 @@ the same isolated job and labels it:
 The summary keeps the real deployment `SUCCESS` separate from the synthetic
 scenario `FAILED`. The standalone **AIOps FA Demonstration** workflow remains
 available when a deployment is not desired.
+
+For a fast, unmocked check of the production Gemini client, structured-output
+schema, response parser, and validator, run:
+
+```powershell
+$secureKey = Read-Host 'AIOPS_GEMINI_API_KEY' -AsSecureString
+$env:AIOPS_GEMINI_API_KEY = [Net.NetworkCredential]::new('', $secureKey).Password
+$env:AIOPS_GEMINI_MODEL = 'gemini-3.5-flash-lite'
+npm run aiops:smoke:live
+Remove-Item Env:AIOPS_GEMINI_API_KEY
+Remove-Item Env:AIOPS_GEMINI_MODEL
+```
+
+The manual-only **AIOps LIVE Gemini Smoke Test** GitHub workflow performs the
+same check using the `AIOPS_GEMINI_API_KEY` secret and `AIOPS_GEMINI_MODEL`
+variable. It has `contents: read` only, no OIDC permission, no AWS credentials,
+and no deployment or rollback commands. It uses small synthetic sanitized
+failure evidence and no mock client. A fallback writes its safe failure stage
+and category to the Actions summary and fails the smoke job without affecting
+ECS.
 
 Synthetic evidence is used because intentionally breaking ECS for assessment
 evidence would create unnecessary production risk.

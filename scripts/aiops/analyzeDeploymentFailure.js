@@ -7,11 +7,32 @@ const {
   MAX_INPUT_BYTES,
   UNAVAILABLE,
   redactSensitiveText,
-  sanitizeDiagnostics
+  sanitizeDiagnostics,
+  truncateString
 } = require('./sanitizeDiagnostics');
 
 const DEFAULT_AIOPS_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+const SAFE_ERROR_MESSAGE_MAX_LENGTH = 320;
 const DEPLOYMENT_OUTCOMES = Object.freeze(['SUCCESS', 'FAILED']);
+const FAILURE_STAGES = Object.freeze({
+  api: 'API',
+  parsing: 'PARSING',
+  schema: 'SCHEMA',
+  evidenceValidation: 'EVIDENCE_VALIDATION'
+});
+const FAILURE_CATEGORIES = Object.freeze({
+  auth: 'GEMINI_AUTH_ERROR',
+  rateLimit: 'GEMINI_RATE_LIMIT',
+  quota: 'GEMINI_QUOTA_ERROR',
+  model: 'GEMINI_MODEL_ERROR',
+  network: 'GEMINI_NETWORK_ERROR',
+  timeout: 'GEMINI_TIMEOUT',
+  api: 'GEMINI_API_ERROR',
+  responseParse: 'GEMINI_RESPONSE_PARSE_ERROR',
+  schemaValidation: 'GEMINI_SCHEMA_VALIDATION_ERROR',
+  evidenceValidation: 'GEMINI_EVIDENCE_VALIDATION_ERROR',
+  unknown: 'UNKNOWN_GEMINI_ERROR'
+});
 const RISK_LEVELS = Object.freeze(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 const SUCCESS_CLASSIFICATIONS = Object.freeze([
   'HEALTHY_DEPLOYMENT',
@@ -134,6 +155,191 @@ const FIXED_EVIDENCE_PATHS = Object.freeze([
   'rollback.frontend.attempted',
   'rollback.frontend.result'
 ]);
+
+function safeErrorText(value, sensitiveValues = []) {
+  let text = String(value || '');
+
+  for (const sensitiveValue of sensitiveValues) {
+    const secret = String(sensitiveValue || '');
+    if (secret.length >= 4) {
+      text = text.replaceAll(secret, '[REDACTED]');
+    }
+  }
+
+  return truncateString(
+    redactSensitiveText(text || 'No additional safe error detail was available.'),
+    SAFE_ERROR_MESSAGE_MAX_LENGTH
+  );
+}
+
+function parseProviderPayload(value) {
+  const text = String(value || '').trim();
+  if (!text) {
+    return null;
+  }
+
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  const candidates = [text];
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    candidates.push(text.slice(firstBrace, lastBrace + 1));
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch (error) {
+      // Provider messages are not guaranteed to be JSON. Classification continues safely.
+      void error;
+    }
+  }
+
+  return null;
+}
+
+function normalizeHttpStatus(...values) {
+  for (const value of values) {
+    const status = Number(value);
+    if (Number.isInteger(status) && status >= 100 && status <= 599) {
+      return status;
+    }
+  }
+
+  return null;
+}
+
+function safeProviderCode(value, sensitiveValues = []) {
+  const code = safeErrorText(value, sensitiveValues).trim();
+  return /^[A-Za-z0-9_.-]{1,80}$/.test(code) ? code : null;
+}
+
+function createFailureDetails(stage, category, options = {}) {
+  return {
+    stage: Object.values(FAILURE_STAGES).includes(stage)
+      ? stage
+      : FAILURE_STAGES.api,
+    category: Object.values(FAILURE_CATEGORIES).includes(category)
+      ? category
+      : FAILURE_CATEGORIES.unknown,
+    httpStatus: normalizeHttpStatus(options.httpStatus),
+    providerCode: safeProviderCode(options.providerCode, options.sensitiveValues),
+    message: safeErrorText(options.message, options.sensitiveValues)
+  };
+}
+
+function classifyGeminiApiError(error, options = {}) {
+  const sensitiveValues = [options.apiKey, ...(options.sensitiveValues || [])];
+  const payload = parseProviderPayload(error && error.message);
+  const providerError = payload && payload.error && typeof payload.error === 'object'
+    ? payload.error
+    : payload;
+  const providerDetails = providerError && Array.isArray(providerError.details)
+    ? providerError.details
+    : [];
+  const detailReason = providerDetails
+    .map((detail) => detail && (detail.reason || detail.status))
+    .find(Boolean);
+  const httpStatus = normalizeHttpStatus(
+    error && error.status,
+    error && error.statusCode,
+    providerError && providerError.code,
+    error && error.code
+  );
+  const providerCode = safeProviderCode(
+    (providerError && (providerError.status || providerError.reason))
+      || detailReason
+      || (error && typeof error.code === 'string' ? error.code : null),
+    sensitiveValues
+  );
+  const providerMessage = (providerError && providerError.message)
+    || (error && error.message)
+    || (error && error.name)
+    || 'Gemini request failed without additional safe detail.';
+  const message = safeErrorText(providerMessage, sensitiveValues);
+  const descriptor = [
+    error && error.name,
+    error && error.code,
+    providerCode,
+    message
+  ].filter(Boolean).join(' ').toLowerCase();
+  let category = FAILURE_CATEGORIES.unknown;
+
+  if (
+    httpStatus === 408
+    || httpStatus === 504
+    || /(?:abort|deadline|timed?\s*out|timeout|etimedout|und_err_connect_timeout)/i.test(descriptor)
+  ) {
+    category = FAILURE_CATEGORIES.timeout;
+  } else if (
+    httpStatus === 429
+    && /(?:quota|resource[_ -]?exhausted|billing)/i.test(descriptor)
+  ) {
+    category = FAILURE_CATEGORIES.quota;
+  } else if (httpStatus === 429 || /(?:rate[_ -]?limit|too many requests)/i.test(descriptor)) {
+    category = FAILURE_CATEGORIES.rateLimit;
+  } else if (/(?:quota|resource[_ -]?exhausted|billing limit)/i.test(descriptor)) {
+    category = FAILURE_CATEGORIES.quota;
+  } else if (
+    httpStatus === 401
+    || httpStatus === 403
+    || /(?:api key|unauthenticated|unauthorized|authentication|permission denied|forbidden)/i.test(descriptor)
+  ) {
+    category = FAILURE_CATEGORIES.auth;
+  } else if (
+    httpStatus === 404
+    || /(?:model[^.]{0,80}(?:not found|unsupported|unavailable|invalid)|invalid[^.]{0,40}model)/i.test(descriptor)
+  ) {
+    category = FAILURE_CATEGORIES.model;
+  } else if (
+    /(?:enotfound|eai_again|econnreset|econnrefused|socket|fetch failed|network)/i.test(descriptor)
+  ) {
+    category = FAILURE_CATEGORIES.network;
+  } else if (httpStatus !== null || (error && error.name === 'ApiError')) {
+    category = FAILURE_CATEGORIES.api;
+  }
+
+  return createFailureDetails(FAILURE_STAGES.api, category, {
+    httpStatus,
+    providerCode,
+    message,
+    sensitiveValues
+  });
+}
+
+function classifyResponseFailure(error, stage, sensitiveValues = []) {
+  const category = stage === FAILURE_STAGES.parsing
+    ? FAILURE_CATEGORIES.responseParse
+    : stage === FAILURE_STAGES.evidenceValidation
+      ? FAILURE_CATEGORIES.evidenceValidation
+      : FAILURE_CATEGORIES.schemaValidation;
+
+  return createFailureDetails(stage, category, {
+    message: error && error.message,
+    sensitiveValues
+  });
+}
+
+function formatFailureForLog(failure) {
+  if (!failure) {
+    return 'stage=API category=UNKNOWN_GEMINI_ERROR message=No safe failure detail was available.';
+  }
+
+  const fields = [
+    `stage=${failure.stage}`,
+    `category=${failure.category}`
+  ];
+  if (failure.httpStatus !== null) {
+    fields.push(`httpStatus=${failure.httpStatus}`);
+  }
+  if (failure.providerCode) {
+    fields.push(`providerCode=${failure.providerCode}`);
+  }
+  fields.push(`message=${failure.message}`);
+  return fields.join(' ');
+}
 
 function resolvePath(value, fieldPath) {
   return fieldPath.split('.').reduce((current, segment) => {
@@ -379,11 +585,21 @@ function fallbackAnalysis(diagnostics, deploymentOutcome) {
   };
 }
 
-function unavailableResult(diagnostics = null, model = null, deploymentOutcome = null) {
+function unavailableResult(
+  diagnostics = null,
+  model = null,
+  deploymentOutcome = null,
+  options = {}
+) {
   const outcome = normalizeDeploymentOutcome(
     deploymentOutcome || (diagnostics && diagnostics.deployment.outcome)
   );
   const analysis = fallbackAnalysis(diagnostics, outcome);
+  const failure = options.failure || createFailureDetails(
+    FAILURE_STAGES.api,
+    FAILURE_CATEGORIES.unknown,
+    { message: 'Gemini analysis was unavailable without additional safe failure detail.' }
+  );
 
   return {
     available: false,
@@ -391,6 +607,8 @@ function unavailableResult(diagnostics = null, model = null, deploymentOutcome =
     message: 'AI analysis unavailable',
     model,
     deploymentOutcome: outcome,
+    liveGeminiAttempted: options.liveGeminiAttempted === true,
+    failure,
     analysis,
     diagnostics,
     humanReviewRequired: analysis.humanReviewRequired
@@ -403,8 +621,14 @@ async function analyzeDiagnostics(rawDiagnostics, options = {}) {
 
   try {
     diagnostics = sanitizeDiagnostics(rawDiagnostics);
-  } catch {
-    return unavailableResult(null, null, requestedOutcome);
+  } catch (error) {
+    return unavailableResult(null, null, requestedOutcome, {
+      liveGeminiAttempted: false,
+      failure: classifyResponseFailure(
+        error,
+        FAILURE_STAGES.evidenceValidation
+      )
+    });
   }
 
   const deploymentOutcome = normalizeDeploymentOutcome(
@@ -418,8 +642,26 @@ async function analyzeDiagnostics(rawDiagnostics, options = {}) {
       || DEFAULT_AIOPS_GEMINI_MODEL
   ).trim();
 
-  if (!apiKey || !model) {
-    return unavailableResult(diagnostics, model || null, deploymentOutcome);
+  if (!apiKey) {
+    return unavailableResult(diagnostics, model || null, deploymentOutcome, {
+      liveGeminiAttempted: false,
+      failure: createFailureDetails(
+        FAILURE_STAGES.api,
+        FAILURE_CATEGORIES.auth,
+        { message: 'AIOPS_GEMINI_API_KEY is not configured.' }
+      )
+    });
+  }
+
+  if (!model) {
+    return unavailableResult(diagnostics, null, deploymentOutcome, {
+      liveGeminiAttempted: false,
+      failure: createFailureDetails(
+        FAILURE_STAGES.api,
+        FAILURE_CATEGORIES.model,
+        { message: 'AIOPS_GEMINI_MODEL is not configured.' }
+      )
+    });
   }
 
   const evidencePaths = collectEvidencePaths(diagnostics);
@@ -428,9 +670,10 @@ async function analyzeDiagnostics(rawDiagnostics, options = {}) {
     httpOptions: { timeout: 30000 }
   }));
 
+  let response;
   try {
     const client = clientFactory(apiKey);
-    const response = await client.models.generateContent({
+    response = await client.models.generateContent({
       model,
       contents: buildPrompt(diagnostics, evidencePaths),
       config: {
@@ -439,8 +682,30 @@ async function analyzeDiagnostics(rawDiagnostics, options = {}) {
         responseSchema: RESPONSE_SCHEMA
       }
     });
+  } catch (error) {
+    return unavailableResult(diagnostics, model, deploymentOutcome, {
+      liveGeminiAttempted: true,
+      failure: classifyGeminiApiError(error, { apiKey })
+    });
+  }
+
+  let parsedResponse;
+  try {
+    parsedResponse = parseResponseObject(extractResponseText(response));
+  } catch (error) {
+    return unavailableResult(diagnostics, model, deploymentOutcome, {
+      liveGeminiAttempted: true,
+      failure: classifyResponseFailure(
+        error,
+        FAILURE_STAGES.parsing,
+        [apiKey]
+      )
+    });
+  }
+
+  try {
     const analysis = validateAnalysisResponse(
-      parseResponseObject(extractResponseText(response)),
+      parsedResponse,
       evidencePaths,
       diagnostics
     );
@@ -451,12 +716,20 @@ async function analyzeDiagnostics(rawDiagnostics, options = {}) {
       message: null,
       model,
       deploymentOutcome,
+      liveGeminiAttempted: true,
+      failure: null,
       analysis,
       diagnostics,
       humanReviewRequired: analysis.humanReviewRequired
     };
-  } catch {
-    return unavailableResult(diagnostics, model, deploymentOutcome);
+  } catch (error) {
+    const validationStage = /evidence/i.test(String(error && error.message))
+      ? FAILURE_STAGES.evidenceValidation
+      : FAILURE_STAGES.schema;
+    return unavailableResult(diagnostics, model, deploymentOutcome, {
+      liveGeminiAttempted: true,
+      failure: classifyResponseFailure(error, validationStage, [apiKey])
+    });
   }
 }
 
@@ -509,6 +782,20 @@ function renderSummary(result) {
     : ['- No notable observations were reported.'];
   const duration = displayPath(diagnostics, 'deployment.durationSeconds');
   const durationText = duration === UNAVAILABLE ? UNAVAILABLE : `${duration} seconds`;
+  const liveAttempted = result.liveGeminiAttempted === true || result.available === true;
+  const failureLines = !result.available && result.failure
+    ? [
+      `- Failure stage: **${escapeMarkdown(result.failure.stage)}**`,
+      `- Safe failure category: **${escapeMarkdown(result.failure.category)}**`,
+      ...(result.failure.httpStatus !== null
+        ? [`- HTTP status: **${escapeMarkdown(result.failure.httpStatus)}**`]
+        : []),
+      ...(result.failure.providerCode
+        ? [`- Provider error code: **${escapeMarkdown(result.failure.providerCode)}**`]
+        : []),
+      `- Safe failure message: ${escapeMarkdown(result.failure.message)}`
+    ]
+    : [];
 
   const lines = [
     '# AIOps Deployment Summary',
@@ -518,6 +805,8 @@ function renderSummary(result) {
     '## Execution',
     `- Mode: **${escapeMarkdown(result.mode || (result.available ? 'LIVE GEMINI' : 'FALLBACK'))}**`,
     `- Model: **${escapeMarkdown(result.model || DEFAULT_AIOPS_GEMINI_MODEL)}**`,
+    `- Live Gemini attempted: **${liveAttempted ? 'YES' : 'NO'}**`,
+    ...failureLines,
     `- Deployment outcome: **${escapeMarkdown(analysis.deploymentOutcome)}**`,
     `- Classification: **${escapeMarkdown(analysis.classification)}**`,
     `- Risk level: **${escapeMarkdown(analysis.riskLevel)}**`,
@@ -607,8 +896,15 @@ async function runCli() {
     }
     const rawDiagnostics = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
     result = await analyzeDiagnostics(rawDiagnostics, { deploymentOutcome });
-  } catch {
-    result = unavailableResult(null, selectedModel, deploymentOutcome);
+  } catch (error) {
+    result = unavailableResult(null, selectedModel, deploymentOutcome, {
+      liveGeminiAttempted: false,
+      failure: classifyResponseFailure(
+        error,
+        FAILURE_STAGES.evidenceValidation,
+        [process.env.AIOPS_GEMINI_API_KEY]
+      )
+    });
   }
 
   const persistedResult = {
@@ -617,6 +913,8 @@ async function runCli() {
     message: result.message,
     model: result.model,
     deploymentOutcome: result.deploymentOutcome,
+    liveGeminiAttempted: result.liveGeminiAttempted,
+    failure: result.failure,
     analysis: result.analysis,
     humanReviewRequired: result.humanReviewRequired
   };
@@ -627,13 +925,23 @@ async function runCli() {
   if (result.available) {
     console.log('[AIOps] Advisory deployment assessment generated.');
   } else {
-    console.warn('[AIOps] Gemini unavailable; deterministic fallback assessment generated.');
+    console.warn(
+      `[AIOps] Gemini unavailable; deterministic fallback assessment generated. ${formatFailureForLog(result.failure)}`
+    );
   }
 }
 
 if (require.main === module) {
-  runCli().catch(() => {
-    console.warn('[AIOps] Deployment assessment unavailable.');
+  runCli().catch((error) => {
+    const failure = createFailureDetails(
+      FAILURE_STAGES.evidenceValidation,
+      FAILURE_CATEGORIES.unknown,
+      {
+        message: error && error.message,
+        sensitiveValues: [process.env.AIOPS_GEMINI_API_KEY]
+      }
+    );
+    console.warn(`[AIOps] Deployment assessment unavailable. ${formatFailureForLog(failure)}`);
     process.exitCode = 0;
   });
 }
@@ -642,19 +950,27 @@ module.exports = {
   CLASSIFICATIONS,
   DEFAULT_AIOPS_GEMINI_MODEL,
   DEPLOYMENT_OUTCOMES,
+  FAILURE_CATEGORIES,
+  FAILURE_STAGES,
   FAILURE_CLASSIFICATIONS,
   FIXED_SYSTEM_INSTRUCTION,
   RESPONSE_KEYS,
   RISK_LEVELS,
+  SAFE_ERROR_MESSAGE_MAX_LENGTH,
   SUCCESS_CLASSIFICATIONS,
   allPipelineChecksPassed,
   analyzeDiagnostics,
   buildPrompt,
+  classifyGeminiApiError,
+  classifyResponseFailure,
   collectEvidencePaths,
+  createFailureDetails,
   fallbackAnalysis,
+  formatFailureForLog,
   parseResponseObject,
   renderSummary,
   resolvePath,
+  safeErrorText,
   unavailableResult,
   validateAnalysisResponse
 };

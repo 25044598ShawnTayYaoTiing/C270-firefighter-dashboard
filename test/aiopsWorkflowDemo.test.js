@@ -131,9 +131,13 @@ test('GitHub AIOps demo clearly labels a mocked fallback after a live failure', 
   assert.equal(result.mode, MODES.mockedFallback);
   assert.equal(result.liveAttempted, true);
   assert.equal(result.selectedModel, 'test-fallback-model');
+  assert.equal(result.liveFailure.stage, 'API');
+  assert.equal(result.liveFailure.category, 'UNKNOWN_GEMINI_ERROR');
   assert.match(summary, /Mode: \*\*MOCKED FALLBACK \(LIVE GEMINI UNAVAILABLE\)\*\*/);
   assert.match(summary, /Selected Gemini model: \*\*test-fallback-model\*\*/);
   assert.match(summary, /Live Gemini attempted: \*\*YES\*\*/);
+  assert.match(summary, /Live failure stage: \*\*API\*\*/);
+  assert.match(summary, /Live safe failure category: \*\*UNKNOWN\\_GEMINI\\_ERROR\*\*/);
   assert.doesNotMatch(summary, new RegExp(apiKey));
 });
 
