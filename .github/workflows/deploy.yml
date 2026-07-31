@@ -1,3 +1,4 @@
+# FA responsibility: Kiki — CI/CD orchestration
 name: DevSecOps CI/CD
 
 on:
@@ -56,9 +57,11 @@ jobs:
       - name: Run automated tests
         run: npm test
 
+      # FA responsibility: Fatin — production dependency security gate
       - name: Block HIGH or CRITICAL production dependency vulnerabilities
         run: npm audit --omit=dev --audit-level=high
 
+  # FA responsibility: Fatin — Gitleaks secret-scanning gate
   secret-scan:
     name: Secret scanning gate
     permissions:
@@ -80,6 +83,7 @@ jobs:
           GITLEAKS_ENABLE_SUMMARY: 'true'
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'true'
 
+  # FA responsibility: Fatin — Semgrep source-security gate
   sast:
     name: Source security gate
     runs-on: ubuntu-latest
@@ -114,6 +118,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+  # FA responsibility: Kiki — gated build and immutable artifact orchestration
   build-and-scan:
     name: Build and container security gate
     needs:
@@ -150,6 +155,7 @@ jobs:
           echo "backend_image=${BACKEND_IMAGE}" >> "$GITHUB_OUTPUT"
           echo "frontend_image=${FRONTEND_IMAGE}" >> "$GITHUB_OUTPUT"
 
+      # FA responsibility: Fatin — Trivy container security gate
       - name: Install pinned Trivy
         uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
         with:
@@ -224,6 +230,7 @@ jobs:
             echo '- Tests, Gitleaks, npm audit, Semgrep, and Trivy passed before any AWS authentication.'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # FA responsibility: Shawn — AWS ECS deployment automation
   deploy:
     name: Push, deploy, verify, and smoke test
     needs:
@@ -547,6 +554,7 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # FA responsibility: Shawn — read-only deployment-failure AIOps
   aiops-analysis:
     name: Advisory AIOps deployment failure analysis
     needs: deploy

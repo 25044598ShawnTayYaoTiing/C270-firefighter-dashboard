@@ -1,4 +1,5 @@
 #!/bin/sh
+# FA responsibility: Min — frontend runtime configuration validation
 set -eu
 
 backend_url="${BACKEND_URL:-}"

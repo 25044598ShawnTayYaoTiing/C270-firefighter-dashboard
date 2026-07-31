@@ -425,10 +425,19 @@ Inside Docker, Node.js calls Gemini and Google Speech-to-Text. Use the optional 
 Useful checks:
 
 ```powershell
+docker compose config --quiet
 docker compose ps
 docker compose logs --tail 100 frontend backend
 Invoke-RestMethod http://localhost:3001/health
+npm run compose:smoke
 ```
+
+The smoke test uses an isolated Compose project, temporary local ports, and
+non-production placeholder configuration. It builds both images, verifies
+service-name DNS and proxy communication, demonstrates backend stop/recovery,
+and removes its containers afterward. See
+[FA Docker Compose](docs/FA-DOCKER-COMPOSE.md) for the architecture,
+validation commands, and Ji Xun's FA demonstration procedure.
 
 Stop or restart without deleting model volumes:
 

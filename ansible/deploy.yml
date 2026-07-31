@@ -1,4 +1,5 @@
 ---
+# FA responsibility: Shawn — ECS deployment sequencing and rollback
 - name: Deploy Firefighter Dashboard ECS Express services
   hosts: production
   gather_facts: false
