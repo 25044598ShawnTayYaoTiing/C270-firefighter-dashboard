@@ -11,7 +11,7 @@ This map assigns responsibility for the repository's current DevOps implementati
 | Thein | Backend Node.js Dockerisation | Runtime lifecycle and production-container validation | MEDIUM | Root `Dockerfile`, production dependency installation, distroless non-root runtime, and container health check |
 | Ji Xun | Local Docker Compose orchestration | Automated integration smoke testing and recovery validation | MEDIUM | `docker-compose.yml`, `docker-compose.gcp.yml`, `scripts/compose-smoke.js`, and `docs/FA-DOCKER-COMPOSE.md` |
 | Shawn | AWS cloud deployment and deployment reliability | Ansible rollback/diagnostics and advisory AIOps | LARGE | Deployment portion of `.github/workflows/deploy.yml`, all `ansible/` deployment automation, `scripts/aiops/`, and deployment evidence documents |
-| Fatin | DevSecOps security gates | Security evidence, dependency governance, and supply-chain controls | LARGE | npm audit, Gitleaks, Semgrep, Trivy, CodeQL, Dependabot, security artifacts, and fail-closed workflow dependencies |
+| Fatin | DevSecOps security gates | Security evidence, dependency governance, and supply-chain controls | LARGE | npm audit, Gitleaks, Semgrep, Trivy, Dependabot, security artifacts, and fail-closed workflow dependencies |
 
 The allocation is technically coherent but not equal in size. Shawn has the broadest current scope because cloud identity, image publication, ECS task definitions, deployment ordering, verification, rollback, diagnostics, and AIOps form one integrated production responsibility. Min has the narrowest current scope. Ji Xun's original Compose scope has been strengthened with automated DNS, health, proxy, degradation, recovery, and cleanup validation without overlapping another member's primary ownership.
 
@@ -90,7 +90,6 @@ These extensions deepen pipeline engineering without taking ownership of scanner
 | `.github/workflows/deploy.yml` — test execution and build-step orchestration | Primary | CI sequence and build hand-off |
 | `.github/workflows/deploy.yml` — scanned image artifact upload/download and checksums | Shared with Fatin | Immutable artifact promotion; Fatin owns security intent |
 | `.github/workflows/deploy.yml` — deploy-job invocation and AIOps-job condition | Shared with Shawn | Kiki owns job wiring; Shawn owns deployment/AIOps behavior |
-| `.github/workflows/codeql.yml` — triggers and job lifecycle | Shared with Fatin | Kiki owns workflow behavior; Fatin owns analysis policy |
 | `.github/dependabot.yml` — GitHub Actions update cadence | Shared with Fatin | Automation scheduling; Fatin owns dependency-risk response |
 | `test/*.test.js` | Supporting | The CI job executes the complete test suite; feature owners remain responsible for test content |
 | `README.md` — DevSecOps pipeline overview | Supporting | User-facing pipeline explanation |
@@ -449,7 +448,6 @@ Fatin owns the security controls that decide whether a release is eligible:
 - backend and frontend image scanning for HIGH and CRITICAL OS/library vulnerabilities;
 - fail-closed scanner exit behavior;
 - security artifacts and retention;
-- CodeQL as optional supplementary analysis;
 - Dependabot update coverage for npm, GitHub Actions, and both Dockerfiles;
 - secret-handling and vulnerability-exception guidance;
 - security-gate placement before AWS authentication;
@@ -475,7 +473,6 @@ Recommended extension:
 | `.github/workflows/deploy.yml` — `sast` job | Primary within shared workflow | Semgrep policy and evidence |
 | `.github/workflows/deploy.yml` — Trivy steps | Primary within shared workflow | Image vulnerability gate |
 | `.github/workflows/deploy.yml` — security report artifacts | Primary/shared with Kiki | Evidence policy and retention |
-| `.github/workflows/codeql.yml` | Primary security policy | Optional supplementary code analysis |
 | `.github/dependabot.yml` | Primary security policy | Automated dependency-update coverage |
 | `SECURITY.md` | Primary documentation | Secret, vulnerability, exception, and response policy |
 | `docs/FA-L4-DEVSECOPS.md` | Primary evidence | Gate rationale, demonstration, and rubric mapping |
@@ -501,8 +498,7 @@ Fatin should demonstrate:
 4. a safe failed-gate scenario where deployment cannot start;
 5. pull-request Gitleaks permission and behavior;
 6. exact scanned-image preservation;
-7. optional CodeQL versus mandatory Semgrep;
-8. Dependabot coverage and the vulnerability response process.
+7. Dependabot coverage and the vulnerability response process.
 
 ### Technical Concepts to Explain
 
@@ -516,7 +512,7 @@ Fatin should demonstrate:
 
 ### Current Scope Size
 
-**LARGE.** Four mandatory security controls, fail-closed release policy, scanner pinning, artifact evidence, supplementary CodeQL, Dependabot, and security governance provide broad technical content. It is substantial but more bounded than Shawn's end-to-end production operations scope.
+**LARGE.** Four mandatory security controls, fail-closed release policy, scanner pinning, artifact evidence, Dependabot, and security governance provide broad technical content. It is substantial but more bounded than Shawn's end-to-end production operations scope.
 
 ## Shared Components
 

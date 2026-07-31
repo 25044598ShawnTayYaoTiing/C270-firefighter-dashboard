@@ -154,8 +154,6 @@ Repository variables (not secrets):
 | `ECS_FRONTEND_SERVICE_ARN` | Yes for deploy | Full ARN of the existing `firefighter-frontend` ECS Express service. |
 | `APP_HEALTH_URL` | Yes for deploy | Public HTTPS URL ending in `/health`; must return `{ "status": "ok" }`. |
 | `APP_SMOKE_URL` | Yes for deploy | Public application root; a 2xx response or expected login redirect is accepted. |
-| `ENABLE_CODEQL` | Optional | Set to `true` only when GitHub Code Scanning is available for this repository. |
-
 Runtime application values such as MySQL credentials, `SESSION_SECRET`, and `GEMINI_API_KEY` stay in ECS task/runtime configuration. They are not GitHub workflow inputs, Docker build arguments, or ECR image content.
 
 ## 10. Required AWS IAM configuration
@@ -253,7 +251,6 @@ I converted the existing test-and-deploy job into an explicit fail-closed DevSec
 ## 14. Scope and limitations
 
 - This repository deploys the backend and frontend images through two existing ECS Express services, `firefighter-backend` and `firefighter-frontend`. The workflow resolves each service's exact single container name from its active task definition and fails before registration if either service does not have exactly one container; it does not invent another ECS service.
-- CodeQL is optional because GitHub Code Scanning availability differs by repository plan. Semgrep remains the always-on, deploy-gating source-security scan.
 - Local validation cannot prove a real AWS deployment without authorization; only GitHub Actions with correctly configured repository variables and IAM can execute that path.
 - A post-deployment failure can occur only after the new revision has been requested. The workflow therefore restores the saved previous revision; it cannot make a failed rollout never have been attempted.
 
