@@ -1412,6 +1412,8 @@ a {
 
 .transcript-text {
 	min-height: 48px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 }
 
 .empty-transcript {

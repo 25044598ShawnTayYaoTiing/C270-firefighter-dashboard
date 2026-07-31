@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const TRANSCRIPT_STORAGE_KEY = 'firefighter.transcriptDraft';
+  const transcriptTransfer = window.TranscriptTransfer;
   const CREATE_REPORT_DRAFT_KEY = 'firefighter.createReportDraft';
   const DRAFT_SAVE_DELAY_MS = 700;
   const OTHER_INCIDENT_TYPE_VALUE = '__other_special_incident__';
@@ -35,29 +35,23 @@ document.addEventListener('DOMContentLoaded', () => {
   // SHAWN 25044598 - Transcript handoff: Loads transcript text sent from Live Call Intake.
   function loadSentTranscript() {
     const params = new URLSearchParams(window.location.search);
-    const directTranscript = params.get('transcriptText');
-    const storedTranscript = getStorageItem(TRANSCRIPT_STORAGE_KEY);
-    let loadedTranscript = false;
+    if (params.get('transcript') !== 'sent' || !transcriptTransfer) return false;
 
-    if (directTranscript && !transcriptInput.value.trim()) {
-      transcriptInput.value = directTranscript;
-      dispatchFieldUpdate(transcriptInput);
-      loadedTranscript = true;
-    }
+    const storage = getLocalStorage();
+    if (!storage) return false;
 
-    if (params.get('transcript') === 'sent') {
-      if (storedTranscript && !transcriptInput.value.trim()) {
-        transcriptInput.value = storedTranscript;
-        dispatchFieldUpdate(transcriptInput);
-        loadedTranscript = true;
-      }
+    const handoff = transcriptTransfer.consume(storage);
+    if (!handoff) return false;
 
-      removeStorageItem(TRANSCRIPT_STORAGE_KEY);
-    }
-
-    if (loadedTranscript) {
-      saveDraftSoon();
-    }
+    transcriptInput.value = handoff.transcript;
+    transcriptInput.dataset.transcriptSource = handoff.source;
+    dispatchFieldUpdate(transcriptInput);
+    saveDraftSoon();
+    params.delete('transcript');
+    const nextQuery = params.toString();
+    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
+    window.history.replaceState({}, document.title, nextUrl);
+    return true;
   }
 
   // Done BY SHAWN ID 25044598
@@ -65,9 +59,9 @@ document.addEventListener('DOMContentLoaded', () => {
   async function generateAiReport() {
     if (isGeneratingReport) return;
 
-    const transcript = transcriptInput.value.trim();
+    const transcript = transcriptInput.value;
 
-    if (!transcript) {
+    if (!transcript.trim()) {
       showNotice('warning', 'Paste or send a transcript before generating a report.');
       return;
     }
@@ -124,10 +118,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // SHAWN 25044598 - Restore/Discard Draft: Detects an unfinished local draft before loading a sent transcript.
   function setupDraftRecovery() {
+    // An explicit transcript handoff takes precedence over stale local draft recovery.
+    if (loadSentTranscript()) return;
+
     const savedDraft = readSavedDraft();
 
     if (!savedDraft) {
-      loadSentTranscript();
       return;
     }
 
@@ -167,7 +163,8 @@ document.addEventListener('DOMContentLoaded', () => {
     hasPendingDraftRecovery = true;
     restoreDraftButton.onclick = () => {
       restoreDraft(savedDraft);
-      removeStorageItem(TRANSCRIPT_STORAGE_KEY);
+      const storage = getLocalStorage();
+      if (transcriptTransfer && storage) transcriptTransfer.clear(storage);
       hasPendingDraftRecovery = false;
       draftRecoveryMessage.textContent = 'Draft restored. Continue editing, or discard it to clear the form.';
       saveDraftSoon();
@@ -284,7 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // SHAWN 25044598 - Auto Save Draft: Collects the fields needed to rebuild the Create Report form.
   function collectDraft() {
     return {
-      transcript: transcriptInput.value.trim(),
+      transcript: transcriptInput.value,
       reportingOfficerId: getFieldValue('reportingOfficerId'),
       incidentType: getFieldValue('incidentType'),
       customIncidentType: getFieldValue('customIncidentType'),
@@ -331,7 +328,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (params.get('reportSaved') !== '1') return;
 
     removeStorageItem(CREATE_REPORT_DRAFT_KEY);
-    removeStorageItem(TRANSCRIPT_STORAGE_KEY);
+    const storage = getLocalStorage();
+    if (transcriptTransfer && storage) transcriptTransfer.clear(storage);
     params.delete('reportSaved');
 
     const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
@@ -391,6 +389,14 @@ document.addEventListener('DOMContentLoaded', () => {
     dispatchFieldUpdate(field);
 
     updateCompletionWidget();
+  }
+
+  function getLocalStorage() {
+    try {
+      return window.localStorage;
+    } catch (error) {
+      return null;
+    }
   }
 
   // SHAWN 25044598 - Custom Incident Type: Reveals the custom field only when "Other" is selected.

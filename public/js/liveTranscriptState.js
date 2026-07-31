@@ -4,7 +4,7 @@
   else root.LiveTranscriptState = api;
 }(typeof globalThis !== 'undefined' ? globalThis : this, () => {
   function normalize(text) {
-    return String(text || '').replace(/\s+/g, ' ').trim();
+    return String(text || '').replace(/\r\n?/g, '\n').trim();
   }
 
   function joinTranscript(...parts) {
