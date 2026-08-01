@@ -67,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
       controls.unverifiedAcknowledgement.addEventListener('change', () => {
         if (controls.unverifiedAcknowledgement.checked) {
           clearFieldError('unverifiedLocationAcknowledged');
+          clearFieldError('incidentLocation');
         }
       });
     }
@@ -612,6 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return false;
       }
 
+      clearFieldError('incidentLocation');
       clearFieldError('unverifiedLocationAcknowledged');
       return true;
     }

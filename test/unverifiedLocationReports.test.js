@@ -160,6 +160,36 @@ test('verified create uses server-trusted coordinates rather than the browser fl
   }
 });
 
+test('failed location with acknowledgement saves the original text as UNVERIFIED', { concurrency: false }, async () => {
+  const originalCreate = incidentModel.createIncident;
+  let savedIncident;
+  incidentModel.createIncident = async (incident) => {
+    savedIncident = incident;
+    return 'INC-ACKNOWLEDGED-UNVERIFIED';
+  };
+
+  try {
+    const originalLocation = 'Unverified access road near Station 4';
+    const req = requestFor(ROLES.NORMAL, {
+      incidentLocation: originalLocation,
+      latitude: '',
+      longitude: '',
+      locationVerified: '',
+      unverifiedLocationAcknowledged: 'true'
+    });
+    const res = response();
+    await incidentController.createIncident(req, res, assert.fail);
+
+    assert.equal(savedIncident.incidentLocation, originalLocation);
+    assert.equal(savedIncident.locationVerificationStatus, LOCATION_VERIFICATION_STATUSES.UNVERIFIED);
+    assert.equal(savedIncident.latitude, '');
+    assert.equal(savedIncident.longitude, '');
+    assert.equal(res.redirectUrl, '/incidents?unverifiedSubmitted=1');
+  } finally {
+    incidentModel.createIncident = originalCreate;
+  }
+});
+
 test('forged browser verification is saved UNVERIFIED only after acknowledgement', { concurrency: false }, async () => {
   const originalCreate = incidentModel.createIncident;
   let savedIncident;
@@ -457,4 +487,20 @@ test('Create Report exposes an accessible unverified warning and acknowledgement
   assert.match(createReport, /will not appear on the firefighter dashboard/i);
   assert.match(formScript, /getSubmissionLocationDecision/);
   assert.match(formScript, /submissionGuard\.tryLock\(\)/);
+});
+
+test('acknowledged unverified submission clears the stale location error before submit', () => {
+  const formScript = fs.readFileSync(
+    path.join(__dirname, '..', 'public', 'js', 'incidentFormQuality.js'),
+    'utf8'
+  );
+
+  assert.match(
+    formScript,
+    /if \(controls\.unverifiedAcknowledgement\.checked\) \{[\s\S]*?clearFieldError\('unverifiedLocationAcknowledged'\);[\s\S]*?clearFieldError\('incidentLocation'\);/
+  );
+  assert.match(
+    formScript,
+    /if \(decision\.status === locationVerification\.STATES\.UNVERIFIED\)[\s\S]*?if \(!decision\.allowed\) \{[\s\S]*?return false;[\s\S]*?\}[\s\S]*?clearFieldError\('incidentLocation'\);[\s\S]*?clearFieldError\('unverifiedLocationAcknowledged'\);[\s\S]*?return true;/
+  );
 });
