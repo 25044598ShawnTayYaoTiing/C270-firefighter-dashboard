@@ -426,6 +426,38 @@ roll back, repair, approve releases, or guarantee that its diagnosis is correct.
 
 The repository implementation proves the guarded workflow and simulation paths; it does not by itself prove that a real failed ECS rollout has already completed live Gemini analysis. See [Gemini-Assisted Deployment Summary and Failure Diagnostics](docs/FA-GEMINI-DEPLOYMENT-SUMMARY-AND-DIAGNOSTICS.md).
 
+### Verified production deployment evidence
+
+The normal deployment for commit [`0fa36fc`](https://github.com/25044598ShawnTayYaoTiing/C270-firefighter-dashboard/commit/0fa36fc6ccf664479fac232bb4358fe25cde68b5) was verified in [GitHub Actions run 30708343101](https://github.com/25044598ShawnTayYaoTiing/C270-firefighter-dashboard/actions/runs/30708343101).
+
+Authoritative deployment result:
+
+- Deployment outcome: `SUCCESS`
+- ECS stabilization: `PASS`
+- Backend health: `PASS` (`/health` returned HTTP 200 and `{"status":"ok"}`)
+- Frontend smoke test: `PASS` (HTTP 200)
+- Rollback: not required
+- Backend task definition: `default-firefighter-backend:45`
+- Frontend task definition: `default-firefighter-frontend:36`
+- Backend and frontend images: tagged with the full commit SHA `0fa36fc6ccf664479fac232bb4358fe25cde68b5`
+- Recorded deployment duration: 1,215 seconds
+
+Gemini summary validation status:
+
+- Live Gemini request: attempted and returned successfully
+- Model: `gemini-3.5-flash-lite`
+- Structured validation: `PASS`
+- Evidence validation: `FAIL` because the response omitted required evidence `E6`
+- Corrective evidence retry: attempted once
+- Official assessment source: `DETERMINISTIC FALLBACK`
+- Classification retained by the deterministic success assessment: `HEALTHY_DEPLOYMENT`
+- Risk level: `LOW`
+
+This demonstrates the intended boundary: ECS, Ansible, health checks, smoke tests,
+and rollback results remain authoritative. Gemini can summarise the deployment, but
+an unvalidated response cannot be presented as the official assessment or change the
+deployment result.
+
 ## Optional CodeRabbit Review
 
 The root [`.coderabbit.yaml`](.coderabbit.yaml) configures concise automatic pull-request reviews focused on:
