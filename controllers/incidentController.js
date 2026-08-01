@@ -18,6 +18,15 @@ const {
 const {
   validateCoordinatePair
 } = require('../helpers/locationResolver');
+const {
+  clearLocationVerification,
+  recordLocationVerification,
+  resolveTrustedLocation
+} = require('../helpers/locationVerificationTrust');
+const {
+  LOCATION_VERIFICATION_STATUSES,
+  normalizeLocationVerificationStatus
+} = require('../config/locationVerification');
 const renderLayout = require('../helpers/renderLayout');
 const {
   PERMISSIONS,
@@ -47,6 +56,23 @@ function canManageIncidentDateTime(req) {
     req.currentOfficer.officer_role,
     PERMISSIONS.MANAGE_INCIDENT_DATETIME
   ));
+}
+
+function canReviewUnverifiedLocations(req) {
+  return Boolean(req.currentOfficer && hasPermission(
+    req.currentOfficer.officer_role,
+    PERMISSIONS.REVIEW_UNVERIFIED_LOCATIONS
+  ));
+}
+
+function getReviewVisibilityOptions(req) {
+  if (canReviewUnverifiedLocations(req)) {
+    return { includeUnverified: true };
+  }
+
+  return {
+    includeOwnDraftsForOfficerId: getSessionOfficerId(req)
+  };
 }
 
 function getServerDateTime() {
@@ -116,7 +142,8 @@ function readIncidentForm(body, options = {}) {
       : '',
     verifiedLocationLabel: body.verifiedLocationLabel
       ? body.verifiedLocationLabel.trim()
-      : ''
+      : '',
+    unverifiedLocationAcknowledged: isChecked(body.unverifiedLocationAcknowledged)
   };
 }
 
@@ -138,7 +165,8 @@ function buildFormData(incident = {}) {
     longitude: incident.longitude || '',
     locationVerified: incident.locationVerified ? 'true' : '',
     locationVerificationSource: incident.locationVerificationSource || '',
-    verifiedLocationLabel: incident.verifiedLocationLabel || ''
+    verifiedLocationLabel: incident.verifiedLocationLabel || '',
+    unverifiedLocationAcknowledged: Boolean(incident.unverifiedLocationAcknowledged)
   };
 }
 
@@ -156,9 +184,8 @@ function buildCreateCompletion(formData = {}) {
 }
 
 function buildEditFormData(report) {
-  const hasPersistedVerifiedLocation = report.status !== 'Draft'
-    && report.latitude !== null
-    && report.longitude !== null;
+  const hasPersistedVerifiedLocation = report.locationVerificationStatus
+    === LOCATION_VERIFICATION_STATUSES.VERIFIED;
 
   return {
     reportingOfficerId: report.reportingOfficerId || '',
@@ -176,8 +203,59 @@ function buildEditFormData(report) {
     longitude: report.longitude === null || report.longitude === undefined ? '' : String(report.longitude),
     locationVerified: hasPersistedVerifiedLocation ? 'true' : '',
     locationVerificationSource: hasPersistedVerifiedLocation ? 'existing-coordinates' : '',
-    verifiedLocationLabel: hasPersistedVerifiedLocation ? report.location || '' : ''
+    verifiedLocationLabel: hasPersistedVerifiedLocation ? report.location || '' : '',
+    unverifiedLocationAcknowledged: false
   };
+}
+
+function getStoredLocationVerificationStatus(incident) {
+  if (incident && incident.location_verification_status) {
+    return normalizeLocationVerificationStatus(incident.location_verification_status);
+  }
+
+  return incident && incident.response_status === 'Draft'
+    ? LOCATION_VERIFICATION_STATUSES.UNVERIFIED
+    : LOCATION_VERIFICATION_STATUSES.VERIFIED;
+}
+
+function applyAuthoritativeLocation(req, incident, existingIncident = null) {
+  const trustedLocation = resolveTrustedLocation(req.session, incident);
+
+  if (trustedLocation) {
+    Object.assign(incident, trustedLocation, {
+      locationVerified: true
+    });
+    return incident;
+  }
+
+  const existingLocationUnchanged = existingIncident
+    && String(existingIncident.location || '').trim().toLowerCase()
+      === String(incident.incidentLocation || '').trim().toLowerCase();
+  const existingLocationVerified = existingIncident
+    && getStoredLocationVerificationStatus(existingIncident)
+      === LOCATION_VERIFICATION_STATUSES.VERIFIED;
+
+  if (existingLocationUnchanged && existingLocationVerified) {
+    Object.assign(incident, {
+      locationVerificationStatus: LOCATION_VERIFICATION_STATUSES.VERIFIED,
+      locationVerified: true,
+      latitude: existingIncident.latitude ?? '',
+      longitude: existingIncident.longitude ?? '',
+      locationVerificationSource: 'existing-coordinates',
+      verifiedLocationLabel: existingIncident.location || incident.incidentLocation
+    });
+    return incident;
+  }
+
+  Object.assign(incident, {
+    locationVerificationStatus: LOCATION_VERIFICATION_STATUSES.UNVERIFIED,
+    locationVerified: false,
+    latitude: '',
+    longitude: '',
+    locationVerificationSource: '',
+    verifiedLocationLabel: ''
+  });
+  return incident;
 }
 
 function isAddressedConditionalField(value) {
@@ -198,6 +276,10 @@ function validateIncident(incident, options = {}) {
 
   if (!hasMeaningfulValue('type', incident.incidentType)) {
     errors.incidentType = 'Incident type is required.';
+  }
+
+  if (!incident.reportingOfficerId) {
+    errors.reportingOfficerId = 'A signed-in reporting officer is required.';
   }
 
   if (!hasMeaningfulValue('location', incident.incidentLocation)) {
@@ -224,12 +306,14 @@ function validateIncident(incident, options = {}) {
     errors.responseStatus = 'Select a valid response status.';
   }
 
-  const coordinates = validateCoordinatePair(incident.latitude, incident.longitude);
+  if (incident.locationVerificationStatus === LOCATION_VERIFICATION_STATUSES.VERIFIED) {
+    const coordinates = validateCoordinatePair(incident.latitude, incident.longitude);
 
-  if (!incident.locationVerified) {
-    errors.incidentLocation = errors.incidentLocation || 'Verify the incident location before saving.';
-  } else if (!coordinates.valid) {
-    errors.incidentLocation = coordinates.message;
+    if (!coordinates.valid) {
+      errors.incidentLocation = coordinates.message;
+    }
+  } else if (!incident.unverifiedLocationAcknowledged) {
+    errors.unverifiedLocationAcknowledged = 'Confirm that this report may be saved with an unverified location.';
   }
 
   return errors;
@@ -250,6 +334,7 @@ function renderCreateForm(req, res, options = {}) {
     canManageIncidentDateTime: canManageIncidentDateTime(req),
     serverDateTime,
     validationErrors: options.validationErrors || {},
+    locationVerificationWarning: options.locationVerificationWarning || '',
     formData,
     completion: options.completion || buildCreateCompletion(formData)
   });
@@ -263,6 +348,7 @@ function renderEditForm(req, res, report, options = {}) {
     canManageIncidentDateTime: canManageIncidentDateTime(req),
     report,
     validationErrors: options.validationErrors || {},
+    locationVerificationWarning: options.locationVerificationWarning || '',
     formData: options.formData || buildEditFormData(report)
   });
 }
@@ -275,8 +361,8 @@ function renderReportNotFound(res) {
   });
 }
 
-async function getMappedIncidents() {
-  const incidents = await incidentModel.getAllIncidents();
+async function getMappedIncidents(options = {}) {
+  const incidents = await incidentModel.getAllIncidents(options);
   return incidents.map(mapIncident);
 }
 
@@ -295,6 +381,7 @@ exports.createIncident = async (req, res, next) => {
       reportingOfficerId: getSessionOfficerId(req),
       incidentDateTime: getAuthorizedCreateDateTime(req)
     });
+    applyAuthoritativeLocation(req, incident);
     const validationErrors = validateIncident(incident, {
       allowIncomplete: savingDraft
     });
@@ -302,13 +389,23 @@ exports.createIncident = async (req, res, next) => {
     if (hasValidationErrors(validationErrors)) {
       return renderCreateForm(req, res.status(400), {
         validationErrors,
+        locationVerificationWarning: incident.locationVerified
+          ? ''
+          : 'Location could not be verified. Confirm below to save it for higher-rank review.',
         formData: buildFormData(incident)
       });
     }
 
     const incidentId = await incidentModel.createIncident(incident);
+    clearLocationVerification(req.session);
 
-    res.redirect(`/incidents/${incidentId}?reportSaved=1`);
+    if (!savingDraft
+      && incident.locationVerificationStatus === LOCATION_VERIFICATION_STATUSES.UNVERIFIED
+      && !canReviewUnverifiedLocations(req)) {
+      return res.redirect('/incidents?unverifiedSubmitted=1');
+    }
+
+    return res.redirect(`/incidents/${incidentId}?reportSaved=1`);
   } catch (error) {
     next(error);
   }
@@ -321,11 +418,14 @@ exports.showIncidents = async (req, res, next) => {
       ? 'Completed'
       : req.query.status || 'All';
     const searchTerm = req.query.search ? req.query.search.trim() : '';
-    const allReports = await getMappedIncidents();
+    const includeUnverified = canReviewUnverifiedLocations(req);
+    const visibilityOptions = getReviewVisibilityOptions(req);
+    const allReports = await getMappedIncidents(visibilityOptions);
     const incidents = await incidentModel.getAllIncidents({
       status: selectedStatusGroup ? 'All' : selectedStatus,
       statusGroup: selectedStatusGroup,
-      search: searchTerm
+      search: searchTerm,
+      ...visibilityOptions
     });
     const reports = incidents.map(mapIncident);
 
@@ -341,6 +441,8 @@ exports.showIncidents = async (req, res, next) => {
       selectedStatus,
       selectedStatusGroup,
       searchTerm,
+      canReviewUnverifiedLocations: includeUnverified,
+      unverifiedSubmissionNotice: req.query.unverifiedSubmitted === '1',
       emptyMessage: searchTerm
         ? 'No matching incident reports found.'
         : selectedStatus === 'All'
@@ -365,7 +467,9 @@ exports.getIncidentsApi = async (req, res, next) => {
 
     res.json({
       success: true,
-      reports: incidents.map(mapIncident)
+      reports: incidents
+        .map(mapIncident)
+        .filter((report) => report.locationVerificationStatus === LOCATION_VERIFICATION_STATUSES.VERIFIED)
     });
   } catch (error) {
     next(error);
@@ -374,7 +478,10 @@ exports.getIncidentsApi = async (req, res, next) => {
 
 exports.showReportDetails = async (req, res, next) => {
   try {
-    const incident = await incidentModel.getIncidentByIncidentId(req.params.incidentId);
+    const incident = await incidentModel.getIncidentByIncidentId(
+      req.params.incidentId,
+      getReviewVisibilityOptions(req)
+    );
 
     if (!incident) {
       return renderReportNotFound(res);
@@ -392,7 +499,10 @@ exports.showReportDetails = async (req, res, next) => {
 
 exports.showEditReport = async (req, res, next) => {
   try {
-    const incident = await incidentModel.getIncidentByIncidentId(req.params.incidentId);
+    const incident = await incidentModel.getIncidentByIncidentId(
+      req.params.incidentId,
+      getReviewVisibilityOptions(req)
+    );
 
     if (!incident) {
       return renderReportNotFound(res);
@@ -406,7 +516,10 @@ exports.showEditReport = async (req, res, next) => {
 
 exports.updateIncident = async (req, res, next) => {
   try {
-    const existingIncident = await incidentModel.getIncidentByIncidentId(req.params.incidentId);
+    const existingIncident = await incidentModel.getIncidentByIncidentId(
+      req.params.incidentId,
+      getReviewVisibilityOptions(req)
+    );
     if (!existingIncident) {
       return renderReportNotFound(res);
     }
@@ -419,6 +532,7 @@ exports.updateIncident = async (req, res, next) => {
           : '')
         : existingIncident.incident_datetime
     });
+    applyAuthoritativeLocation(req, incident, existingIncident);
     const validationErrors = validateIncident(incident, {
       allowIncomplete: req.body.saveMode === 'draft'
     });
@@ -426,6 +540,9 @@ exports.updateIncident = async (req, res, next) => {
     if (hasValidationErrors(validationErrors)) {
       return renderEditForm(req, res.status(400), mapIncident(existingIncident), {
         validationErrors,
+        locationVerificationWarning: incident.locationVerified
+          ? ''
+          : 'Location remains unverified. Confirm below to keep it in higher-rank review.',
         formData: buildFormData(incident)
       });
     }
@@ -436,6 +553,14 @@ exports.updateIncident = async (req, res, next) => {
       return renderReportNotFound(res);
     }
 
+    clearLocationVerification(req.session);
+
+    if (incident.responseStatus !== 'Draft'
+      && incident.locationVerificationStatus === LOCATION_VERIFICATION_STATUSES.UNVERIFIED
+      && !canReviewUnverifiedLocations(req)) {
+      return res.redirect('/incidents?unverifiedSubmitted=1');
+    }
+
     return res.redirect(`/incidents/${req.params.incidentId}`);
   } catch (error) {
     return next(error);
@@ -444,8 +569,17 @@ exports.updateIncident = async (req, res, next) => {
 
 exports.deleteIncident = async (req, res, next) => {
   try {
+    const incident = await incidentModel.getIncidentByIncidentId(
+      req.params.incidentId,
+      getReviewVisibilityOptions(req)
+    );
+
+    if (!incident) {
+      return renderReportNotFound(res);
+    }
+
     await incidentModel.deleteIncident(req.params.incidentId);
-    res.redirect('/incidents');
+    return res.redirect('/incidents');
   } catch (error) {
     next(error);
   }
@@ -458,6 +592,7 @@ exports.verifyLocation = async (req, res) => {
 
   try {
     const result = await verifyLocationQuery(location);
+    recordLocationVerification(req.session, location, result);
 
     if (!result.verified) {
       return res.json({
@@ -480,6 +615,7 @@ exports.verifyLocation = async (req, res) => {
       source: result.verifiedLocation.source
     });
   } catch (error) {
+    clearLocationVerification(req.session);
     if (error instanceof LocationVerificationError) {
       return res.status(error.statusCode).json({
         success: false,
@@ -493,4 +629,12 @@ exports.verifyLocation = async (req, res) => {
       error: 'Location verification failed. Please try again.'
     });
   }
+};
+
+exports._private = {
+  applyAuthoritativeLocation,
+  canReviewUnverifiedLocations,
+  getStoredLocationVerificationStatus,
+  getReviewVisibilityOptions,
+  validateIncident
 };

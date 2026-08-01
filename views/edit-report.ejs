@@ -6,6 +6,10 @@
   const selectedIncidentType = form.incidentType || report.type || '';
   const selectedResponseStatus = form.responseStatus || report.status || 'Pending Review';
   const locationVerified = form.locationVerified === 'true';
+  const unverifiedLocationAcknowledged = form.unverifiedLocationAcknowledged === true;
+  const unverifiedWarning = typeof locationVerificationWarning !== 'undefined' && locationVerificationWarning
+    ? locationVerificationWarning
+    : 'This report has an unverified location and is excluded from firefighter operational views until a higher-rank officer verifies it.';
   const fieldError = (name) => errors[name] || '';
   const fieldClass = (name) => fieldError(name) ? ' is-invalid' : '';
 %>
@@ -63,13 +67,25 @@
               <i class="bi bi-crosshair"></i>
               Verify Location
             </button>
-            <span class="location-status location-status-pending" id="locationVerificationStatus" role="status">
-              <i class="bi bi-dash-circle-fill"></i>
-              UNVERIFIED
+            <span class="location-status location-status-<%= locationVerified ? 'verified' : 'pending' %>" id="locationVerificationStatus" role="status" aria-live="polite">
+              <i class="bi <%= locationVerified ? 'bi-check-circle-fill' : 'bi-dash-circle-fill' %>"></i>
+              <%= locationVerified ? 'VERIFIED' : 'UNVERIFIED' %>
             </span>
           </div>
           <div class="location-feedback" id="locationVerificationMessage" aria-live="polite">
             Verify the address before saving this report.
+          </div>
+          <div class="unverified-location-warning notice-strip notice-warning<%= locationVerified ? ' notice-hidden' : '' %>" id="unverifiedLocationWarning" role="status" aria-live="polite">
+            <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+            <div>
+              <strong>Unverified location</strong>
+              <p id="unverifiedLocationWarningMessage"><%= unverifiedWarning %></p>
+              <label class="conditional-confirmation" for="unverifiedLocationAcknowledged">
+                <input type="checkbox" id="unverifiedLocationAcknowledged" name="unverifiedLocationAcknowledged" value="true" <%= unverifiedLocationAcknowledged ? 'checked' : '' %> aria-describedby="unverifiedLocationWarningMessage unverifiedLocationAcknowledgedError">
+                <span>I understand this report remains excluded from firefighter operational views.</span>
+              </label>
+              <small class="field-error" id="unverifiedLocationAcknowledgedError" <%= fieldError('unverifiedLocationAcknowledged') ? '' : 'hidden' %>><%= fieldError('unverifiedLocationAcknowledged') %></small>
+            </div>
           </div>
           <section class="location-candidates" id="locationCandidates" aria-labelledby="locationCandidatesTitle" hidden>
             <div>

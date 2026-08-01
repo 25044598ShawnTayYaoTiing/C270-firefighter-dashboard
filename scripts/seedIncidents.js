@@ -173,7 +173,10 @@ async function hasIndex(tableName, indexName) {
 async function addIncidentColumnIfMissing(columnName, definition) {
   if (!(await hasColumn(columnName))) {
     await db.query(`ALTER TABLE incidents ADD COLUMN ${columnName} ${definition}`);
+    return true;
   }
+
+  return false;
 }
 
 async function ensureDatabaseObjects() {
@@ -194,6 +197,7 @@ async function ensureDatabaseObjects() {
       missing_information TEXT NULL,
       officer_notes TEXT NULL,
       transcript TEXT NULL,
+      location_verification_status VARCHAR(20) NOT NULL DEFAULT 'VERIFIED',
       latitude DECIMAL(10, 7) NULL,
       longitude DECIMAL(10, 7) NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -202,6 +206,16 @@ async function ensureDatabaseObjects() {
   `);
 
   await addIncidentColumnIfMissing('reporting_officer_id', 'INT NULL');
+  const addedLocationVerificationStatus = await addIncidentColumnIfMissing(
+    'location_verification_status',
+    "VARCHAR(20) NOT NULL DEFAULT 'VERIFIED'"
+  );
+
+  if (addedLocationVerificationStatus) {
+    await db.query(
+      "UPDATE incidents SET location_verification_status = 'UNVERIFIED' WHERE response_status = 'Draft'"
+    );
+  }
 
   if (!(await hasIndex('incidents', 'idx_incidents_reporting_officer_id'))) {
     await db.query('ALTER TABLE incidents ADD INDEX idx_incidents_reporting_officer_id (reporting_officer_id)');
@@ -240,7 +254,8 @@ async function seed() {
     'response_status',
     'missing_information',
     'officer_notes',
-    'transcript'
+    'transcript',
+    'location_verification_status'
   ];
   const updateColumns = columns.filter((column) => column !== 'incident_id');
 
@@ -273,7 +288,8 @@ async function seed() {
       incident.response_status,
       incident.missing_information,
       incident.officer_notes,
-      incident.transcript
+      incident.transcript,
+      'VERIFIED'
     ];
 
     if (hasCoordinates) {

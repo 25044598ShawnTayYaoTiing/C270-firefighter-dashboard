@@ -27,6 +27,9 @@ document.addEventListener('DOMContentLoaded', () => {
     locationVerifiedInput: form.elements.locationVerified,
     locationSourceInput: form.elements.locationVerificationSource,
     verifiedLocationLabelInput: form.elements.verifiedLocationLabel,
+    unverifiedAcknowledgement: form.elements.unverifiedLocationAcknowledged,
+    unverifiedWarning: document.getElementById('unverifiedLocationWarning'),
+    unverifiedWarningMessage: document.getElementById('unverifiedLocationWarningMessage'),
     verifyButton: document.getElementById('verifyLocationButton'),
     status: document.getElementById('locationVerificationStatus'),
     message: document.getElementById('locationVerificationMessage'),
@@ -48,7 +51,9 @@ document.addEventListener('DOMContentLoaded', () => {
   let locationMarker = null;
   let locationMapResizeObserver = null;
   let activeLocationRequest = null;
-  let submitting = false;
+  const submissionGuard = locationVerification
+    ? locationVerification.createSubmissionGuard()
+    : null;
 
   setupLocationVerification();
   setupValidation();
@@ -58,6 +63,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!controls.locationInput || !controls.verifyButton || !verificationState) return;
 
     controls.verifyButton.addEventListener('click', verifyLocation);
+    if (controls.unverifiedAcknowledgement) {
+      controls.unverifiedAcknowledgement.addEventListener('change', () => {
+        if (controls.unverifiedAcknowledgement.checked) {
+          clearFieldError('unverifiedLocationAcknowledged');
+        }
+      });
+    }
     controls.locationInput.addEventListener('input', () => {
       const currentState = verificationState.getSnapshot().status;
       const locationChanged = normalizeText(controls.locationInput.value) !== verifiedAddress;
@@ -95,7 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     form.addEventListener('submit', (event) => {
-      if (submitting) {
+      if (submissionGuard && submissionGuard.isLocked()) {
         event.preventDefault();
         return;
       }
@@ -110,7 +122,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      submitting = true;
+      if (submissionGuard && !submissionGuard.tryLock()) {
+        event.preventDefault();
+        return;
+      }
       setSubmittingState(event.submitter);
     });
   }
@@ -263,6 +278,8 @@ document.addEventListener('DOMContentLoaded', () => {
     controls.verifiedLocationLabelInput.value = result.address
       || result.name
       || controls.locationInput.value;
+    hideUnverifiedLocationWarning();
+    clearFieldError('unverifiedLocationAcknowledged');
     dispatchLocationVerificationUpdate();
 
     clearLocationCandidates();
@@ -289,6 +306,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     renderLocationState(message || 'Verify the address before saving this report.');
+    showUnverifiedLocationWarning(message);
   }
 
   function showPreviewMap(latitude, longitude) {
@@ -454,6 +472,12 @@ document.addEventListener('DOMContentLoaded', () => {
       controls.status.innerHTML = `<i class="bi ${presentation.icon}"></i>${presentation.label}`;
     }
     if (controls.message) controls.message.textContent = message || presentation.message;
+    if (snapshot.status !== locationVerification.STATES.VERIFIED
+      && snapshot.status !== locationVerification.STATES.SEARCHING) {
+      showUnverifiedLocationWarning(snapshot.status === locationVerification.STATES.ERROR
+        ? snapshot.message
+        : 'Location verification is required before this report can enter firefighter operational views.');
+    }
     if (controls.verifyButton) {
       controls.verifyButton.disabled = [
         locationVerification.STATES.SEARCHING,
@@ -568,12 +592,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!location) return false;
 
-    if (!isLocationVerified()) {
-      setFieldError('incidentLocation', 'Verify the incident location before saving.');
-      resetLocationVerification('Verify the incident location before saving.', {
-        failed: true
-      });
-      return false;
+    const decision = locationVerification.getSubmissionLocationDecision({
+      verified: isLocationVerified(),
+      acknowledged: Boolean(
+        controls.unverifiedAcknowledgement && controls.unverifiedAcknowledgement.checked
+      )
+    });
+
+    if (decision.status === locationVerification.STATES.UNVERIFIED) {
+      const warning = 'Location is unverified. This report will be held for higher-rank review and excluded from firefighter operational views.';
+      setFieldError('incidentLocation', warning);
+      showUnverifiedLocationWarning(warning);
+
+      if (!decision.allowed) {
+        setFieldError(
+          'unverifiedLocationAcknowledged',
+          'Confirm that this report may be saved with an unverified location.'
+        );
+        return false;
+      }
+
+      clearFieldError('unverifiedLocationAcknowledged');
+      return true;
     }
 
     if (!isValidCoordinateRange(latitude, longitude)) {
@@ -593,6 +633,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     clearFieldError('incidentLocation');
+    clearFieldError('unverifiedLocationAcknowledged');
     return true;
   }
 
@@ -629,6 +670,27 @@ document.addEventListener('DOMContentLoaded', () => {
   function clearAllFieldErrors() {
     requiredFields.forEach((field) => clearFieldError(field.name));
     conditionalFields.forEach((field) => clearFieldError(field.name));
+    clearFieldError('unverifiedLocationAcknowledged');
+  }
+
+  function showUnverifiedLocationWarning(message) {
+    if (!controls.unverifiedWarning) return;
+
+    controls.unverifiedWarning.classList.remove('notice-hidden');
+    if (controls.unverifiedWarningMessage) {
+      const context = String(message || '').trim();
+      controls.unverifiedWarningMessage.textContent = `${context ? `${context} ` : ''}`
+        + 'You may still submit this report after acknowledging the warning, but it will be marked as unverified and excluded from firefighter operational views until a higher-rank officer verifies it.';
+    }
+  }
+
+  function hideUnverifiedLocationWarning() {
+    if (controls.unverifiedWarning) {
+      controls.unverifiedWarning.classList.add('notice-hidden');
+    }
+    if (controls.unverifiedAcknowledgement) {
+      controls.unverifiedAcknowledgement.checked = false;
+    }
   }
 
   function showErrorSummary(message) {

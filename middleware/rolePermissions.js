@@ -6,7 +6,8 @@ const ROLES = Object.freeze({
 
 const PERMISSIONS = Object.freeze({
   MANAGE_USERS: 'manageUsers',
-  MANAGE_INCIDENT_DATETIME: 'manageIncidentDateTime'
+  MANAGE_INCIDENT_DATETIME: 'manageIncidentDateTime',
+  REVIEW_UNVERIFIED_LOCATIONS: 'reviewUnverifiedLocations'
 });
 
 function normalizeRole(value) {
@@ -29,6 +30,10 @@ function hasPermission(role, permission) {
   }
 
   if (permission === PERMISSIONS.MANAGE_INCIDENT_DATETIME) {
+    return normalizedRole === ROLES.ADMIN;
+  }
+
+  if (permission === PERMISSIONS.REVIEW_UNVERIFIED_LOCATIONS) {
     return normalizedRole === ROLES.ADMIN;
   }
 

@@ -10,6 +10,13 @@
 
     <%- include('partials/report-completion', { completion: report.completion }) %>
 
+    <% if (report.locationVerificationStatus === 'UNVERIFIED') { %>
+      <div class="notice-strip notice-warning" role="status">
+        <i class="bi bi-geo-alt-fill" aria-hidden="true"></i>
+        <span><strong>Unverified location.</strong> This report is held for Higher Rank/Admin review and excluded from firefighter dashboards, APIs, maps, heatmaps, hotspots and analytics until the location is verified.</span>
+      </div>
+    <% } %>
+
     <div class="detail-grid">
       <div>
         <span>Incident Type</span>
@@ -18,6 +25,7 @@
       <div>
         <span>Location</span>
         <strong><%= report.location %></strong>
+        <small class="status-badge status-location-<%= report.locationVerificationStatus === 'VERIFIED' ? 'verified' : 'unverified' %>"><%= report.locationVerificationStatus === 'VERIFIED' ? 'Verified location' : 'Unverified location' %></small>
       </div>
       <div>
         <span>Date/Time</span>

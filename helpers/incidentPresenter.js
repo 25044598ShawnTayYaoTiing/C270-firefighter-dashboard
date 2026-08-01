@@ -6,6 +6,10 @@ const {
   shouldShowOnLiveMap,
   toNullableNumber
 } = require('./locationResolver');
+const {
+  LOCATION_VERIFICATION_STATUSES,
+  normalizeLocationVerificationStatus
+} = require('../config/locationVerification');
 
 const COMPLETION_FIELDS = [
   { key: 'location', label: 'Incident Location' },
@@ -111,6 +115,14 @@ function calculateCompletion(values = {}) {
   };
 }
 
+function getLocationVerificationStatus(value, responseStatus = '') {
+  if (value) return normalizeLocationVerificationStatus(value);
+
+  return responseStatus === 'Draft'
+    ? LOCATION_VERIFICATION_STATUSES.UNVERIFIED
+    : LOCATION_VERIFICATION_STATUSES.VERIFIED;
+}
+
 function mapIncident(row) {
   const incidentId = row.incident_id || '';
   const incidentType = row.incident_type || 'Unspecified';
@@ -118,13 +130,13 @@ function mapIncident(row) {
   const reportingOfficerId = row.reporting_officer_id || null;
   const reportingOfficerName = row.officer_name || '';
   const reportingOfficerRole = row.officer_role || '';
+  const locationVerificationStatus = getLocationVerificationStatus(
+    row.location_verification_status,
+    responseStatus
+  );
   const completion = calculateCompletion({
     location: row.location,
-    locationVerified: responseStatus !== 'Draft'
-      && hasValidCoordinates({
-        latitude: row.latitude,
-        longitude: row.longitude
-      }),
+    locationVerified: locationVerificationStatus === LOCATION_VERIFICATION_STATUSES.VERIFIED,
     type: row.incident_type,
     dateTime: row.incident_datetime,
     summary: row.incident_summary,
@@ -168,6 +180,8 @@ function mapIncident(row) {
     transcriptInput: row.transcript || '',
     latitude: toNullableNumber(row.latitude),
     longitude: toNullableNumber(row.longitude),
+    locationVerificationStatus,
+    location_verification_status: locationVerificationStatus,
     completion
   };
 }
@@ -192,6 +206,8 @@ function getMapIncidentSnapshot(report) {
     incident_date: dateInput ? dateInput.slice(0, 10) : '',
     incident_summary: report.incident_summary || report.summary || '',
     transcript: getTranscriptText(report),
+    location_verification_status: report.locationVerificationStatus
+      || report.location_verification_status,
     latitude: toNullableNumber(report.latitude),
     longitude: toNullableNumber(report.longitude)
   };
@@ -211,10 +227,14 @@ function getUnmappedReason(report) {
 async function buildMapData(reports) {
   const markers = [];
   const unmapped = [];
-  const incidents = reports.map(getMapIncidentSnapshot);
+  const verifiedReports = reports.filter((report) => getLocationVerificationStatus(
+    report.locationVerificationStatus || report.location_verification_status,
+    report.status || report.response_status
+  ) === LOCATION_VERIFICATION_STATUSES.VERIFIED);
+  const incidents = verifiedReports.map(getMapIncidentSnapshot);
   let completedHidden = 0;
 
-  for (const report of reports) {
+  for (const report of verifiedReports) {
     const incident = getMapIncidentSnapshot(report);
     const common = {
       ...incident,
@@ -263,6 +283,7 @@ function safeJson(value) {
 
 module.exports = {
   calculateCompletion,
+  getLocationVerificationStatus,
   hasMeaningfulValue,
   mapIncident,
   buildMapData,

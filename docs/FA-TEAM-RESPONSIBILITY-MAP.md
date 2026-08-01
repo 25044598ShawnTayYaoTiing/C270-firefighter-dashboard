@@ -412,7 +412,7 @@ Shawn should demonstrate:
 2. separate SHA-tagged ECR images;
 3. preserved task-definition settings with only the selected image changed;
 4. Ansible preflight and backend-first ordering;
-5. bounded `ACTIVE` plus expected-revision polling;
+5. task-definition-to-service-revision correlation, exact new service-deployment pinning, and bounded authoritative polling until `SUCCESSFUL`;
 6. backend `/health` before frontend rollout;
 7. frontend smoke test;
 8. no-op rerun behavior;
@@ -619,7 +619,7 @@ No member should receive a second unrelated platform merely to make the allocati
 
 ## Presentation Summary
 
-GitHub Actions and Ansible are both used because they solve different problems. GitHub Actions is the control plane for CI/CD events, test/security prerequisites, immutable artifacts, cloud authentication, and job sequencing. Ansible is the deterministic deployment engine that applies backend-first ECS changes, waits for expected revisions, verifies health, performs smoke tests, and restores previous revisions on failure.
+GitHub Actions and Ansible are both used because they solve different problems. GitHub Actions is the control plane for CI/CD events, test/security prerequisites, immutable artifacts, cloud authentication, and job sequencing. Ansible is the deterministic deployment engine that applies backend-first ECS changes, correlates each requested task definition to its exact service revision and new service-deployment ARN, waits for that deployment to become `SUCCESSFUL`, verifies health, performs smoke tests, and restores previous revisions on failure.
 
 The team's Cloud Deployment and Continuous Deployment contribution is an end-to-end automated release path with two purpose-built containers, reproducible local orchestration, mandatory security controls, temporary OIDC cloud authentication, separate ECR/ECS services, progressive verification, rollback, bounded diagnostics, and human-reviewed AIOps advice.
 

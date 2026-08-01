@@ -245,9 +245,40 @@
     };
   }
 
+  function getSubmissionLocationDecision({ verified = false, acknowledged = false } = {}) {
+    if (verified) {
+      return {
+        allowed: true,
+        requiresAcknowledgement: false,
+        status: STATES.VERIFIED
+      };
+    }
+
+    return {
+      allowed: acknowledged === true,
+      requiresAcknowledgement: true,
+      status: STATES.UNVERIFIED
+    };
+  }
+
+  function createSubmissionGuard() {
+    let locked = false;
+
+    return {
+      isLocked: () => locked,
+      tryLock() {
+        if (locked) return false;
+        locked = true;
+        return true;
+      }
+    };
+  }
+
   return {
     STATES,
+    createSubmissionGuard,
     createVerificationState,
+    getSubmissionLocationDecision,
     getLocationQueryParts,
     getLocationTokens,
     normalizeLocationQuery,

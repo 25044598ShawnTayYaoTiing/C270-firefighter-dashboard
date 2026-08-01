@@ -238,7 +238,7 @@ Show:
 
 - the Docker/Compose backend health result;
 - the successful cloud deployment summary;
-- the expected ECS backend task-definition revision becoming active; and
+- the requested backend task definition being correlated to its exact service revision and service-deployment ARN, with that deployment reaching `SUCCESSFUL`; and
 - backend `/health` passing before frontend deployment.
 
 Do not deliberately fail ECS for this demonstration.
