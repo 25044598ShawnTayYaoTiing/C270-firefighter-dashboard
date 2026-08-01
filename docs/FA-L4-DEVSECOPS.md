@@ -42,7 +42,7 @@ The workflow is in [`.github/workflows/deploy.yml`](../.github/workflows/deploy.
 12. Push the same SHA-tagged backend and frontend images to their separate ECR repositories.
 13. Register a new ECS task-definition revision that changes only the selected backend and frontend container images.
 14. Invoke Ansible on the GitHub Actions runner to update and verify the existing ECS Express Gateway services backend first.
-15. Ansible retries the backend JSON `/health` endpoint before deploying the frontend, then verifies the configured frontend URL while accepting an intentional login redirect.
+15. Ansible correlates each requested task definition to its exact ECS service revision and exact new service-deployment ARN, polls that deployment until its authoritative state is `SUCCESSFUL`, and only then retries backend JSON `/health` or verifies the configured frontend URL while accepting an intentional login redirect.
 16. Write the deployment summary. A failed Ansible deployment or verification requests restoration of the saved previous task definition for every changed service.
 
 | Pipeline stage | Tool | What it checks | Failure threshold | How it blocks deployment | Evidence for assessor |
@@ -55,7 +55,7 @@ The workflow is in [`.github/workflows/deploy.yml`](../.github/workflows/deploy.
 | Image scan | Trivy | OS and application dependencies in both images | HIGH or CRITICAL | Trivy exits with code 1 before image export | Table output and `container-security-reports` SARIF artifact |
 | AWS identity | AWS CLI | Rejects root credentials | Root identity or credential failure | Deployment job fails before ECR push | Identity guard log without credentials |
 | ECR push | Docker/ECR | Transfers exact scanned backend and frontend artifacts to separate repositories | Push failure | No task-definition update occurs | Both SHA image URIs in summary |
-| ECS verification | Ansible and AWS CLI | Backend then frontend ECS Express service uses expected revision | Not `ACTIVE` or wrong revision | Deployment job fails and requests rollback | Ansible log and summary |
+| ECS verification | Ansible and AWS CLI | Requested task definition maps to the exact service revision and new service-deployment ARN, which reaches `SUCCESSFUL` | Correlation failure, timeout, or authoritative stopped/rollback failure state | Deployment job fails and requests rollback | Ansible log and summary |
 | App smoke test | Ansible `uri` | JSON backend health plus reachable frontend/login redirect | No `{ "status": "ok" }` or unexpected status | Deployment job fails and requests rollback | Ansible log and summary |
 
 ## 4. L4 rubric mapping
@@ -104,7 +104,7 @@ Build and container security gate       passed
 Push, deploy, verify, and smoke test    passed (main push or approved manual run only)
 ```
 
-The build summary states that tests, Gitleaks, npm audit, Semgrep, and Trivy passed before AWS authentication. The deployment summary records the SHA-tagged backend and frontend images, previous and active task-definition ARNs, ECS verification, health check, and smoke-test status. It never prints credentials.
+The build summary states that tests, Gitleaks, npm audit, Semgrep, and Trivy passed before AWS authentication. The deployment summary records the SHA-tagged backend and frontend images, previous and requested task-definition ARNs, exact service-deployment identifiers and authoritative states, health check, and smoke-test status. It never prints credentials.
 
 ## 7. Rollback
 

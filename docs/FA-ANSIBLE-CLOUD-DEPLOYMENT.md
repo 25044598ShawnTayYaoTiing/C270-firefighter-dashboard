@@ -11,9 +11,9 @@ Developer push
   -> GitHub OIDC: temporary GitHubActionsDeployRole credentials
   -> Ansible on the GitHub Actions runner (localhost)
        -> preflight existing ECS Express services
-       -> deploy backend and wait for its expected revision
+       -> deploy backend and wait for its exact service deployment to become SUCCESSFUL
        -> verify backend /health
-       -> deploy frontend and wait for its expected revision
+       -> deploy frontend and wait for its exact service deployment to become SUCCESSFUL
        -> verify frontend HTTP availability
   -> existing ECS Express backend and frontend services
 ```

@@ -289,13 +289,13 @@ GitHub Actions and Ansible have separate responsibilities:
 |---|---|
 | Run CI and security gates | Validate deployment preconditions |
 | Build, scan, and publish images | Roll out the backend first |
-| Authenticate to AWS through OIDC | Wait for the exact backend revision to become active |
+| Authenticate to AWS through OIDC | Wait for the exact backend service deployment to become `SUCCESSFUL` |
 | Inspect active task definitions | Verify backend `/health` |
 | Register new task-definition revisions | Roll out and stabilize the frontend |
 | Supply immutable revision inputs | Run the frontend smoke test |
 | Publish workflow summaries/artifacts | Collect bounded diagnostics and perform verified rollback |
 
-The Ansible role is idempotent: when a service already uses the requested task definition, the update is skipped while verification still runs. Stabilization and HTTP retries are bounded. If a rollout fails, the role preserves the original error, gathers non-secret service diagnostics, requests the previous task revisions, verifies rollback state, and reports both the deployment and rollback outcomes.
+The Ansible role is idempotent: when a service already uses the requested task definition, the update is skipped while verification still runs. For each update, it correlates the requested task definition to the exact ECS service revision and exact new service-deployment ARN, polls that pinned deployment until its authoritative state is `SUCCESSFUL`, and only then performs backend health or frontend smoke verification. Stabilization and HTTP retries are bounded. If a rollout fails, the role preserves the original error, gathers non-secret service diagnostics, requests the previous task revisions, verifies rollback state, and reports both the deployment and rollback outcomes.
 
 See [Ansible ECS Express Deployment](docs/FA-ANSIBLE-CLOUD-DEPLOYMENT.md).
 
