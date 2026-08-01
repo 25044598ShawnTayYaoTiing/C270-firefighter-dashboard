@@ -1,4 +1,4 @@
-name: AIOps FA Demonstration
+name: Gemini Deployment Demo
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: aiops-fa-demo-${{ github.ref }}
+  group: gemini-deployment-fa-demo-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -15,7 +15,7 @@ env:
 
 jobs:
   demonstrate:
-    name: Synthetic deployment-failure analysis
+    name: Synthetic Gemini failure diagnostics
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -36,15 +36,15 @@ jobs:
 
       - name: Prepare synthetic sanitized diagnostics
         run: >-
-          node scripts/aiops/demo/runWorkflowDemo.js
+          node scripts/deployment-analysis/demo/runWorkflowDemo.js
           prepare
-          aiops-demo-sanitized.json
+          gemini-deployment-demo-sanitized.json
 
-      - name: Run guarded AIOps analysis and write summary
+      - name: Run guarded Gemini Failure Diagnostics and write summary
         env:
-          AIOPS_GEMINI_API_KEY: ${{ secrets.AIOPS_GEMINI_API_KEY }}
-          AIOPS_GEMINI_MODEL: ${{ vars.AIOPS_GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
+          DEPLOYMENT_GEMINI_API_KEY: ${{ secrets.DEPLOYMENT_GEMINI_API_KEY }}
+          DEPLOYMENT_GEMINI_MODEL: ${{ vars.DEPLOYMENT_GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
         run: >-
-          node scripts/aiops/demo/runWorkflowDemo.js
+          node scripts/deployment-analysis/demo/runWorkflowDemo.js
           analyze
-          aiops-demo-sanitized.json
+          gemini-deployment-demo-sanitized.json

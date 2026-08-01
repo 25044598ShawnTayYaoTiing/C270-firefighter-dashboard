@@ -204,7 +204,7 @@ function formatDemoOutput(demo) {
 
   return [
     '============================================================',
-    'SAFE LOCAL AIOPS FA DEMONSTRATION',
+    'SAFE LOCAL GEMINI DEPLOYMENT DEMO',
     'SIMULATED LOCAL FAILURE EVIDENCE - NOT A REAL ECS FAILURE',
     '============================================================',
     '',
@@ -239,7 +239,7 @@ function formatDemoOutput(demo) {
     '                         |',
     '                         v',
     '',
-    'AIOPS ANALYSIS (MOCKED AI RESPONSE, PRODUCTION VALIDATION PATH)',
+    'GEMINI FAILURE DIAGNOSTICS (MOCKED RESPONSE, PRODUCTION VALIDATION PATH)',
     `Classification: ${analysis.classification}`,
     `Confidence: ${analysis.confidence.toFixed(2)}`,
     `Evidence IDs: ${analysis.supportedEvidence.join(', ')}`,
@@ -261,7 +261,7 @@ function formatDemoOutput(demo) {
     `Network/cloud requests performed: ${demo.runtimeBoundary.networkRequests}`,
     `Commands executed: ${demo.runtimeBoundary.commandExecutions}`,
     `Automatic remediation actions: ${demo.runtimeBoundary.automaticRemediationActions}`,
-    'The rollback shown above is simulated input evidence; AIOps did not perform it.'
+    'The rollback shown above is simulated input evidence; Gemini did not perform it.'
   ].join('\n');
 }
 
@@ -271,7 +271,7 @@ if (require.main === module) {
       console.log(formatDemoOutput(demo));
     })
     .catch((error) => {
-      console.error(`[AIOps Demo] Safety validation failed: ${error.message}`);
+      console.error(`[Gemini Deployment Demo] Safety validation failed: ${error.message}`);
       process.exitCode = 1;
     });
 }

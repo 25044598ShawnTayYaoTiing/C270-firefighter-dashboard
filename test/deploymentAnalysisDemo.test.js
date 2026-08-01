@@ -8,25 +8,25 @@ const {
   MAX_STRING_LENGTH,
   MAX_TOTAL_BYTES,
   sanitizeDiagnostics
-} = require('../scripts/aiops/sanitizeDiagnostics');
+} = require('../scripts/deployment-analysis/sanitizeDiagnostics');
 const {
   FIXED_SYSTEM_INSTRUCTION,
   analyzeDiagnostics
-} = require('../scripts/aiops/analyzeDeploymentFailure');
+} = require('../scripts/deployment-analysis/analyzeDeploymentFailure');
 const {
   DETERMINISTIC_DEPLOYMENT_RESULT,
   FAKE_SENSITIVE_VALUES,
   PROMPT_INJECTION_TEXT,
   createRawSimulatedFailure
-} = require('../scripts/aiops/demo/simulatedFailure');
+} = require('../scripts/deployment-analysis/demo/simulatedFailure');
 const {
   MOCK_ANALYSIS,
   createMockClientFactory,
   formatDemoOutput,
   runLocalDemo
-} = require('../scripts/aiops/demo/runDemo');
+} = require('../scripts/deployment-analysis/demo/runDemo');
 
-test('local AIOps demo removes fake secrets and bounds the simulated failure', () => {
+test('local Gemini deployment demo removes fake secrets and bounds the simulated failure', () => {
   const rawDiagnostics = createRawSimulatedFailure();
   const sanitized = sanitizeDiagnostics(rawDiagnostics);
   const serialized = JSON.stringify(sanitized);
@@ -51,7 +51,7 @@ test('local AIOps demo removes fake secrets and bounds the simulated failure', (
   assert.ok(Buffer.byteLength(serialized, 'utf8') <= MAX_TOTAL_BYTES);
 });
 
-test('local AIOps demo sends only sanitized untrusted data through the real analyzer', async () => {
+test('local Gemini deployment demo sends only sanitized untrusted data through the real analyzer', async () => {
   const demo = await runLocalDemo();
   const request = demo.capture.request;
 
@@ -101,8 +101,8 @@ test('local demo preserves FAILED status and has no external execution capabilit
   const demo = await runLocalDemo();
   const output = formatDemoOutput(demo);
   const demoSourcePaths = [
-    path.join(__dirname, '..', 'scripts', 'aiops', 'demo', 'simulatedFailure.js'),
-    path.join(__dirname, '..', 'scripts', 'aiops', 'demo', 'runDemo.js')
+    path.join(__dirname, '..', 'scripts', 'deployment-analysis', 'demo', 'simulatedFailure.js'),
+    path.join(__dirname, '..', 'scripts', 'deployment-analysis', 'demo', 'runDemo.js')
   ];
   const demoSource = demoSourcePaths
     .map((filePath) => fs.readFileSync(filePath, 'utf8'))

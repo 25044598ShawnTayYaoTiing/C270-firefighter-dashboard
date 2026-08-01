@@ -11,7 +11,7 @@ const {
   truncateString
 } = require('./sanitizeDiagnostics');
 
-const DEFAULT_AIOPS_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+const DEFAULT_DEPLOYMENT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
 const SAFE_ERROR_MESSAGE_MAX_LENGTH = 320;
 const MAX_SUPPORTED_EVIDENCE = 6;
 const MAX_UNVALIDATED_FIELD_LENGTH = 480;
@@ -1100,11 +1100,11 @@ async function analyzeDiagnostics(rawDiagnostics, options = {}) {
     diagnostics.deployment.outcome,
     requestedOutcome
   );
-  const apiKey = String(options.apiKey || process.env.AIOPS_GEMINI_API_KEY || '').trim();
+  const apiKey = String(options.apiKey || process.env.DEPLOYMENT_GEMINI_API_KEY || '').trim();
   const model = String(
     options.model
-      || process.env.AIOPS_GEMINI_MODEL
-      || DEFAULT_AIOPS_GEMINI_MODEL
+      || process.env.DEPLOYMENT_GEMINI_MODEL
+      || DEFAULT_DEPLOYMENT_GEMINI_MODEL
   ).trim();
   const evidenceCatalog = createEvidenceCatalog(diagnostics);
 
@@ -1115,7 +1115,7 @@ async function analyzeDiagnostics(rawDiagnostics, options = {}) {
       failure: createFailureDetails(
         FAILURE_STAGES.api,
         FAILURE_CATEGORIES.auth,
-        { message: 'AIOPS_GEMINI_API_KEY is not configured.' }
+        { message: 'DEPLOYMENT_GEMINI_API_KEY is not configured.' }
       )
     });
   }
@@ -1127,7 +1127,7 @@ async function analyzeDiagnostics(rawDiagnostics, options = {}) {
       failure: createFailureDetails(
         FAILURE_STAGES.api,
         FAILURE_CATEGORIES.model,
-        { message: 'AIOPS_GEMINI_MODEL is not configured.' }
+        { message: 'DEPLOYMENT_GEMINI_MODEL is not configured.' }
       )
     });
   }
@@ -1329,14 +1329,14 @@ function renderSummary(result) {
   const isLiveValidated = result.mode === ANALYSIS_MODES.liveValidated;
   const isLiveUnvalidated = result.mode === ANALYSIS_MODES.liveUnvalidated;
   const assessmentHeading = isLiveValidated
-    ? '## Validated AIOps Assessment'
+    ? '## Validated Gemini Deployment Summary and Failure Diagnostics'
     : '## Deterministic Fallback Assessment';
   const assessmentSource = isLiveValidated
     ? 'VALIDATED GEMINI RESPONSE'
     : 'DETERMINISTIC FALLBACK';
 
   const lines = [
-    '# AIOps Deployment Summary',
+    '# Gemini Deployment Summary',
     '',
     '> **AI-GENERATED OPERATIONAL ASSESSMENT — ADVISORY ONLY**',
     '',
@@ -1349,9 +1349,9 @@ function renderSummary(result) {
     '',
     'ECS, Ansible, health checks, smoke tests, and rollback results remain authoritative.',
     '',
-    '## Validated AIOps Status',
+    '## Gemini Summary Validation Status',
     `- Mode: **${escapeMarkdown(result.mode || (result.available ? ANALYSIS_MODES.liveValidated : ANALYSIS_MODES.fallback))}**`,
-    `- Model: **${escapeMarkdown(result.model || DEFAULT_AIOPS_GEMINI_MODEL)}**`,
+    `- Model: **${escapeMarkdown(result.model || DEFAULT_DEPLOYMENT_GEMINI_MODEL)}**`,
     `- Live Gemini attempted: **${liveAttempted ? 'YES' : 'NO'}**`,
     `- Gemini request: **${escapeMarkdown(validation.geminiRequest || 'NOT_ATTEMPTED')}**`,
     `- Structured validation: **${escapeMarkdown(validation.structuredResponse || 'NOT_RUN')}**`,
@@ -1400,9 +1400,9 @@ function renderSummary(result) {
   if (isLiveUnvalidated && result.unvalidatedAnalysis) {
     const draft = result.unvalidatedAnalysis;
     lines.push(
-      '## Unvalidated Gemini Analysis',
+      '## Unvalidated Gemini Deployment Summary and Failure Diagnostics',
       '',
-      '> **WARNING: This Gemini analysis did not pass evidence validation and must not be treated as an authoritative operational assessment. Review it manually against the pipeline evidence.**',
+      '> **WARNING: This Gemini response did not pass evidence validation and must not be treated as an authoritative operational assessment. Review it manually against the pipeline evidence.**',
       '',
       '- Validation status: **NOT VALIDATED**',
       '- Authority: **NON-AUTHORITATIVE DRAFT**',
@@ -1447,7 +1447,7 @@ function renderSummary(result) {
   lines.push(
     '## Safety and Authority Boundaries',
     `- Human review required: **${result.humanReviewRequired ? 'YES' : 'NO'}**`,
-    '- AWS credentials available to AI job: **NO**',
+    '- AWS credentials available to Gemini summary job: **NO**',
     '- OIDC permission: **NO**',
     '- AWS calls: **0**',
     '- Deployment actions: **0**',
@@ -1477,14 +1477,14 @@ function writeOutputFile(filePath, contents) {
 async function runCli() {
   const [
     inputPath = 'deployment-diagnostics.json',
-    summaryPath = 'aiops-summary.md',
-    analysisPath = 'aiops-analysis.json'
+    summaryPath = 'gemini-deployment-summary.md',
+    analysisPath = 'gemini-deployment-analysis.json'
   ] = process.argv.slice(2);
   const selectedModel = String(
-    process.env.AIOPS_GEMINI_MODEL || DEFAULT_AIOPS_GEMINI_MODEL
+    process.env.DEPLOYMENT_GEMINI_MODEL || DEFAULT_DEPLOYMENT_GEMINI_MODEL
   ).trim();
   const deploymentOutcome = normalizeDeploymentOutcome(
-    process.env.AIOPS_DEPLOYMENT_OUTCOME
+    process.env.DEPLOYMENT_ANALYSIS_OUTCOME
   );
   let result;
 
@@ -1500,7 +1500,7 @@ async function runCli() {
       failure: classifyResponseFailure(
         error,
         FAILURE_STAGES.evidenceValidation,
-        [process.env.AIOPS_GEMINI_API_KEY]
+        [process.env.DEPLOYMENT_GEMINI_API_KEY]
       )
     });
   }
@@ -1524,14 +1524,14 @@ async function runCli() {
   writeOutputFile(analysisPath, `${JSON.stringify(persistedResult, null, 2)}\n`);
 
   if (result.available) {
-    console.log('[AIOps] Advisory deployment assessment generated.');
+    console.log('[Gemini Deployment Summary] Advisory deployment summary generated.');
   } else if (result.mode === ANALYSIS_MODES.liveUnvalidated) {
     console.warn(
-      `[AIOps] Gemini draft failed evidence validation; deterministic fallback remains authoritative. ${formatFailureForLog(result.failure)}`
+      `[Gemini Deployment Summary] Gemini draft failed evidence validation; deterministic fallback remains authoritative. ${formatFailureForLog(result.failure)}`
     );
   } else {
     console.warn(
-      `[AIOps] Gemini unavailable; deterministic fallback assessment generated. ${formatFailureForLog(result.failure)}`
+      `[Gemini Deployment Summary] Gemini unavailable; deterministic fallback assessment generated. ${formatFailureForLog(result.failure)}`
     );
   }
 }
@@ -1543,10 +1543,10 @@ if (require.main === module) {
       FAILURE_CATEGORIES.unknown,
       {
         message: error && error.message,
-        sensitiveValues: [process.env.AIOPS_GEMINI_API_KEY]
+        sensitiveValues: [process.env.DEPLOYMENT_GEMINI_API_KEY]
       }
     );
-    console.warn(`[AIOps] Deployment assessment unavailable. ${formatFailureForLog(failure)}`);
+    console.warn(`[Gemini Deployment Summary] Deployment assessment unavailable. ${formatFailureForLog(failure)}`);
     process.exitCode = 0;
   });
 }
@@ -1554,7 +1554,7 @@ if (require.main === module) {
 module.exports = {
   ANALYSIS_MODES,
   CLASSIFICATIONS,
-  DEFAULT_AIOPS_GEMINI_MODEL,
+  DEFAULT_DEPLOYMENT_GEMINI_MODEL,
   DEPLOYMENT_OUTCOMES,
   FAILURE_CATEGORIES,
   FAILURE_STAGES,

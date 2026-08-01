@@ -7,7 +7,7 @@ node_modules/
 server.out.log
 server.err.log
 deployment-diagnostics.json
-aiops-analysis.json
-aiops-summary.md
+gemini-deployment-analysis.json
+gemini-deployment-summary.md
 ansible/deployment-diagnostics.json
 ansible/deployment-summary.md

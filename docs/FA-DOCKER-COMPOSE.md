@@ -4,7 +4,7 @@
 
 **FA responsibility: Ji Xun — Docker Compose / Multi-container Orchestration**
 
-Ji Xun owns how the existing frontend and backend containers are integrated for local development. Min owns the frontend Dockerfile and Nginx image. Thein owns the backend Dockerfile and Node.js image. This component does not own AWS/ECS, GitHub Actions, Ansible, AIOps, DevSecOps scanners, or application business logic.
+Ji Xun owns how the existing frontend and backend containers are integrated for local development. Min owns the frontend Dockerfile and Nginx image. Thein owns the backend Dockerfile and Node.js image. This component does not own AWS/ECS, GitHub Actions, Ansible, Gemini Deployment Summaries or Failure Diagnostics, DevSecOps scanners, or application business logic.
 
 ## Architecture
 

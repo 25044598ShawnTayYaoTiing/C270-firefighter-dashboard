@@ -288,9 +288,9 @@ if (require.main === module) {
     try {
       const sanitized = sanitizeDiagnosticsFile(inputPath, outputPath);
       const byteLength = Buffer.byteLength(JSON.stringify(sanitized), 'utf8');
-      console.log(`[AIOps] Sanitized deployment diagnostics (${byteLength} bytes).`);
+      console.log(`[Gemini Deployment Summary] Sanitized deployment diagnostics (${byteLength} bytes).`);
     } catch (error) {
-      console.error(`[AIOps] Diagnostic sanitization failed: ${redactSensitiveText(error.message)}`);
+      console.error(`[Gemini Deployment Summary] Diagnostic sanitization failed: ${redactSensitiveText(error.message)}`);
       process.exitCode = 1;
     }
   }

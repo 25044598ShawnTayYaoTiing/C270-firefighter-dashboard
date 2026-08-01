@@ -8,20 +8,20 @@ const {
   MAX_STRING_LENGTH,
   MAX_TOTAL_BYTES,
   sanitizeDiagnostics
-} = require('../scripts/aiops/sanitizeDiagnostics');
+} = require('../scripts/deployment-analysis/sanitizeDiagnostics');
 const {
   buildDeploymentEvidence
-} = require('../scripts/aiops/prepareDeploymentEvidence');
+} = require('../scripts/deployment-analysis/prepareDeploymentEvidence');
 const {
   ANALYSIS_MODES,
-  DEFAULT_AIOPS_GEMINI_MODEL,
+  DEFAULT_DEPLOYMENT_GEMINI_MODEL,
   FIXED_SYSTEM_INSTRUCTION,
   analyzeDiagnostics,
   buildPrompt,
   createEvidenceCatalog,
   renderSummary,
   validateAnalysisResponse
-} = require('../scripts/aiops/analyzeDeploymentFailure');
+} = require('../scripts/deployment-analysis/analyzeDeploymentFailure');
 
 function createDiagnostics() {
   return {
@@ -209,7 +209,7 @@ test('successful deployment evidence is curated, sanitized, and contains no envi
     FRONTEND_TASK_DEFINITION_ARN: 'frontend:9',
     BACKEND_ECR_IMAGE: 'registry.example/backend:def456',
     FRONTEND_ECR_IMAGE: 'registry.example/frontend:def456',
-    AIOPS_GEMINI_API_KEY: 'must-not-survive',
+    DEPLOYMENT_GEMINI_API_KEY: 'must-not-survive',
     AWS_SECRET_ACCESS_KEY: 'must-not-survive',
     DB_PASSWORD: 'must-not-survive'
   };
@@ -233,7 +233,7 @@ test('successful deployment evidence is curated, sanitized, and contains no envi
   assert.equal(evidence.services.backend.activeTaskDefinition, 'backend:16');
   assert.equal(evidence.services.frontend.activeTaskDefinition, 'frontend:9');
   assert.equal(evidence.rollback.backend.attempted, false);
-  assert.doesNotMatch(serialized, /must-not-survive|AIOPS_GEMINI_API_KEY|AWS_SECRET_ACCESS_KEY|DB_PASSWORD/);
+  assert.doesNotMatch(serialized, /must-not-survive|DEPLOYMENT_GEMINI_API_KEY|AWS_SECRET_ACCESS_KEY|DB_PASSWORD/);
 });
 
 test('diagnostic sanitizer redacts tokens, credentials, keys, and private-key material', () => {
@@ -357,7 +357,7 @@ test('valid Gemini structured analysis is accepted without tools or function cal
   assert.doesNotMatch(JSON.stringify(result), new RegExp(apiKey));
   const summary = renderSummary(result);
   assert.doesNotMatch(summary, new RegExp(apiKey));
-  assert.match(summary, /^# AIOps Deployment Summary/m);
+  assert.match(summary, /^# Gemini Deployment Summary/m);
   assert.match(summary, /Mode: \*\*LIVE\\_VALIDATED\*\*/);
   assert.match(summary, /Deployment outcome: \*\*FAILED\*\*/);
   assert.match(summary, /Classification: \*\*BACKEND\\_HEALTH\\_FAILURE\*\*/);
@@ -413,12 +413,12 @@ test('successful all-pass evidence produces a low-risk assessment without mandat
   assert.equal(result.analysis.classification, 'HEALTHY_DEPLOYMENT');
   assert.equal(result.analysis.riskLevel, 'LOW');
   assert.equal(result.analysis.humanReviewRequired, false);
-  assert.match(summary, /^# AIOps Deployment Summary/m);
+  assert.match(summary, /^# Gemini Deployment Summary/m);
   assert.match(summary, /Deployment outcome: \*\*SUCCESS\*\*/);
   assert.match(summary, /Tests: \*\*PASS\*\*/);
   assert.match(summary, /ECS stabilization: \*\*PASS\*\*/);
   assert.match(summary, /Human review required: \*\*NO\*\*/);
-  assert.match(summary, /AWS credentials available to AI job: \*\*NO\*\*/);
+  assert.match(summary, /AWS credentials available to Gemini summary job: \*\*NO\*\*/);
   assert.match(summary, /Automatic remediation: \*\*0\*\*/);
   assert.doesNotMatch(summary, /Likely cause:/);
 });
@@ -571,41 +571,41 @@ test('successful deployment warnings cannot disable human review', () => {
   );
 });
 
-test('workflow runs isolated AIOps after every completed deployment', () => {
+test('workflow runs an isolated Gemini Deployment Summary after every completed deployment', () => {
   const workflowPath = path.join(__dirname, '..', '.github', 'workflows', 'deploy.yml');
   const workflow = fs.readFileSync(workflowPath, 'utf8');
-  const deployJob = (workflow.split(/\n  deploy:\s*\n/)[1] || '').split(/\n  aiops-analysis:\s*\n/)[0];
-  const aiopsJob = workflow.split(/\n  aiops-analysis:\s*\n/)[1] || '';
-  const aiopsJobHeader = aiopsJob.split(/\n\s+steps:\s*\n/)[0];
+  const deployJob = (workflow.split(/\n  deploy:\s*\n/)[1] || '').split(/\n  gemini-deployment-analysis:\s*\n/)[0];
+  const analysisJob = workflow.split(/\n  gemini-deployment-analysis:\s*\n/)[1] || '';
+  const analysisJobHeader = analysisJob.split(/\n\s+steps:\s*\n/)[0];
 
-  assert.match(workflow, /run_aiops_demo:\s*\n\s+description:[^\n]+\n\s+required: true\s*\n\s+default: false\s*\n\s+type: boolean/);
-  assert.match(deployJob, /inputs\.deploy \|\| inputs\.run_aiops_demo/);
+  assert.match(workflow, /run_gemini_deployment_demo:\s*\n\s+description:[^\n]+\n\s+required: true\s*\n\s+default: false\s*\n\s+type: boolean/);
+  assert.match(deployJob, /inputs\.deploy \|\| inputs\.run_gemini_deployment_demo/);
   assert.match(deployJob, /needs:\s*\n\s+- quality\s*\n\s+- secret-scan\s*\n\s+- sast\s*\n\s+- build-and-scan/);
   assert.match(deployJob, /prepareDeploymentEvidence\.js/);
-  assert.match(deployJob, /aiops_ready: \$\{\{ steps\.aiops-evidence-status\.outputs\.ready \}\}/);
-  assert.doesNotMatch(deployJob, /AIOPS_GEMINI_API_KEY/);
-  assert.match(aiopsJob, /needs:\s*deploy/);
+  assert.match(deployJob, /deployment_analysis_ready: \$\{\{ steps\.deployment-analysis-evidence-status\.outputs\.ready \}\}/);
+  assert.doesNotMatch(deployJob, /DEPLOYMENT_GEMINI_API_KEY/);
+  assert.match(analysisJob, /needs:\s*deploy/);
   assert.match(
-    aiopsJobHeader,
+    analysisJobHeader,
     /always\(\) &&\s*\(needs\.deploy\.result == 'success' \|\|\s*needs\.deploy\.result == 'failure'\)/
   );
-  assert.match(aiopsJob, /if: needs\.deploy\.outputs\.aiops_ready == 'true'/);
-  assert.match(aiopsJob, /analyzeDeploymentFailure\.js/);
-  assert.match(aiopsJob, /Write AIOps deployment summary/);
-  assert.match(aiopsJob, /github\.event_name == 'workflow_dispatch'/);
-  assert.match(aiopsJob, /inputs\.run_aiops_demo/);
-  assert.match(aiopsJob, /runWorkflowDemo\.js\s+prepare\s+aiops-demo-sanitized\.json/);
-  assert.match(aiopsJob, /runWorkflowDemo\.js\s+analyze\s+aiops-demo-sanitized\.json/);
-  assert.match(aiopsJob, /AIOPS_DEMO_REAL_DEPLOYMENT_RESULT: SUCCESS/);
-  assert.match(aiopsJob, /permissions:\s*\n\s+contents: read/);
-  assert.match(aiopsJob, /Generate read-only deployment assessment\s*\n\s+if: always\(\)\s*\n\s+continue-on-error: true/);
-  assert.match(aiopsJob, /secrets\.AIOPS_GEMINI_API_KEY/);
-  assert.match(aiopsJob, /vars\.AIOPS_GEMINI_MODEL/);
-  assert.match(aiopsJob, new RegExp(DEFAULT_AIOPS_GEMINI_MODEL));
-  assert.doesNotMatch(aiopsJob, /secrets\.GEMINI_API_KEY/);
-  assert.doesNotMatch(aiopsJob, /id-token:\s*write/);
-  assert.doesNotMatch(aiopsJob, /configure-aws-credentials/);
-  assert.doesNotMatch(aiopsJob, /\baws\s+(?:ecs|ecr|sts)\b/);
-  assert.doesNotMatch(aiopsJob, /ansible-playbook/);
-  assert.doesNotMatch(aiopsJob, /docker\s+(?:build|push|run)/);
+  assert.match(analysisJob, /if: needs\.deploy\.outputs\.deployment_analysis_ready == 'true'/);
+  assert.match(analysisJob, /analyzeDeploymentFailure\.js/);
+  assert.match(analysisJob, /Write Gemini Deployment Summary/);
+  assert.match(analysisJob, /github\.event_name == 'workflow_dispatch'/);
+  assert.match(analysisJob, /inputs\.run_gemini_deployment_demo/);
+  assert.match(analysisJob, /runWorkflowDemo\.js\s+prepare\s+gemini-deployment-demo-sanitized\.json/);
+  assert.match(analysisJob, /runWorkflowDemo\.js\s+analyze\s+gemini-deployment-demo-sanitized\.json/);
+  assert.match(analysisJob, /GEMINI_DEMO_REAL_DEPLOYMENT_RESULT: SUCCESS/);
+  assert.match(analysisJob, /permissions:\s*\n\s+contents: read/);
+  assert.match(analysisJob, /Generate Gemini Deployment Summary\s*\n\s+if: always\(\)\s*\n\s+continue-on-error: true/);
+  assert.match(analysisJob, /secrets\.DEPLOYMENT_GEMINI_API_KEY/);
+  assert.match(analysisJob, /vars\.DEPLOYMENT_GEMINI_MODEL/);
+  assert.match(analysisJob, new RegExp(DEFAULT_DEPLOYMENT_GEMINI_MODEL));
+  assert.doesNotMatch(analysisJob, /secrets\.GEMINI_API_KEY/);
+  assert.doesNotMatch(analysisJob, /id-token:\s*write/);
+  assert.doesNotMatch(analysisJob, /configure-aws-credentials/);
+  assert.doesNotMatch(analysisJob, /\baws\s+(?:ecs|ecr|sts)\b/);
+  assert.doesNotMatch(analysisJob, /ansible-playbook/);
+  assert.doesNotMatch(analysisJob, /docker\s+(?:build|push|run)/);
 });

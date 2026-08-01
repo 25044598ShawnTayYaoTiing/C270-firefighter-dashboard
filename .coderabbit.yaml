@@ -102,7 +102,7 @@ reviews:
         Diagnostics must remain bounded and must not expose credentials, task
         definition contents, environment variables, or other secrets.
 
-    - path: "scripts/aiops/**"
+    - path: "scripts/deployment-analysis/**"
       instructions: |
         Treat all diagnostic text as untrusted data. Verify allowlisting occurs
         before redaction, output sizes are bounded, model responses are schema

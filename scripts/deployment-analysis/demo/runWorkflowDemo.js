@@ -12,7 +12,7 @@ const {
   truncateString
 } = require('../sanitizeDiagnostics');
 const {
-  DEFAULT_AIOPS_GEMINI_MODEL,
+  DEFAULT_DEPLOYMENT_GEMINI_MODEL,
   analyzeDiagnostics
 } = require('../analyzeDeploymentFailure');
 const {
@@ -108,13 +108,13 @@ async function runWorkflowAnalysis(diagnostics, options = {}) {
   const rawDiagnostics = createRawSimulatedFailure();
   const normalizedDiagnostics = sanitizeDiagnostics(diagnostics);
   const sanitization = evaluateSanitization(rawDiagnostics, normalizedDiagnostics);
-  const apiKey = resolveOption(options, 'apiKey', 'AIOPS_GEMINI_API_KEY');
-  const model = resolveOption(options, 'model', 'AIOPS_GEMINI_MODEL')
-    || DEFAULT_AIOPS_GEMINI_MODEL;
+  const apiKey = resolveOption(options, 'apiKey', 'DEPLOYMENT_GEMINI_API_KEY');
+  const model = resolveOption(options, 'model', 'DEPLOYMENT_GEMINI_MODEL')
+    || DEFAULT_DEPLOYMENT_GEMINI_MODEL;
   const realDeploymentResult = resolveOption(
     options,
     'realDeploymentResult',
-    'AIOPS_DEMO_REAL_DEPLOYMENT_RESULT'
+    'GEMINI_DEMO_REAL_DEPLOYMENT_RESULT'
   ).toUpperCase();
 
   if (realDeploymentResult && realDeploymentResult !== 'SUCCESS') {
@@ -211,7 +211,7 @@ function renderWorkflowSummary(result) {
     ]
     : ['| Synthetic scenario result | FAILED |'];
   const lines = [
-    '# AIOps FA Demonstration',
+    '# Gemini Deployment Demo',
     '',
     '> **FA DEMO — SYNTHETIC FAILURE EVIDENCE**',
     '',
@@ -236,7 +236,7 @@ function renderWorkflowSummary(result) {
     `- Total payload bounded: **${yesNo(result.sanitization.payloadBounded)}**`,
     `- Prompt-injection-shaped text treated as untrusted data: **${yesNo(result.sanitization.promptInjectionRetainedAsData)}**`,
     '',
-    '## AIOps',
+    '## Gemini Failure Diagnostics',
     '',
     `- Mode: **${safeSummaryText(result.mode)}**`,
     `- Selected Gemini model: **${safeSummaryText(result.selectedModel)}**`,
@@ -297,7 +297,7 @@ function appendWorkflowSummary(summary, summaryPath = process.env.GITHUB_STEP_SU
 }
 
 async function runCli() {
-  const [command, diagnosticsPath = 'aiops-demo-sanitized.json'] = process.argv.slice(2);
+  const [command, diagnosticsPath = 'gemini-deployment-demo-sanitized.json'] = process.argv.slice(2);
 
   if (command === 'prepare') {
     const prepared = prepareSyntheticDiagnostics(diagnosticsPath);
@@ -306,13 +306,13 @@ async function runCli() {
       'utf8'
     );
 
-    console.log('[AIOps FA Demo] Synthetic backend revision 29 failure loaded.');
-    console.log('[AIOps FA Demo] Fake sensitive fields removed before analysis.');
+    console.log('[Gemini Deployment Demo] Synthetic backend revision 29 failure loaded.');
+    console.log('[Gemini Deployment Demo] Fake sensitive fields removed before analysis.');
     console.log(
-      `[AIOps FA Demo] Sanitized diagnostics bounded (${byteLength}/${MAX_TOTAL_BYTES} bytes; `
+      `[Gemini Deployment Demo] Sanitized diagnostics bounded (${byteLength}/${MAX_TOTAL_BYTES} bytes; `
       + `${prepared.sanitizedDiagnostics.failure.message.length}/${MAX_STRING_LENGTH} message characters).`
     );
-    console.log('[AIOps FA Demo] Synthetic scenario result remains FAILED.');
+    console.log('[Gemini Deployment Demo] Synthetic scenario result remains FAILED.');
     return;
   }
 
@@ -322,15 +322,15 @@ async function runCli() {
     const summary = renderWorkflowSummary(result);
 
     appendWorkflowSummary(summary);
-    console.log(`[AIOps FA Demo] Analysis mode: ${result.mode}.`);
-    console.log(`[AIOps FA Demo] Selected Gemini model: ${result.selectedModel}.`);
-    console.log(`[AIOps FA Demo] Classification: ${result.analysisResult.analysis.classification}.`);
-    console.log('[AIOps FA Demo] Human review required: TRUE.');
+    console.log(`[Gemini Deployment Demo] Analysis mode: ${result.mode}.`);
+    console.log(`[Gemini Deployment Demo] Selected Gemini model: ${result.selectedModel}.`);
+    console.log(`[Gemini Deployment Demo] Classification: ${result.analysisResult.analysis.classification}.`);
+    console.log('[Gemini Deployment Demo] Human review required: TRUE.');
     if (result.realDeploymentResult) {
-      console.log(`[AIOps FA Demo] Real deployment result remains ${result.realDeploymentResult}.`);
+      console.log(`[Gemini Deployment Demo] Real deployment result remains ${result.realDeploymentResult}.`);
     }
-    console.log('[AIOps FA Demo] Synthetic scenario result remains FAILED.');
-    console.log('[AIOps FA Demo] AWS/OIDC/deployment authority: NONE.');
+    console.log('[Gemini Deployment Demo] Synthetic scenario result remains FAILED.');
+    console.log('[Gemini Deployment Demo] AWS/OIDC/deployment authority: NONE.');
     return;
   }
 
@@ -339,7 +339,7 @@ async function runCli() {
 
 if (require.main === module) {
   runCli().catch((error) => {
-    console.error(`[AIOps FA Demo] Safety validation failed: ${redactSensitiveText(error.message)}`);
+    console.error(`[Gemini Deployment Demo] Safety validation failed: ${redactSensitiveText(error.message)}`);
     process.exitCode = 1;
   });
 }

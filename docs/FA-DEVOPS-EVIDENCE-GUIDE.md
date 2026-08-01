@@ -186,9 +186,10 @@ these security gates.
 
 Primary reference: [`FA-L4-DEVSECOPS.md`](FA-L4-DEVSECOPS.md).
 
-## AIOps
+## Gemini-Assisted Deployment Summary and Failure Diagnostics
 
-Present the capability accurately:
+Present the capability accurately as assisted summarisation and diagnostics,
+not autonomous operations:
 
 - implemented as an assessment after every completed deployment;
 - covered by focused unit tests;
@@ -204,32 +205,32 @@ Present the capability accurately:
 
 Show:
 
-- `scripts/aiops/sanitizeDiagnostics.js`;
-- `scripts/aiops/prepareDeploymentEvidence.js`;
-- `scripts/aiops/analyzeDeploymentFailure.js`;
-- `test/aiopsDiagnostics.test.js`;
-- the isolated `aiops-analysis` workflow job; and
-- [`FA-AIOPS-DEPLOYMENT-FAILURE-ANALYSIS.md`](FA-AIOPS-DEPLOYMENT-FAILURE-ANALYSIS.md).
+- `scripts/deployment-analysis/sanitizeDiagnostics.js`;
+- `scripts/deployment-analysis/prepareDeploymentEvidence.js`;
+- `scripts/deployment-analysis/analyzeDeploymentFailure.js`;
+- `test/deploymentAnalysisDiagnostics.test.js`;
+- the isolated `gemini-deployment-analysis` workflow job; and
+- [`FA-GEMINI-DEPLOYMENT-SUMMARY-AND-DIAGNOSTICS.md`](FA-GEMINI-DEPLOYMENT-SUMMARY-AND-DIAGNOSTICS.md).
 
-Run `npm run aiops:demo` to present the controlled local failure path. It uses
+Run `npm run gemini:deployment:demo` to present the controlled local failure path. It uses
 synthetic diagnostics and a mocked AI response while exercising the production
 sanitizer and analyzer validation. It does not obtain AWS credentials, call
 ECS or Gemini, invoke rollback, or intentionally fail production. Label this
 as **SIMULATED LOCAL FAILURE EVIDENCE**, not cloud-failure proof.
 
 From any normal successful deployment, capture the executed
-`AIOps Deployment Assessment` job and `# AIOps Deployment Summary`. Show the
+`Gemini Deployment Summary` job and `# Gemini Deployment Summary`. Show the
 successful outcome, `HEALTHY_DEPLOYMENT`, low risk, PASS evidence, selected
-`LIVE_VALIDATED`, `LIVE_UNVALIDATED`, or `FALLBACK` mode, and zero AIOps AWS,
-deployment, rollback, and remediation actions.
+`LIVE_VALIDATED`, `LIVE_UNVALIDATED`, or `FALLBACK` mode, and zero AWS,
+deployment, rollback, and remediation actions by the Gemini analysis job.
 
 For integrated synthetic failure evidence, manually run **DevSecOps CI/CD**
-with `run_aiops_demo=true`. Capture the successful gates, normal AWS deployment,
+with `run_gemini_deployment_demo=true`. Capture the successful gates, normal AWS deployment,
 health/smoke verification, real success assessment, and the additional
 **FA DEMO — SYNTHETIC FAILURE EVIDENCE** section. Show real deployment
 `SUCCESS`, synthetic scenario `FAILED`, mandatory human review for the
 synthetic failure, and the same zero-authority boundary. The standalone
-**AIOps FA Demonstration** workflow remains available when a deployment is not
+**Gemini Deployment Demo** workflow remains available when a deployment is not
 required.
 
 ## CodeRabbit
@@ -249,7 +250,7 @@ CodeRabbit is:
 
 - optional;
 - not a required DevSecOps security gate;
-- not AIOps;
+- not part of deployment analysis;
 - not authorized to deploy or change AWS; and
 - not a substitute for tests or human review.
 
@@ -273,5 +274,5 @@ demo code.
 | Backend health and frontend smoke | CLOUD | ☐ |
 | Ansible deployment recap | CLOUD | ☐ |
 | Rollback implementation | CODE EVIDENCE | ☐ |
-| AIOps guardrails and unit tests | CODE/LOCAL | ☐ |
+| Gemini analysis guardrails and unit tests | CODE/LOCAL | ☐ |
 | CodeRabbit controlled PR review | DEVELOPER WORKFLOW | ☐ |

@@ -127,7 +127,7 @@ function createRawSimulatedFailure() {
       }]
     },
     logs: oversizedRuntimeDetail,
-    transcript: 'FAKE_TRANSCRIPT_CONTENT_MUST_NOT_REACH_AIOPS'
+    transcript: 'FAKE_TRANSCRIPT_CONTENT_MUST_NOT_REACH_GEMINI_ANALYSIS'
   };
 }
 

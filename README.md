@@ -104,7 +104,7 @@ Local development uses Google Application Default Credentials (ADC). The ECS bac
 | Containers | Docker and Docker Compose |
 | Delivery | GitHub Actions, Amazon ECR, Amazon ECS Express Mode, Ansible |
 | DevSecOps | Gitleaks, Semgrep, `npm audit`, Trivy, GitHub OIDC |
-| Advisory AIOps | Sanitized post-deployment assessment and failure analysis using Gemini |
+| Gemini-Assisted Deployment Summary and Failure Diagnostics | Sanitized post-deployment summaries and failure explanations using Gemini |
 | PR assistance | Optional CodeRabbit AI-assisted pull-request review |
 
 ## Deployed Architecture
@@ -221,10 +221,6 @@ See [Backend Dockerisation](docs/FA-BACKEND-DOCKER.md).
 
 The main workflow is [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
 
-![Sanitized successful GitHub Actions run showing quality, security, container, deployment, and AIOps jobs](docs/images/github-actions-pipeline.png)
-
-*The fail-closed GitHub Actions pipeline runs testing, dependency security, secret scanning, source scanning, container security, AWS deployment verification, and a post-deployment advisory AIOps assessment. Contributor and incidental run identifiers were redacted from this public copy.*
-
 ```text
 Pull request / push / manual run
               |
@@ -272,7 +268,7 @@ Export exact scanned images + SHA-256 metadata
               deployment, then run smoke verification
                         |
                         v
-              Advisory AIOps deployment assessment
+              Gemini Deployment Summary
 ```
 
 Pipeline behavior:
@@ -285,7 +281,7 @@ Pipeline behavior:
 - the exact image archives scanned by Trivy are checksummed, transferred as artifacts, verified, and then pushed—deployment does not rebuild a different image;
 - task-definition revisions are derived from active service definitions so existing runtime configuration, secrets, task roles, and execution roles are preserved.
 
-ECS deployment state and Ansible's deterministic checks decide whether rollout succeeded. A service being `ACTIVE` is not sufficient: Ansible must correlate the requested task definition to the exact service revision and exact new service-deployment ARN, then observe that pinned deployment reach `SUCCESSFUL` before HTTP verification. AIOps runs afterward as an advisory assessment only; it cannot deploy, roll back, modify AWS, or change the authoritative deployment result.
+ECS deployment state and Ansible's deterministic checks decide whether rollout succeeded. A service being `ACTIVE` is not sufficient: Ansible must correlate the requested task definition to the exact service revision and exact new service-deployment ARN, then observe that pinned deployment reach `SUCCESSFUL` before HTTP verification. The Gemini Deployment Summary runs afterward; it cannot deploy, roll back, modify AWS, or change the authoritative deployment result.
 
 ## DevSecOps Controls
 
@@ -330,7 +326,7 @@ Ansible
   -> verified rollback on failure
       |
       v
-Isolated advisory AIOps assessment
+Isolated Gemini Deployment Summary
 (no AWS, deployment, rollback, or remediation authority)
 ```
 
@@ -363,9 +359,13 @@ The Ansible role is idempotent: when a service already uses the requested task d
 
 See [Ansible ECS Express Deployment](docs/FA-ANSIBLE-CLOUD-DEPLOYMENT.md).
 
-## Advisory AIOps
+## Gemini-Assisted Deployment Summary and Failure Diagnostics
 
-The AIOps feature assesses every completed deployment but cannot deploy or remediate anything.
+Google Gemini receives bounded, structured deployment evidence after a completed
+deployment job. After successful deployment and health checks, it produces a
+concise result summary. When deployment fails, it explains the likely issue and
+suggests troubleshooting checks based on sanitized workflow and Ansible
+diagnostics.
 
 ```text
 Completed Ansible/ECS deployment
@@ -374,7 +374,7 @@ Completed Ansible/ECS deployment
 Allowlisted and sanitized diagnostics
           |
           v
-Isolated AIOps job
+Isolated Gemini analysis job
           |
           v
 Gemini structured analysis
@@ -390,7 +390,7 @@ Safety boundaries include:
 
 - allowlisting before redaction;
 - bounded individual strings and total payload size;
-- a dedicated `AIOPS_GEMINI_API_KEY`, separate from the application's Gemini credential;
+- a dedicated `DEPLOYMENT_GEMINI_API_KEY`, separate from the application's Gemini credential;
 - model-response schema validation and validated evidence paths;
 - mandatory human review for failures and any successful deployment warning;
 - no AWS credentials, OIDC permission, AWS API access, Ansible execution, command execution, rollback authority, or automatic remediation in the analysis job;
@@ -399,24 +399,32 @@ Safety boundaries include:
 ### Local Simulation
 
 ```powershell
-npm run aiops:demo
+npm run gemini:deployment:demo
 ```
 
 This uses synthetic failure data and a mocked Gemini client. It performs no AWS, Google, or other network operation.
 
 ### GitHub Actions FA Demonstration
 
-Every completed deployment runs the isolated AIOps assessment. A successful all-pass deployment is reported as `HEALTHY_DEPLOYMENT / LOW`, while a real failure retains its failure classification, rollback evidence, and mandatory human review. If Gemini is unavailable, deterministic sanitized evidence produces an explicitly labelled fallback summary.
+Every completed deployment runs the isolated Gemini Deployment Summary job. A successful all-pass deployment is reported as `HEALTHY_DEPLOYMENT / LOW`, while a real failure retains its failure classification, rollback evidence, and mandatory human review. If Gemini is unavailable, deterministic sanitized evidence produces an explicitly labelled fallback summary.
 
-For an integrated presentation, manually run `DevSecOps CI/CD` with `run_aiops_demo=true`. The workflow runs every normal gate, deploys and verifies AWS normally, writes the real success assessment, then adds clearly labelled synthetic failure evidence. The summary keeps the real deployment `SUCCESS` separate from the synthetic scenario `FAILED`. The AIOps job still has only `contents: read` and no AWS, OIDC, deployment, rollback, or remediation authority.
+For an integrated presentation, manually run `DevSecOps CI/CD` with `run_gemini_deployment_demo=true`. The workflow runs every normal gate, deploys and verifies AWS normally, writes the real success assessment, then adds clearly labelled synthetic failure evidence. The summary keeps the real deployment `SUCCESS` separate from the synthetic scenario `FAILED`. The Gemini analysis job still has only `contents: read` and no AWS, OIDC, deployment, rollback, or remediation authority.
 
-The standalone `AIOps FA Demonstration` workflow remains available when a deployment is not required. Both demonstration paths use live Gemini when the dedicated secret is available and a schema-validated mocked fallback otherwise.
+The standalone `Gemini Deployment Demo` workflow remains available when a deployment is not required. Both demonstration paths use live Gemini when the dedicated secret is available and a schema-validated mocked fallback otherwise.
 
 ### Production Assessment Paths
 
-The production AIOps job runs when the deploy job finishes with `success` or `failure`. It receives only a bounded sanitized artifact. Failed CI/security gates leave deployment skipped, so they cannot trigger deployment or a misleading deployment assessment. AIOps remains advisory and cannot change a successful deployment, failed deployment, or rollback result.
+The production Gemini analysis job runs when the deploy job finishes with `success` or `failure`. It receives only a bounded sanitized artifact. Failed CI/security gates leave deployment skipped, so they cannot trigger deployment or a misleading deployment assessment. Gemini remains advisory and cannot change a successful deployment, failed deployment, or rollback result.
 
-The repository implementation proves the guarded workflow and simulation paths; it does not by itself prove that a real failed ECS rollout has already completed live Gemini analysis. See [AIOps Deployment Assessment and Failure Analysis](docs/FA-AIOPS-DEPLOYMENT-FAILURE-ANALYSIS.md).
+This is an advisory Gemini feature, not an autonomous operations platform.
+Gemini summarises successful deployment results, assists with failure
+diagnostics, and suggests possible causes and troubleshooting actions.
+Deployment decisions, monitoring, validation, rollback, and infrastructure
+operations remain deterministic and controlled by GitHub Actions, Ansible,
+Amazon ECS, and the existing AWS services. Gemini does not deploy, monitor,
+roll back, repair, approve releases, or guarantee that its diagnosis is correct.
+
+The repository implementation proves the guarded workflow and simulation paths; it does not by itself prove that a real failed ECS rollout has already completed live Gemini analysis. See [Gemini-Assisted Deployment Summary and Failure Diagnostics](docs/FA-GEMINI-DEPLOYMENT-SUMMARY-AND-DIAGNOSTICS.md).
 
 ## Optional CodeRabbit Review
 
@@ -426,9 +434,9 @@ The root [`.coderabbit.yaml`](.coderabbit.yaml) configures concise automatic pul
 - security and data-integrity defects;
 - reliability and missing validation;
 - Docker, Compose, GitHub Actions, AWS deployment, and Ansible risks;
-- AIOps trust boundaries and maintainability.
+- Gemini analysis trust boundaries and maintainability.
 
-Style-only feedback is intentionally de-emphasized. CodeRabbit requires its GitHub App to be installed and authorized for the repository; the configuration file alone does not run reviews. It is not AIOps, an enforced scanner, or a replacement for Gitleaks, Semgrep, `npm audit`, or Trivy.
+Style-only feedback is intentionally de-emphasized. CodeRabbit requires its GitHub App to be installed and authorized for the repository; the configuration file alone does not run reviews. It is not part of deployment analysis, an enforced scanner, or a replacement for Gitleaks, Semgrep, `npm audit`, or Trivy.
 
 ## Local Setup
 
@@ -532,7 +540,7 @@ The overlay mounts that file read-only at runtime. It is not copied into either 
 | `npm audit --omit=dev --audit-level=high` | Production dependency HIGH/CRITICAL vulnerability gate |
 | `npm run frontend:container-test` | Frontend image configuration, proxy, health, failure, and recovery behavior |
 | `npm run compose:smoke` | Two-container build, service DNS, proxying, health ordering, failure, and recovery |
-| `npm run aiops:demo` | Local synthetic diagnostics sanitization, schema validation, and advisory AIOps boundary |
+| `npm run gemini:deployment:demo` | Local synthetic diagnostics sanitization, schema validation, and Gemini analysis authority boundary |
 | `docker compose config --quiet` | Resolved Compose configuration after required `.env` values are present |
 
 Docker-based checks require a running Docker engine. Cloud deployment is intentionally not part of local README validation.
@@ -565,11 +573,14 @@ Production deployment expects:
 - `ECS_FRONTEND_SERVICE_ARN`
 - `APP_HEALTH_URL`
 - `APP_SMOKE_URL`
-- optional `AIOPS_GEMINI_MODEL`
+- optional `DEPLOYMENT_GEMINI_MODEL`
+
+`DEPLOYMENT_GEMINI_MODEL` selects the model used only by the deployment-summary
+and failure-diagnostics workflows.
 
 ### GitHub Repository Secrets
 
-- `AIOPS_GEMINI_API_KEY` is available only to the advisory AIOps analysis/demo step that needs it.
+- `DEPLOYMENT_GEMINI_API_KEY` is available only to the Gemini summary, failure-diagnostics, and demo steps that need it.
 
 The application `GEMINI_API_KEY`, database credentials, and session secret remain ECS runtime configuration. The workflow preserves those settings from active task definitions rather than receiving them as Docker build arguments.
 
@@ -590,7 +601,7 @@ The application `GEMINI_API_KEY`, database credentials, and session secret remai
 - Gitleaks, Semgrep, production `npm audit`, and Trivy run before deployment.
 - GitHub OIDC supplies short-lived AWS credentials only to the deployment job.
 - Google WIF uses temporary ECS task-role credentials; no Google service-account private key is required.
-- The AIOps job receives sanitized operational data and has no cloud or remediation authority.
+- The Gemini analysis job receives sanitized operational data and has no cloud or remediation authority.
 
 These controls reduce risk but do not replace external IAM review, secret rotation, database security, network controls, or operational monitoring.
 
@@ -598,7 +609,7 @@ These controls reduce risk but do not replace external IAM review, secret rotati
 
 ```text
 .github/
-  workflows/             CI/CD and manual AIOps demonstration workflows
+  workflows/             CI/CD and manual Gemini deployment-analysis workflows
 ansible/                 ECS Express rollout, verification, diagnostics, rollback
 config/                  Application and database configuration
 controllers/             HTTP request handling
@@ -610,7 +621,7 @@ models/                  MySQL data access
 public/                  Browser JavaScript, CSS, and static assets
 routes/                  Page and API route definitions
 scripts/
-  aiops/                 Diagnostics sanitizer, analyzer, and safe simulations
+  deployment-analysis/   Diagnostics sanitizer, analyzer, and safe simulations
 services/                Gemini, Speech-to-Text, WIF, and WebSocket services
 test/                    Automated regression and infrastructure-config tests
 views/                   EJS page templates
@@ -632,7 +643,7 @@ SECURITY.md              Security and credential-handling guidance
 | Cloud deployment | Separate backend/frontend images in Amazon ECR and services in ECS Express Mode |
 | Deployment automation | Idempotent, backend-first Ansible rollout with verification and rollback |
 | DevSecOps | Gitleaks, Semgrep, production `npm audit`, Trivy, and least-privilege OIDC workflow controls |
-| Advisory AIOps | Sanitized Gemini-assisted deployment health assessment and failure classification |
+| Gemini-Assisted Deployment Summary and Failure Diagnostics | Sanitized success summaries and failure explanations with human troubleshooting suggestions |
 | AI-assisted review | Optional CodeRabbit pull-request review configuration |
 
 Together, these components demonstrate automated validation, immutable container promotion, short-lived cloud authentication, deterministic deployment, failure recovery, and security controls integrated before release.
@@ -646,7 +657,7 @@ Detailed individual ownership, shared-file boundaries, and presentation evidence
 - [Docker Compose / Multi-container Orchestration](docs/FA-DOCKER-COMPOSE.md)
 - [Ansible ECS Express Deployment](docs/FA-ANSIBLE-CLOUD-DEPLOYMENT.md)
 - [FA L4 DevSecOps Evidence](docs/FA-L4-DEVSECOPS.md)
-- [AIOps Deployment Assessment and Failure Analysis](docs/FA-AIOPS-DEPLOYMENT-FAILURE-ANALYSIS.md)
+- [Gemini-Assisted Deployment Summary and Failure Diagnostics](docs/FA-GEMINI-DEPLOYMENT-SUMMARY-AND-DIAGNOSTICS.md)
 - [FA DevOps Evidence Guide](docs/FA-DEVOPS-EVIDENCE-GUIDE.md)
 - [FA DevOps Team Responsibility Map](docs/FA-TEAM-RESPONSIBILITY-MAP.md)
 - [Security Policy](SECURITY.md)
@@ -657,4 +668,4 @@ Detailed individual ownership, shared-file boundaries, and presentation evidence
 - The application requires an externally reachable MySQL-compatible database for full functionality.
 - Gemini, Google Speech-to-Text, OneMap, AWS, and GitHub App behavior depends on external accounts, permissions, quotas, configuration, and service availability.
 - CodeRabbit reviews require separate GitHub App installation/authorization.
-- AIOps recommendations are probabilistic and advisory; deterministic deployment checks and human review remain authoritative.
+- Gemini recommendations are probabilistic and advisory; deterministic deployment checks and human review remain authoritative.

@@ -10,10 +10,10 @@ This map assigns responsibility for the repository's current DevOps implementati
 | Min | Frontend Dockerisation and Nginx runtime gateway | Frontend container hardening and runtime validation | SMALL | `frontend/Dockerfile`, `frontend/nginx.conf.template`, and `frontend/validate-backend-url.sh` |
 | Thein | Backend Node.js Dockerisation | Runtime lifecycle and production-container validation | MEDIUM | Root `Dockerfile`, production dependency installation, distroless non-root runtime, and container health check |
 | Ji Xun | Local Docker Compose orchestration | Automated integration smoke testing and recovery validation | MEDIUM | `docker-compose.yml`, `docker-compose.gcp.yml`, `scripts/compose-smoke.js`, and `docs/FA-DOCKER-COMPOSE.md` |
-| Shawn | AWS cloud deployment and deployment reliability | Ansible rollback/diagnostics and advisory AIOps | LARGE | Deployment portion of `.github/workflows/deploy.yml`, all `ansible/` deployment automation, `scripts/aiops/`, and deployment evidence documents |
+| Shawn | AWS cloud deployment and deployment reliability | Ansible rollback/diagnostics and Gemini deployment assistance | LARGE | Deployment portion of `.github/workflows/deploy.yml`, all `ansible/` deployment automation, `scripts/deployment-analysis/`, and deployment evidence documents |
 | Fatin | DevSecOps security gates | Security evidence, dependency governance, and supply-chain controls | LARGE | npm audit, Gitleaks, Semgrep, Trivy, Dependabot, security artifacts, and fail-closed workflow dependencies |
 
-The allocation is technically coherent but not equal in size. Shawn has the broadest current scope because cloud identity, image publication, ECS task definitions, deployment ordering, verification, rollback, diagnostics, and AIOps form one integrated production responsibility. Min has the narrowest current scope. Ji Xun's original Compose scope has been strengthened with automated DNS, health, proxy, degradation, recovery, and cleanup validation without overlapping another member's primary ownership.
+The allocation is technically coherent but not equal in size. Shawn has the broadest current scope because cloud identity, image publication, ECS task definitions, deployment ordering, verification, rollback, diagnostics, and Gemini-assisted summaries form one integrated production responsibility. Min has the narrowest current scope. Ji Xun's original Compose scope has been strengthened with automated DNS, health, proxy, degradation, recovery, and cleanup validation without overlapping another member's primary ownership.
 
 ## Overall DevOps Architecture
 
@@ -34,7 +34,7 @@ Developer
   -> Frontend ECS Express update and stabilization             [Shawn]
   -> Frontend smoke test                                       [Shawn]
   -> Verified rollback and bounded diagnostics on failure      [Shawn]
-  -> Sanitized, read-only AIOps deployment assessment          [Shawn]
+  -> Sanitized, read-only Gemini-assisted deployment summary          [Shawn]
   -> Users
 
 Local development:
@@ -89,7 +89,7 @@ These extensions deepen pipeline engineering without taking ownership of scanner
 | `.github/workflows/deploy.yml` — `on`, global permissions, concurrency, environment, job graph, `needs`, and event conditions | Primary | Pipeline structure and execution rules |
 | `.github/workflows/deploy.yml` — test execution and build-step orchestration | Primary | CI sequence and build hand-off |
 | `.github/workflows/deploy.yml` — scanned image artifact upload/download and checksums | Shared with Fatin | Immutable artifact promotion; Fatin owns security intent |
-| `.github/workflows/deploy.yml` — deploy-job invocation and AIOps-job condition | Shared with Shawn | Kiki owns job wiring; Shawn owns deployment/AIOps behavior |
+| `.github/workflows/deploy.yml` — deploy-job invocation and Gemini-analysis job condition | Shared with Shawn | Kiki owns job wiring; Shawn owns deployment/Gemini-assisted analysis behavior |
 | `.github/dependabot.yml` — GitHub Actions update cadence | Shared with Fatin | Automation scheduling; Fatin owns dependency-risk response |
 | `test/*.test.js` | Supporting | The CI job executes the complete test suite; feature owners remain responsible for test content |
 | `README.md` — DevSecOps pipeline overview | Supporting | User-facing pipeline explanation |
@@ -368,7 +368,7 @@ Shawn owns production cloud delivery after the CI/security gates:
 - idempotent no-op behavior when a service already uses the requested revision;
 - verified restoration of previous revisions after failure;
 - bounded ECS failure diagnostics and GitHub deployment summaries;
-- sanitized, isolated, advisory AIOps success assessment and failure classification.
+- sanitized, isolated, Gemini-assisted success summaries and failure diagnostics.
 
 ### Secondary / Extended Ownership
 
@@ -377,7 +377,7 @@ Shawn's current scope is already the largest. The recommended focus is depth and
 - maintain rollback drills and failure-injection evidence;
 - maintain least-privilege IAM action/resource guidance outside repository-managed infrastructure;
 - keep bounded retry values aligned with observed ECS Express timings;
-- maintain AIOps isolation, sanitization, schema validation, and human-review rules;
+- maintain Gemini-analysis isolation, sanitization, schema validation, and human-review rules;
 - keep deployment runbooks current when AWS service behavior changes.
 
 ### Exact Files and Components
@@ -385,17 +385,17 @@ Shawn's current scope is already the largest. The recommended focus is depth and
 | File or section | Classification | Responsibility |
 |---|---|---|
 | `.github/workflows/deploy.yml` — deploy job | Primary within shared workflow | OIDC, ECR, task definitions, Ansible invocation, and deployment summary |
-| `.github/workflows/deploy.yml` — `aiops-analysis` job | Primary within shared workflow | Post-deployment advisory assessment and isolation |
+| `.github/workflows/deploy.yml` — `gemini-deployment-analysis` job | Primary within shared workflow | Post-deployment advisory assessment and isolation |
 | `ansible/deploy.yml` | Primary | Deployment entry point |
 | `ansible/ansible.cfg`, inventory, and requirements files | Primary | Local-runner Ansible configuration and constrained tooling |
 | `ansible/roles/ecs_express_deploy/defaults/main.yml` | Primary | Bounded retries, URLs, task definitions, and output paths |
 | `ansible/roles/ecs_express_deploy/tasks/` | Primary | Preflight, sequencing, waits, health, smoke test, rollback, diagnostics, and summaries |
-| `scripts/aiops/sanitizeDiagnostics.js` | Primary | Allowlisting, redaction, and payload bounds |
-| `scripts/aiops/prepareDeploymentEvidence.js` | Primary | Curated success/failure pipeline evidence without environment dumps |
-| `scripts/aiops/analyzeDeploymentFailure.js` | Primary | Schema-validated advisory Gemini analysis |
-| `test/aiopsDiagnostics.test.js` | Supporting | AIOps security-boundary regression coverage |
+| `scripts/deployment-analysis/sanitizeDiagnostics.js` | Primary | Allowlisting, redaction, and payload bounds |
+| `scripts/deployment-analysis/prepareDeploymentEvidence.js` | Primary | Curated success/failure pipeline evidence without environment dumps |
+| `scripts/deployment-analysis/analyzeDeploymentFailure.js` | Primary | Schema-validated advisory Gemini analysis |
+| `test/deploymentAnalysisDiagnostics.test.js` | Supporting | Gemini-analysis security-boundary regression coverage |
 | `docs/FA-ANSIBLE-CLOUD-DEPLOYMENT.md` | Primary evidence | Cloud deployment explanation |
-| `docs/FA-AIOPS-DEPLOYMENT-FAILURE-ANALYSIS.md` | Primary evidence | AIOps architecture and guardrails |
+| `docs/FA-GEMINI-DEPLOYMENT-SUMMARY-AND-DIAGNOSTICS.md` | Primary evidence | Gemini-assisted analysis architecture and guardrails |
 
 ### Integration With Other Members
 
@@ -429,11 +429,11 @@ Shawn should demonstrate:
 - health-gated progressive rollout;
 - deterministic rollback;
 - observability through allowlisted diagnostics;
-- AIOps guardrails and human-in-the-loop operations.
+- Gemini analysis guardrails and human-in-the-loop operations.
 
 ### Current Scope Size
 
-**LARGE — the largest current scope.** It spans cloud identity, two image repositories, two production services, task-definition preservation, Ansible sequencing, health/smoke verification, idempotency, rollback, diagnostics, summaries, and a security-isolated AIOps workflow.
+**LARGE — the largest current scope.** It spans cloud identity, two image repositories, two production services, task-definition preservation, Ansible sequencing, health/smoke verification, idempotency, rollback, diagnostics, summaries, and a security-isolated Gemini-assisted analysis workflow.
 
 ## Fatin — DevSecOps
 
@@ -477,7 +477,7 @@ Recommended extension:
 | `.github/dependabot.yml` | Primary security policy | Automated dependency-update coverage |
 | `SECURITY.md` | Primary documentation | Secret, vulnerability, exception, and response policy |
 | `docs/FA-L4-DEVSECOPS.md` | Primary evidence | Gate rationale, demonstration, and rubric mapping |
-| `test/aiopsDiagnostics.test.js` — sanitizer and workflow-boundary cases | Supporting/shared with Shawn | Regression evidence for secret-safe diagnostics and isolated AIOps permissions |
+| `test/deploymentAnalysisDiagnostics.test.js` — sanitizer and workflow-boundary cases | Supporting/shared with Shawn | Regression evidence for secret-safe diagnostics and isolated Gemini-analysis permissions |
 | `.gitignore` and `.dockerignore` | Shared | Credential/build-context hygiene |
 | `package-lock.json` | Supporting evidence | Reproducible dependency graph examined by npm audit |
 
@@ -521,7 +521,7 @@ Shared means that one file contains multiple responsibilities. It does not erase
 
 | Component | Members | Boundary |
 |---|---|---|
-| `.github/workflows/deploy.yml` | Kiki, Fatin, Shawn | Kiki owns orchestration; Fatin owns security gates; Shawn owns cloud deployment, Ansible invocation, and AIOps behavior |
+| `.github/workflows/deploy.yml` | Kiki, Fatin, Shawn | Kiki owns orchestration; Fatin owns security gates; Shawn owns cloud deployment, Ansible invocation, and Gemini-assisted analysis behavior |
 | Build-and-scan job | Kiki, Min, Thein, Fatin | Kiki sequences; Min/Thein own successful image construction; Fatin owns Trivy policy |
 | Scanned image artifacts | Kiki, Fatin, Shawn | Kiki owns transfer; Fatin owns scan-to-deploy integrity intent; Shawn consumes artifacts without rebuilding |
 | `docker-compose.yml` | Ji Xun, Min, Thein | Ji Xun owns orchestration; Min and Thein own the container contracts being orchestrated |
@@ -603,7 +603,7 @@ No member should receive a second unrelated platform merely to make the allocati
 | Min | Production-ready frontend Nginx image | Runtime validation and container hardening evidence | Correct proxy/health behavior locally and in ECS | Not Compose or backend |
 | Thein | Production-ready backend Node image | Runtime lifecycle and container validation evidence | Healthy non-root backend locally and in ECS | Not application features or cloud |
 | Ji Xun | Reproducible two-service Compose environment | Local smoke/recovery scenarios | Healthy startup, networking, and overlay behavior | Not production deployment |
-| Shawn | Secure AWS/ECS deployment with Ansible | Verified rollback, diagnostics, summaries, and AIOps | Backend-first production deployment and failure recovery | Not pipeline/scanner/container ownership |
+| Shawn | Secure AWS/ECS deployment with Ansible | Verified rollback, diagnostics, summaries, and Gemini-assisted analysis | Backend-first production deployment and failure recovery | Not pipeline/scanner/container ownership |
 | Fatin | Fail-closed DevSecOps gates | Security evidence and dependency governance | Unsafe releases blocked before AWS access | Not deployment implementation |
 
 ## FA Readiness
@@ -614,13 +614,13 @@ No member should receive a second unrelated platform merely to make the allocati
 | Min | Medium | Working frontend image and Nginx configuration, but narrower scope | Complete runtime/hardening validation evidence |
 | Thein | High | Strong multi-stage, pinned, distroless, non-root backend image | Prepare lifecycle and standalone health demonstration |
 | Ji Xun | High | Two-service Compose plus automated DNS, health, proxy, recovery, and cleanup evidence | Rehearse the documented 3–5 minute demonstration |
-| Shawn | High | Broad production deployment, rollback, diagnostics, and AIOps evidence | Rehearse success, no-op, and rollback demonstrations |
+| Shawn | High | Broad production deployment, rollback, diagnostics, and Gemini deployment evidence | Rehearse success, no-op, and rollback demonstrations |
 | Fatin | High | Four integrated gates plus supporting governance/evidence | Rehearse one safe blocked-release demonstration |
 
 ## Presentation Summary
 
 GitHub Actions and Ansible are both used because they solve different problems. GitHub Actions is the control plane for CI/CD events, test/security prerequisites, immutable artifacts, cloud authentication, and job sequencing. Ansible is the deterministic deployment engine that applies backend-first ECS changes, correlates each requested task definition to its exact service revision and new service-deployment ARN, waits for that deployment to become `SUCCESSFUL`, verifies health, performs smoke tests, and restores previous revisions on failure.
 
-The team's Cloud Deployment and Continuous Deployment contribution is an end-to-end automated release path with two purpose-built containers, reproducible local orchestration, mandatory security controls, temporary OIDC cloud authentication, separate ECR/ECS services, progressive verification, rollback, bounded diagnostics, and human-reviewed AIOps advice.
+The team's Cloud Deployment and Continuous Deployment contribution is an end-to-end automated release path with two purpose-built containers, reproducible local orchestration, mandatory security controls, temporary OIDC cloud authentication, separate ECR/ECS services, progressive verification, rollback, bounded diagnostics, and human-reviewed Gemini-assisted advice.
 
 This demonstrates DevOps automation and security because a source change follows a controlled path from CI through security and immutable image promotion to verified production deployment. Unsafe or unhealthy changes are blocked or rolled back, while the responsibility for each stage remains clear and independently demonstrable.

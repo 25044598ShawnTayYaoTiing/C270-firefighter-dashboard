@@ -4,10 +4,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { sanitizeDiagnostics } = require('../scripts/aiops/sanitizeDiagnostics');
+const { sanitizeDiagnostics } = require('../scripts/deployment-analysis/sanitizeDiagnostics');
 const {
   ANALYSIS_MODES,
-  DEFAULT_AIOPS_GEMINI_MODEL,
+  DEFAULT_DEPLOYMENT_GEMINI_MODEL,
   FAILURE_CATEGORIES,
   FAILURE_STAGES,
   MAX_UNVALIDATED_OUTPUT_BYTES,
@@ -16,12 +16,12 @@ const {
   createEvidenceCatalog,
   formatFailureForLog,
   renderSummary
-} = require('../scripts/aiops/analyzeDeploymentFailure');
+} = require('../scripts/deployment-analysis/analyzeDeploymentFailure');
 const {
   createSyntheticSmokeDiagnostics,
   renderSmokeSummary,
   runLiveSmokeTest
-} = require('../scripts/aiops/runLiveGeminiSmoke');
+} = require('../scripts/deployment-analysis/runLiveGeminiSmoke');
 
 function evidenceIdsFor(diagnostics, fieldPaths) {
   const catalog = createEvidenceCatalog(sanitizeDiagnostics(diagnostics));
@@ -113,7 +113,7 @@ function apiError({ name = 'ApiError', status, code, message }) {
 }
 
 test('Gemini API errors are safely classified without retaining secret values', () => {
-  const secret = 'unit-test-private-aiops-key';
+  const secret = 'unit-test-private-deployment-analysis-key';
   const bearer = 'not-a-real-bearer-token';
   const cases = [
     {
@@ -274,8 +274,8 @@ test('API, parsing, schema, and evidence failures remain distinct safe modes', a
   assert.equal(evidenceFailure.liveGeminiAttempted, true);
   assert.equal(parseFailure.unvalidatedAnalysis, undefined);
   assert.equal(schemaFailure.unvalidatedAnalysis, undefined);
-  assert.doesNotMatch(renderSummary(parseFailure), /## Unvalidated Gemini Analysis/);
-  assert.doesNotMatch(renderSummary(schemaFailure), /## Unvalidated Gemini Analysis/);
+  assert.doesNotMatch(renderSummary(parseFailure), /## Unvalidated Gemini Deployment Summary and Failure Diagnostics/);
+  assert.doesNotMatch(renderSummary(schemaFailure), /## Unvalidated Gemini Deployment Summary and Failure Diagnostics/);
 });
 
 test('valid allowlisted evidence IDs are accepted and enforced by the response schema', async () => {
@@ -306,7 +306,7 @@ test('valid allowlisted evidence IDs are accepted and enforced by the response s
   assert.match(summary, /Evidence validation: \*\*PASS\*\*/);
   assert.match(summary, /\*\*Evidence used:\*\*/);
   assert.match(summary, /Human review required: \*\*YES\*\*/);
-  assert.doesNotMatch(summary, /## Unvalidated Gemini Analysis/);
+  assert.doesNotMatch(summary, /## Unvalidated Gemini Deployment Summary and Failure Diagnostics/);
   assert.doesNotMatch(summary, /NOT VALIDATED/);
 });
 
@@ -351,7 +351,7 @@ test('missing required healthy evidence displays a bounded draft while fallback 
   assert.equal(result.humanReviewRequired, true);
   assert.match(summary, /## Authoritative Deployment Result/);
   assert.match(summary, /## Deterministic Fallback Assessment/);
-  assert.match(summary, /## Unvalidated Gemini Analysis/);
+  assert.match(summary, /## Unvalidated Gemini Deployment Summary and Failure Diagnostics/);
   assert.match(summary, /did not pass evidence validation/);
   assert.match(summary, /Missing required evidence IDs:/);
   assert.match(summary, new RegExp(missingEvidenceId));
@@ -551,7 +551,7 @@ test('unvalidated Gemini output is redacted, HTML-free, Markdown-safe, and bound
   assert.match(summary, /\\\*\\\*bold\\\*\\\*/);
   assert.match(summary, /\\\[link\\\]\(javascript:alert\(1\)\)/);
   assert.match(summary, /\\`dangerous-command\\`/);
-  assert.match(summary, /## Unvalidated Gemini Analysis/);
+  assert.match(summary, /## Unvalidated Gemini Deployment Summary and Failure Diagnostics/);
   assert.match(summary, /NON-AUTHORITATIVE DRAFT/);
 });
 
@@ -559,7 +559,7 @@ test('fallback summary reports the safe live failure without exposing API creden
   const secret = 'summary-only-private-key';
   const result = await analyzeDiagnostics(createSyntheticSmokeDiagnostics(), {
     apiKey: secret,
-    model: DEFAULT_AIOPS_GEMINI_MODEL,
+    model: DEFAULT_DEPLOYMENT_GEMINI_MODEL,
     clientFactory: () => ({
       models: {
         async generateContent() {
@@ -595,7 +595,7 @@ test('fallback summary reports the safe live failure without exposing API creden
 test('missing live credential is reported as not attempted rather than a false LIVE result', async () => {
   const result = await runLiveSmokeTest({
     apiKey: '',
-    model: DEFAULT_AIOPS_GEMINI_MODEL
+    model: DEFAULT_DEPLOYMENT_GEMINI_MODEL
   });
   const summary = renderSmokeSummary(result);
 
@@ -610,20 +610,20 @@ test('missing live credential is reported as not attempted rather than a false L
 test('dedicated LIVE smoke workflow is manual, unmocked, and has no AWS or OIDC authority', () => {
   const root = path.join(__dirname, '..');
   const workflow = fs.readFileSync(
-    path.join(root, '.github', 'workflows', 'aiops-live-smoke.yml'),
+    path.join(root, '.github', 'workflows', 'gemini-deployment-live-smoke.yml'),
     'utf8'
   );
   const smokeScript = fs.readFileSync(
-    path.join(root, 'scripts', 'aiops', 'runLiveGeminiSmoke.js'),
+    path.join(root, 'scripts', 'deployment-analysis', 'runLiveGeminiSmoke.js'),
     'utf8'
   );
 
   assert.match(workflow, /^on:\s*\n\s+workflow_dispatch:\s*$/m);
   assert.doesNotMatch(workflow, /^\s+(?:push|pull_request|schedule):/m);
   assert.match(workflow, /^permissions:\s*\n\s+contents: read\s*$/m);
-  assert.match(workflow, /secrets\.AIOPS_GEMINI_API_KEY/);
-  assert.match(workflow, /vars\.AIOPS_GEMINI_MODEL/);
-  assert.match(workflow, /npm run aiops:smoke:live/);
+  assert.match(workflow, /secrets\.DEPLOYMENT_GEMINI_API_KEY/);
+  assert.match(workflow, /vars\.DEPLOYMENT_GEMINI_MODEL/);
+  assert.match(workflow, /npm run gemini:deployment:smoke:live/);
   assert.doesNotMatch(workflow, /id-token:\s*write/);
   assert.doesNotMatch(workflow, /configure-aws-credentials/);
   assert.doesNotMatch(workflow, /\baws\s+(?:ecs|ecr|sts)\b/);

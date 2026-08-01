@@ -209,14 +209,14 @@ function runCli() {
     environment: process.env
   });
   writeEvidenceFile(outputPath, evidence);
-  console.log(`[AIOps] Sanitized ${normalizeOutcome(outcome)} deployment evidence prepared.`);
+  console.log(`[Gemini Deployment Summary] Sanitized ${normalizeOutcome(outcome)} deployment evidence prepared.`);
 }
 
 if (require.main === module) {
   try {
     runCli();
   } catch (error) {
-    console.error(`[AIOps] Deployment evidence preparation failed: ${redactSensitiveText(error.message)}`);
+    console.error(`[Gemini Deployment Summary] Deployment evidence preparation failed: ${redactSensitiveText(error.message)}`);
     process.exitCode = 1;
   }
 }

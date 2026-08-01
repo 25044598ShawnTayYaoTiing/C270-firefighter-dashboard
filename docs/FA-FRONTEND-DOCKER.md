@@ -3,7 +3,7 @@
 Primary FA owner: **Min — Frontend Dockerisation / Nginx Runtime**
 
 This guide covers only the frontend image and its runtime contract. Docker Compose
-orchestration, the backend image, CI/CD, AWS/ECS, Ansible, scanners, and AIOps remain
+orchestration, the backend image, CI/CD, AWS/ECS, Ansible, scanners, and Gemini Deployment Summaries or Failure Diagnostics remain
 with their respective owners.
 
 ## Architecture

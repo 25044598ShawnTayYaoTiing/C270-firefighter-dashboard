@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  DEFAULT_AIOPS_GEMINI_MODEL,
+  DEFAULT_DEPLOYMENT_GEMINI_MODEL,
   analyzeDiagnostics,
   formatFailureForLog,
   renderSummary,
@@ -107,11 +107,11 @@ function createSyntheticSmokeDiagnostics() {
 
 function renderSmokeSummary(result) {
   return [
-    '# AIOps LIVE Gemini Smoke Test',
+    '# Gemini Deployment Summary and Failure Diagnostics LIVE Smoke Test',
     '',
     '> **SYNTHETIC SANITIZED EVIDENCE - NO AWS OR DEPLOYMENT AUTHORITY**',
     '',
-    renderSummary(result).replace('# AIOps Deployment Summary', '## Production analyzer result')
+    renderSummary(result).replace('# Gemini Deployment Summary', '## Production analyzer result')
   ].join('\n');
 }
 
@@ -131,12 +131,12 @@ async function runLiveSmokeTest(options = {}) {
   const apiKey = String(
     Object.hasOwn(options, 'apiKey')
       ? options.apiKey
-      : process.env.AIOPS_GEMINI_API_KEY || ''
+      : process.env.DEPLOYMENT_GEMINI_API_KEY || ''
   ).trim();
   const model = String(
     options.model
-      || process.env.AIOPS_GEMINI_MODEL
-      || DEFAULT_AIOPS_GEMINI_MODEL
+      || process.env.DEPLOYMENT_GEMINI_MODEL
+      || DEFAULT_DEPLOYMENT_GEMINI_MODEL
   ).trim();
 
   return analyzeDiagnostics(createSyntheticSmokeDiagnostics(), {
@@ -151,10 +151,10 @@ async function runCli() {
   writeWorkflowSummary(renderSmokeSummary(result));
 
   if (result.available) {
-    console.log(`[AIOps Smoke] ${result.mode} succeeded with model=${result.model}.`);
-    console.log(`[AIOps Smoke] classification=${result.analysis.classification}.`);
+    console.log(`[Gemini Deployment Smoke] ${result.mode} succeeded with model=${result.model}.`);
+    console.log(`[Gemini Deployment Smoke] classification=${result.analysis.classification}.`);
     console.log(
-      `[AIOps Smoke] request=${result.validation.geminiRequest} `
+      `[Gemini Deployment Smoke] request=${result.validation.geminiRequest} `
       + `structured=${result.validation.structuredResponse} `
       + `evidence=${result.validation.evidence} `
       + `correctiveRetry=${result.validation.correctiveRetryAttempted ? 'YES' : 'NO'}.`
@@ -163,7 +163,7 @@ async function runCli() {
   }
 
   console.error(
-    `[AIOps Smoke] ${result.mode} did not produce a validated assessment. ${formatFailureForLog(result.failure)}`
+    `[Gemini Deployment Smoke] ${result.mode} did not produce a validated assessment. ${formatFailureForLog(result.failure)}`
   );
   process.exitCode = 1;
 }
@@ -172,9 +172,9 @@ if (require.main === module) {
   runCli().catch((error) => {
     const message = safeErrorText(
       error && error.message || 'Unexpected smoke-test failure.',
-      [process.env.AIOPS_GEMINI_API_KEY]
+      [process.env.DEPLOYMENT_GEMINI_API_KEY]
     );
-    console.error(`[AIOps Smoke] Smoke runner failed safely: ${message}`);
+    console.error(`[Gemini Deployment Smoke] Smoke runner failed safely: ${message}`);
     process.exitCode = 1;
   });
 }

@@ -15,8 +15,8 @@ on:
         required: true
         default: false
         type: boolean
-      run_aiops_demo:
-        description: Run the safe synthetic AIOps FA demo after a successful manual deployment
+      run_gemini_deployment_demo:
+        description: Run Gemini Deployment Summary and Failure Diagnostics Demo after a successful manual deployment
         required: true
         default: false
         type: boolean
@@ -251,7 +251,7 @@ jobs:
     if: >-
       github.event_name == 'push' ||
       (github.event_name == 'workflow_dispatch' &&
-      (inputs.deploy || inputs.run_aiops_demo))
+      (inputs.deploy || inputs.run_gemini_deployment_demo))
     runs-on: ubuntu-latest
     # Covers two 30-minute canary waiters plus bounded verified rollback on failure.
     timeout-minutes: 150
@@ -259,7 +259,7 @@ jobs:
       contents: read
       id-token: write
     outputs:
-      aiops_ready: ${{ steps.aiops-evidence-status.outputs.ready }}
+      deployment_analysis_ready: ${{ steps.deployment-analysis-evidence-status.outputs.ready }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -540,7 +540,7 @@ jobs:
             --extra-vars "ecs_express_deploy_github_branch=${GITHUB_REF_NAME}"
 
       - name: Prepare sanitized deployment evidence
-        id: prepare-aiops
+        id: prepare-deployment-analysis
         if: >-
           always() &&
           (steps.ansible-deploy.outcome == 'success' ||
@@ -557,25 +557,25 @@ jobs:
           else
             evidence_outcome='FAILED'
             if [ ! -f ansible/deployment-diagnostics.json ]; then
-              echo 'Ansible failure diagnostics were unavailable; AIOps will use a safe fallback summary.'
+              echo 'Ansible failure diagnostics were unavailable; Gemini deployment assistance will use a safe fallback summary.'
               exit 0
             fi
             input_arguments=(ansible/deployment-diagnostics.json)
           fi
 
-          if ! node scripts/aiops/prepareDeploymentEvidence.js \
+          if ! node scripts/deployment-analysis/prepareDeploymentEvidence.js \
             "${evidence_outcome}" \
             deployment-diagnostics.json \
             "${input_arguments[@]}"; then
-            echo 'Sanitized deployment evidence could not be prepared; AIOps will use a safe fallback summary.'
+            echo 'Sanitized deployment evidence could not be prepared; Gemini deployment assistance will use a safe fallback summary.'
             exit 0
           fi
 
           echo 'ready=true' >> "$GITHUB_OUTPUT"
 
       - name: Upload sanitized deployment evidence
-        id: upload-aiops-evidence
-        if: always() && steps.prepare-aiops.outputs.ready == 'true'
+        id: upload-deployment-analysis-evidence
+        if: always() && steps.prepare-deployment-analysis.outputs.ready == 'true'
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -584,12 +584,12 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Record AIOps evidence availability
-        id: aiops-evidence-status
+      - name: Record Gemini deployment evidence availability
+        id: deployment-analysis-evidence-status
         if: always()
         env:
-          EVIDENCE_PREPARED: ${{ steps.prepare-aiops.outputs.ready }}
-          EVIDENCE_UPLOAD_OUTCOME: ${{ steps.upload-aiops-evidence.outcome }}
+          EVIDENCE_PREPARED: ${{ steps.prepare-deployment-analysis.outputs.ready }}
+          EVIDENCE_UPLOAD_OUTCOME: ${{ steps.upload-deployment-analysis-evidence.outcome }}
         run: |
           ready=false
           if [ "${EVIDENCE_PREPARED}" = 'true' ] && [ "${EVIDENCE_UPLOAD_OUTCOME}" = 'success' ]; then
@@ -621,9 +621,9 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # FA responsibility: Shawn — isolated deployment assessment and safe synthetic FA demo
-  aiops-analysis:
-    name: AIOps Deployment Assessment
+  # FA responsibility: Shawn — isolated Gemini deployment summaries, failure diagnostics, and safe synthetic FA demo
+  gemini-deployment-analysis:
+    name: Gemini Deployment Summary
     needs: deploy
     if: >-
       always() &&
@@ -650,35 +650,35 @@ jobs:
         run: npm ci --omit=dev --ignore-scripts
 
       - name: Download sanitized deployment evidence
-        id: download-aiops-evidence
-        if: needs.deploy.outputs.aiops_ready == 'true'
+        id: download-deployment-analysis-evidence
+        if: needs.deploy.outputs.deployment_analysis_ready == 'true'
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: deployment-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - name: Generate read-only deployment assessment
+      - name: Generate Gemini Deployment Summary
         if: always()
         continue-on-error: true
         env:
-          AIOPS_GEMINI_API_KEY: ${{ secrets.AIOPS_GEMINI_API_KEY }}
-          AIOPS_GEMINI_MODEL: ${{ vars.AIOPS_GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
-          AIOPS_DEPLOYMENT_OUTCOME: ${{ needs.deploy.result }}
+          DEPLOYMENT_GEMINI_API_KEY: ${{ secrets.DEPLOYMENT_GEMINI_API_KEY }}
+          DEPLOYMENT_GEMINI_MODEL: ${{ vars.DEPLOYMENT_GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
+          DEPLOYMENT_ANALYSIS_OUTCOME: ${{ needs.deploy.result }}
         run: |
-          node scripts/aiops/analyzeDeploymentFailure.js \
+          node scripts/deployment-analysis/analyzeDeploymentFailure.js \
             deployment-diagnostics.json \
-            aiops-summary.md \
-            aiops-analysis.json
+            gemini-deployment-summary.md \
+            gemini-deployment-analysis.json
 
-      - name: Write AIOps deployment summary
+      - name: Write Gemini Deployment Summary
         if: always()
         continue-on-error: true
         env:
-          AIOPS_GEMINI_MODEL: ${{ vars.AIOPS_GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
+          DEPLOYMENT_GEMINI_MODEL: ${{ vars.DEPLOYMENT_GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
           DEPLOYMENT_OUTCOME: ${{ needs.deploy.result }}
         run: |
-          if [ -f aiops-summary.md ]; then
-            cat aiops-summary.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f gemini-deployment-summary.md ]; then
+            cat gemini-deployment-summary.md >> "$GITHUB_STEP_SUMMARY"
           else
             normalized_outcome="${DEPLOYMENT_OUTCOME^^}"
             fallback_risk='HIGH'
@@ -686,13 +686,13 @@ jobs:
               fallback_risk='MEDIUM'
             fi
             {
-              echo '# AIOps Deployment Summary'
+              echo '# Gemini Deployment Summary'
               echo
               echo '> **AI-GENERATED OPERATIONAL ASSESSMENT — ADVISORY ONLY**'
               echo
               echo '## Execution'
               echo '- Mode: **FALLBACK**'
-              echo "- Model: **${AIOPS_GEMINI_MODEL}**"
+              echo "- Model: **${DEPLOYMENT_GEMINI_MODEL}**"
               echo "- Deployment outcome: **${normalized_outcome}**"
               echo '- Classification: **UNKNOWN**'
               echo "- Risk level: **${fallback_risk}**"
@@ -705,14 +705,14 @@ jobs:
               echo '- Backend health: **UNAVAILABLE**'
               echo '- Frontend smoke test: **UNAVAILABLE**'
               echo
-              echo '## AI Assessment'
-              echo 'Operational summary: The AIOps assessment could not be generated; the deterministic deployment result remains authoritative.'
+              echo '## Gemini Failure Diagnostics'
+              echo 'Operational summary: Gemini deployment summary and failure diagnostics could not be generated; the deterministic deployment result remains authoritative.'
               echo
               echo 'Recommended checks/actions: Review the deployment job summary and authoritative Ansible result.'
               echo
               echo '## Safety'
               echo '- Human review required: **YES**'
-              echo '- AWS credentials available to AI job: **NO**'
+              echo '- AWS credentials available to Gemini summary job: **NO**'
               echo '- OIDC permission: **NO**'
               echo '- AWS calls: **0**'
               echo '- Deployment actions: **0**'
@@ -721,28 +721,28 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Prepare FA demo synthetic sanitized diagnostics
+      - name: Prepare Gemini Deployment Demo synthetic sanitized diagnostics
         if: >-
           github.event_name == 'workflow_dispatch' &&
-          inputs.run_aiops_demo &&
+          inputs.run_gemini_deployment_demo &&
           needs.deploy.result == 'success'
         continue-on-error: true
         run: >-
-          node scripts/aiops/demo/runWorkflowDemo.js
+          node scripts/deployment-analysis/demo/runWorkflowDemo.js
           prepare
-          aiops-demo-sanitized.json
+          gemini-deployment-demo-sanitized.json
 
-      - name: Run FA demo synthetic advisory analysis
+      - name: Run Gemini Deployment Demo synthetic advisory analysis
         if: >-
           github.event_name == 'workflow_dispatch' &&
-          inputs.run_aiops_demo &&
+          inputs.run_gemini_deployment_demo &&
           needs.deploy.result == 'success'
         continue-on-error: true
         env:
-          AIOPS_GEMINI_API_KEY: ${{ secrets.AIOPS_GEMINI_API_KEY }}
-          AIOPS_GEMINI_MODEL: ${{ vars.AIOPS_GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
-          AIOPS_DEMO_REAL_DEPLOYMENT_RESULT: SUCCESS
+          DEPLOYMENT_GEMINI_API_KEY: ${{ secrets.DEPLOYMENT_GEMINI_API_KEY }}
+          DEPLOYMENT_GEMINI_MODEL: ${{ vars.DEPLOYMENT_GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
+          GEMINI_DEMO_REAL_DEPLOYMENT_RESULT: SUCCESS
         run: >-
-          node scripts/aiops/demo/runWorkflowDemo.js
+          node scripts/deployment-analysis/demo/runWorkflowDemo.js
           analyze
-          aiops-demo-sanitized.json
+          gemini-deployment-demo-sanitized.json

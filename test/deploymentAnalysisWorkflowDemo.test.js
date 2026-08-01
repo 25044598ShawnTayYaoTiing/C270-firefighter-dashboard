@@ -7,28 +7,28 @@ const path = require('node:path');
 const {
   FAKE_SENSITIVE_VALUES,
   PROMPT_INJECTION_TEXT
-} = require('../scripts/aiops/demo/simulatedFailure');
+} = require('../scripts/deployment-analysis/demo/simulatedFailure');
 const {
   MOCK_ANALYSIS,
   createMockClientFactory
-} = require('../scripts/aiops/demo/runDemo');
+} = require('../scripts/deployment-analysis/demo/runDemo');
 const {
-  DEFAULT_AIOPS_GEMINI_MODEL
-} = require('../scripts/aiops/analyzeDeploymentFailure');
+  DEFAULT_DEPLOYMENT_GEMINI_MODEL
+} = require('../scripts/deployment-analysis/analyzeDeploymentFailure');
 const {
   MODES,
   prepareSyntheticDiagnostics,
   renderWorkflowSummary,
   runWorkflowAnalysis
-} = require('../scripts/aiops/demo/runWorkflowDemo');
+} = require('../scripts/deployment-analysis/demo/runWorkflowDemo');
 
-test('GitHub AIOps demo workflow is manual and has no AWS or OIDC authority', () => {
+test('GitHub Gemini deployment demo workflow is manual and has no AWS or OIDC authority', () => {
   const workflowPath = path.join(
     __dirname,
     '..',
     '.github',
     'workflows',
-    'aiops-demo.yml'
+    'gemini-deployment-demo.yml'
   );
   const workflow = fs.readFileSync(workflowPath, 'utf8');
 
@@ -42,13 +42,13 @@ test('GitHub AIOps demo workflow is manual and has no AWS or OIDC authority', ()
   assert.doesNotMatch(workflow, /ansible-playbook/);
   assert.doesNotMatch(workflow, /\bgit\s+push\b/);
   assert.doesNotMatch(workflow, /\bgh\s+pr\s+merge\b/);
-  assert.match(workflow, /secrets\.AIOPS_GEMINI_API_KEY/);
-  assert.match(workflow, /vars\.AIOPS_GEMINI_MODEL/);
-  assert.match(workflow, new RegExp(DEFAULT_AIOPS_GEMINI_MODEL));
+  assert.match(workflow, /secrets\.DEPLOYMENT_GEMINI_API_KEY/);
+  assert.match(workflow, /vars\.DEPLOYMENT_GEMINI_MODEL/);
+  assert.match(workflow, new RegExp(DEFAULT_DEPLOYMENT_GEMINI_MODEL));
   assert.doesNotMatch(workflow, /secrets\.GEMINI_API_KEY/);
 });
 
-test('GitHub AIOps demo uses a validated mocked fallback when no secret is available', async () => {
+test('GitHub Gemini deployment demo uses a validated mocked fallback when no secret is available', async () => {
   const prepared = prepareSyntheticDiagnostics();
   const result = await runWorkflowAnalysis(prepared.sanitizedDiagnostics, {
     apiKey: ''
@@ -57,16 +57,16 @@ test('GitHub AIOps demo uses a validated mocked fallback when no secret is avail
 
   assert.equal(result.mode, MODES.mocked);
   assert.equal(result.liveAttempted, false);
-  assert.equal(result.selectedModel, DEFAULT_AIOPS_GEMINI_MODEL);
+  assert.equal(result.selectedModel, DEFAULT_DEPLOYMENT_GEMINI_MODEL);
   assert.equal(result.analysisResult.available, true);
   assert.equal(result.analysisResult.analysis.humanReviewRequired, true);
   assert.equal(result.deploymentResult, 'FAILED');
   assert.match(summary, /Mode: \*\*MOCKED\*\*/);
-  assert.match(summary, new RegExp(`Selected Gemini model: \\*\\*${DEFAULT_AIOPS_GEMINI_MODEL}\\*\\*`));
+  assert.match(summary, new RegExp(`Selected Gemini model: \\*\\*${DEFAULT_DEPLOYMENT_GEMINI_MODEL}\\*\\*`));
   assert.match(summary, /Live Gemini attempted: \*\*NO\*\*/);
 });
 
-test('GitHub AIOps demo supports live mode through the production analyzer', async () => {
+test('GitHub Gemini deployment demo supports live mode through the production analyzer', async () => {
   const prepared = prepareSyntheticDiagnostics();
   const capture = { modelCalls: 0, request: null };
   const apiKey = ['test', 'only', 'placeholder'].join('-');
@@ -112,7 +112,7 @@ test('integrated FA demo separates successful real deployment from failed synthe
   assert.match(summary, /Human review required: \*\*TRUE\*\*/);
 });
 
-test('GitHub AIOps demo clearly labels a mocked fallback after a live failure', async () => {
+test('GitHub Gemini deployment demo clearly labels a mocked fallback after a live failure', async () => {
   const prepared = prepareSyntheticDiagnostics();
   const apiKey = ['test', 'fallback', 'placeholder'].join('-');
   const result = await runWorkflowAnalysis(prepared.sanitizedDiagnostics, {
@@ -141,7 +141,7 @@ test('GitHub AIOps demo clearly labels a mocked fallback after a live failure', 
   assert.doesNotMatch(summary, new RegExp(apiKey));
 });
 
-test('GitHub AIOps summary excludes fake values and untrusted prompt text', async () => {
+test('GitHub Gemini Deployment Summary excludes fake values and untrusted prompt text', async () => {
   const prepared = prepareSyntheticDiagnostics();
   const result = await runWorkflowAnalysis(prepared.sanitizedDiagnostics, {
     apiKey: ''
