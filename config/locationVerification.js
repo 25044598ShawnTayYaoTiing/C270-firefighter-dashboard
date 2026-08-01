@@ -1,0 +1,15 @@
+const LOCATION_VERIFICATION_STATUSES = Object.freeze({
+  VERIFIED: 'VERIFIED',
+  UNVERIFIED: 'UNVERIFIED'
+});
+
+function normalizeLocationVerificationStatus(value) {
+  return value === LOCATION_VERIFICATION_STATUSES.VERIFIED
+    ? LOCATION_VERIFICATION_STATUSES.VERIFIED
+    : LOCATION_VERIFICATION_STATUSES.UNVERIFIED;
+}
+
+module.exports = {
+  LOCATION_VERIFICATION_STATUSES,
+  normalizeLocationVerificationStatus
+};

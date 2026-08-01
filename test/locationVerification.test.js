@@ -3,7 +3,9 @@ const assert = require('node:assert/strict');
 
 const {
   STATES,
+  createSubmissionGuard,
   createVerificationState,
+  getSubmissionLocationDecision,
   validateLocationQuery
 } = require('../public/js/locationVerification');
 const {
@@ -17,6 +19,9 @@ const {
   _private: incidentModelInternals
 } = require('../models/incidentModel');
 const incidentController = require('../controllers/incidentController');
+const {
+  LOCATION_VERIFICATION_STATUSES
+} = require('../config/locationVerification');
 
 function candidate(overrides = {}) {
   return {
@@ -183,12 +188,39 @@ test('an AI-populated location starts unverified until an officer searches it', 
   assert.equal(state.getSnapshot().verifiedLocation, null);
 });
 
+test('unverified report submission requires explicit acknowledgement', () => {
+  assert.deepEqual(getSubmissionLocationDecision({
+    verified: false,
+    acknowledged: false
+  }), {
+    allowed: false,
+    requiresAcknowledgement: true,
+    status: STATES.UNVERIFIED
+  });
+  assert.equal(getSubmissionLocationDecision({
+    verified: false,
+    acknowledged: true
+  }).allowed, true);
+  assert.equal(getSubmissionLocationDecision({
+    verified: true,
+    acknowledged: false
+  }).requiresAcknowledgement, false);
+});
+
+test('submission guard prevents a duplicate report submission', () => {
+  const guard = createSubmissionGuard();
+
+  assert.equal(guard.tryLock(), true);
+  assert.equal(guard.isLocked(), true);
+  assert.equal(guard.tryLock(), false);
+});
+
 test('an unverified draft cannot persist AI-inferred or client-supplied coordinates', () => {
   const result = incidentModelInternals.resolveFormCoordinates({
     incidentLocation: '263 Compassvale Street',
     latitude: '1.3901',
     longitude: '103.8981',
-    locationVerified: false
+    locationVerificationStatus: LOCATION_VERIFICATION_STATUSES.UNVERIFIED
   }, {
     location: '263 Compassvale Street',
     latitude: 1.3901,
@@ -204,7 +236,7 @@ test('officer-verified coordinates remain available for persistence', () => {
     incidentLocation: '263 Compassvale Street',
     latitude: '1.3901',
     longitude: '103.8981',
-    locationVerified: true
+    locationVerificationStatus: LOCATION_VERIFICATION_STATUSES.VERIFIED
   });
 
   assert.equal(result.coordinates.lat, 1.3901);

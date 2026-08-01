@@ -83,6 +83,21 @@ test('sidebar restores saved collapse state and persists the next state', () => 
   ]);
 });
 
+test('sidebar restores persisted false as expanded and stores true on the next click', () => {
+  const harness = createSidebarHarness({ savedState: 'false' });
+
+  assert.equal(harness.attributes.get('aria-expanded'), 'true');
+  assert.equal(harness.classes.has('sidebar-collapsed'), false);
+
+  harness.click();
+
+  assert.deepEqual(harness.writes, [
+    { key: 'sidebarCollapsed', value: 'true' }
+  ]);
+  assert.equal(harness.classes.has('sidebar-collapsed'), true);
+  assert.equal(harness.attributes.get('aria-expanded'), 'false');
+});
+
 test('sidebar remains usable when browser storage is blocked', () => {
   const harness = createSidebarHarness({ storageBlocked: true });
 

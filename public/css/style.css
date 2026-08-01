@@ -877,6 +877,27 @@ a {
 	line-height: 1.45;
 }
 
+.unverified-location-warning {
+	align-items: flex-start;
+	margin: 0;
+}
+
+.unverified-location-warning p {
+	margin: 4px 0 8px;
+}
+
+.status-location-verified {
+	color: #0f6b3f;
+	background: #e7f7ed;
+}
+
+.status-location-unverified {
+	display: table;
+	margin-top: 6px;
+	color: var(--red-dark);
+	background: #ffe9e8;
+}
+
 .location-candidates {
 	display: grid;
 	gap: 10px;

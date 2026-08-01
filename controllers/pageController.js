@@ -10,6 +10,9 @@ const {
   statusKey
 } = require('../helpers/incidentPresenter');
 const renderLayout = require('../helpers/renderLayout');
+const {
+  LOCATION_VERIFICATION_STATUSES
+} = require('../config/locationVerification');
 
 function renderPage(res, view, options) {
   return renderLayout(res, view, {
@@ -129,7 +132,11 @@ function buildTrendNotes(typeBreakdown, locations, totalReports) {
 
 async function getReports() {
   const incidents = await incidentModel.getAllIncidents();
-  return incidents.map(mapIncident);
+  return incidents
+    .map(mapIncident)
+    .filter((report) => (
+      report.locationVerificationStatus === LOCATION_VERIFICATION_STATUSES.VERIFIED
+    ));
 }
 
 function getMapPayloadSummary(incidentMapData) {

@@ -13,10 +13,12 @@ async function backfillIncidentCoordinates() {
       incident_summary,
       transcript,
       response_status,
+      location_verification_status,
       latitude,
       longitude
     FROM incidents
-    WHERE latitude IS NULL OR longitude IS NULL
+    WHERE location_verification_status = 'VERIFIED'
+      AND (latitude IS NULL OR longitude IS NULL)
     ORDER BY incident_datetime DESC, created_at DESC
   `);
 

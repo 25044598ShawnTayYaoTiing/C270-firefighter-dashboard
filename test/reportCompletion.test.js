@@ -4,6 +4,9 @@ const assert = require('node:assert/strict');
 const incidentModel = require('../models/incidentModel');
 const incidentController = require('../controllers/incidentController');
 const { calculateCompletion } = require('../helpers/incidentPresenter');
+const {
+  recordLocationVerification
+} = require('../helpers/locationVerificationTrust');
 
 function completeReport(overrides = {}) {
   return {
@@ -20,27 +23,42 @@ function completeReport(overrides = {}) {
 }
 
 function requestFor(body = {}) {
+  const requestBody = {
+    incidentLocation: 'Block 10, Example Street',
+    incidentType: 'Residential Fire',
+    incidentDateTime: '2026-07-22T10:00',
+    responseStatus: 'Pending Review',
+    incidentSummary: 'Smoke reported from a residential unit.',
+    hazards: 'No hazards reported',
+    injuredPersons: 'No injured or trapped persons reported',
+    latitude: '1.3404',
+    longitude: '103.7090',
+    locationVerified: 'true',
+    ...body
+  };
+  const session = {
+    officer_id: 99
+  };
+
+  if (requestBody.incidentLocation) {
+    recordLocationVerification(session, requestBody.incidentLocation, {
+      verified: true,
+      verifiedLocation: {
+        address: requestBody.incidentLocation,
+        latitude: 1.3404,
+        longitude: 103.709,
+        source: 'onemap'
+      }
+    });
+  }
+
   return {
-    body: {
-      incidentLocation: 'Block 10, Example Street',
-      incidentType: 'Residential Fire',
-      incidentDateTime: '2026-07-22T10:00',
-      responseStatus: 'Pending Review',
-      incidentSummary: 'Smoke reported from a residential unit.',
-      hazards: 'No hazards reported',
-      injuredPersons: 'No injured or trapped persons reported',
-      latitude: '1.3404',
-      longitude: '103.7090',
-      locationVerified: 'true',
-      ...body
-    },
+    body: requestBody,
     currentOfficer: {
       officer_id: 99,
       officer_role: 'Normal Officer'
     },
-    session: {
-      officer_id: 99
-    }
+    session
   };
 }
 

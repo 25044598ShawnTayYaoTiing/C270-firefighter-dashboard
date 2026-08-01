@@ -4,10 +4,14 @@ const db = require('../config/db');
 const {
   getDatabaseCoordinates
 } = require('../helpers/locationResolver');
+const {
+  LOCATION_VERIFICATION_STATUSES,
+  normalizeLocationVerificationStatus
+} = require('../config/locationVerification');
 const officerModel = require('./officerModel');
 
 let coordinateColumnsPromise;
-let incidentOfficerSchemaPromise;
+let incidentSchemaPromise;
 
 function toSqlDateTime(value) {
   if (!value) return null;
@@ -48,9 +52,9 @@ async function hasIndex(tableName, indexName) {
   return rows.length > 0;
 }
 
-async function ensureOfficerSchema() {
-  if (!incidentOfficerSchemaPromise) {
-    incidentOfficerSchemaPromise = (async () => {
+async function ensureIncidentSchema() {
+  if (!incidentSchemaPromise) {
+    incidentSchemaPromise = (async () => {
       await officerModel.ensureOfficerSchema();
 
       if (await hasTable('incidents')) {
@@ -61,11 +65,20 @@ async function ensureOfficerSchema() {
         if (!(await hasIndex('incidents', 'idx_incidents_reporting_officer_id'))) {
           await db.query('ALTER TABLE incidents ADD INDEX idx_incidents_reporting_officer_id (reporting_officer_id)');
         }
+
+        if (!(await hasColumn('location_verification_status'))) {
+          await db.query(
+            "ALTER TABLE incidents ADD COLUMN location_verification_status VARCHAR(20) NOT NULL DEFAULT 'VERIFIED'"
+          );
+          await db.query(
+            "UPDATE incidents SET location_verification_status = 'UNVERIFIED' WHERE response_status = 'Draft'"
+          );
+        }
       }
     })();
   }
 
-  return incidentOfficerSchemaPromise;
+  return incidentSchemaPromise;
 }
 
 async function hasCoordinateColumns() {
@@ -92,13 +105,16 @@ function resolveFormCoordinates(incident, existingIncident = null) {
   const locationChanged = existingIncident
     ? normalizeText(existingIncident.location) !== normalizeText(incident.incidentLocation)
     : false;
-  const submittedCoordinates = incident.locationVerified
+  const locationIsVerified = normalizeLocationVerificationStatus(
+    incident.locationVerificationStatus
+  ) === LOCATION_VERIFICATION_STATUSES.VERIFIED;
+  const submittedCoordinates = locationIsVerified
     ? getValidCoordinates(incident.latitude, incident.longitude)
     : null;
   const existingCoordinates = existingIncident
     ? getValidCoordinates(existingIncident.latitude, existingIncident.longitude)
     : null;
-  const shouldPreserveExistingCoordinates = incident.locationVerified
+  const shouldPreserveExistingCoordinates = locationIsVerified
     && existingIncident
     && !locationChanged
     && !submittedCoordinates;
@@ -141,11 +157,22 @@ const SEARCH_FIELDS = [
 ];
 const COMPLETED_STATUS_TERMS = ['completed', 'reviewed', 'closed', 'resolved'];
 
-exports.getAllIncidents = async (filters = {}) => {
-  await ensureOfficerSchema();
-
+function buildIncidentWhere(filters = {}) {
   const where = [];
   const params = [];
+
+  const ownDraftOfficerId = Number(filters.includeOwnDraftsForOfficerId);
+
+  if (filters.includeUnverified !== true && Number.isInteger(ownDraftOfficerId) && ownDraftOfficerId > 0) {
+    where.push(`(
+      i.location_verification_status = ?
+      OR (i.response_status = 'Draft' AND i.reporting_officer_id = ?)
+    )`);
+    params.push(LOCATION_VERIFICATION_STATUSES.VERIFIED, ownDraftOfficerId);
+  } else if (filters.includeUnverified !== true) {
+    where.push('i.location_verification_status = ?');
+    params.push(LOCATION_VERIFICATION_STATUSES.VERIFIED);
+  }
 
   if (filters.statusGroup === 'completed') {
     where.push(`(${COMPLETED_STATUS_TERMS.map(() => 'LOWER(i.response_status) LIKE ?').join(' OR ')})`);
@@ -161,6 +188,14 @@ exports.getAllIncidents = async (filters = {}) => {
     params.push(...SEARCH_FIELDS.map(() => likeTerm));
   }
 
+  return { params, where };
+}
+
+exports.getAllIncidents = async (filters = {}) => {
+  await ensureIncidentSchema();
+
+  const { params, where } = buildIncidentWhere(filters);
+
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const [rows] = await db.query(`
@@ -174,8 +209,23 @@ exports.getAllIncidents = async (filters = {}) => {
   return rows;
 };
 
-exports.getIncidentByIncidentId = async (incidentId) => {
-  await ensureOfficerSchema();
+exports.getIncidentByIncidentId = async (incidentId, options = {}) => {
+  await ensureIncidentSchema();
+
+  const ownDraftOfficerId = Number(options.includeOwnDraftsForOfficerId);
+  let visibilitySql = 'AND i.location_verification_status = ?';
+  let params = [incidentId, LOCATION_VERIFICATION_STATUSES.VERIFIED];
+
+  if (options.includeUnverified === true) {
+    visibilitySql = '';
+    params = [incidentId];
+  } else if (Number.isInteger(ownDraftOfficerId) && ownDraftOfficerId > 0) {
+    visibilitySql = `AND (
+      i.location_verification_status = ?
+      OR (i.response_status = 'Draft' AND i.reporting_officer_id = ?)
+    )`;
+    params.push(ownDraftOfficerId);
+  }
 
   const [rows] = await db.query(
     `
@@ -183,16 +233,17 @@ exports.getIncidentByIncidentId = async (incidentId) => {
       FROM incidents i
       LEFT JOIN officers o ON i.reporting_officer_id = o.id
       WHERE i.incident_id = ?
+        ${visibilitySql}
       LIMIT 1
     `,
-    [incidentId]
+    params
   );
 
   return rows[0] || null;
 };
 
 exports.createIncident = async (incident) => {
-  await ensureOfficerSchema();
+  await ensureIncidentSchema();
 
   const incidentId = await generateIncidentId();
   const hasCoordinates = await hasCoordinateColumns();
@@ -208,7 +259,8 @@ exports.createIncident = async (incident) => {
     'response_status',
     'missing_information',
     'officer_notes',
-    'transcript'
+    'transcript',
+    'location_verification_status'
   ];
   const values = [
     incidentId,
@@ -222,7 +274,8 @@ exports.createIncident = async (incident) => {
     incident.responseStatus,
     incident.missingInfo || null,
     incident.officerNotes || null,
-    incident.transcript || null
+    incident.transcript || null,
+    normalizeLocationVerificationStatus(incident.locationVerificationStatus)
   ];
 
   if (hasCoordinates) {
@@ -247,7 +300,7 @@ exports.createIncident = async (incident) => {
 };
 
 exports.updateIncident = async (incidentId, incident) => {
-  await ensureOfficerSchema();
+  await ensureIncidentSchema();
 
   const hasCoordinates = await hasCoordinateColumns();
   const setColumns = [
@@ -259,7 +312,8 @@ exports.updateIncident = async (incidentId, incident) => {
     'injured_or_trapped_persons = ?',
     'response_status = ?',
     'missing_information = ?',
-    'officer_notes = ?'
+    'officer_notes = ?',
+    'location_verification_status = ?'
   ];
   const values = [
     incident.incidentType,
@@ -270,11 +324,14 @@ exports.updateIncident = async (incidentId, incident) => {
     incident.injuredPersons || null,
     incident.responseStatus,
     incident.missingInfo || null,
-    incident.officerNotes || null
+    incident.officerNotes || null,
+    normalizeLocationVerificationStatus(incident.locationVerificationStatus)
   ];
 
   if (hasCoordinates) {
-    const existingIncident = await exports.getIncidentByIncidentId(incidentId);
+    const existingIncident = await exports.getIncidentByIncidentId(incidentId, {
+      includeUnverified: true
+    });
     const { coordinates, locationChanged } = await resolveFormCoordinates(incident, existingIncident);
 
     if (coordinates || locationChanged) {
@@ -311,5 +368,7 @@ exports.deleteIncident = async (incidentId) => {
 };
 
 exports._private = {
+  buildIncidentWhere,
+  ensureIncidentSchema,
   resolveFormCoordinates
 };

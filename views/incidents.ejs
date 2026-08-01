@@ -10,6 +10,13 @@
     </a>
   </div>
 
+  <% if (unverifiedSubmissionNotice) { %>
+    <div class="notice-strip notice-warning" role="status">
+      <i class="bi bi-shield-exclamation" aria-hidden="true"></i>
+      <span>The report was saved with an unverified location and sent to Higher Rank/Admin for review. It is excluded from firefighter operational views.</span>
+    </div>
+  <% } %>
+
   <form class="toolbar incident-search-toolbar" action="/incidents" method="GET">
     <% if (selectedStatusGroup) { %>
       <input type="hidden" name="statusGroup" value="<%= selectedStatusGroup %>">
@@ -64,7 +71,12 @@
           <tr data-status="<%= report.status %>" data-search="<%= [report.id, report.type, report.location, report.reportingOfficerDisplay, report.status, report.summary, report.hazards, report.injured, report.missingInfo, report.officerNotes, report.transcript].join(' ').toLowerCase() %>">
             <td><strong><%= report.id %></strong></td>
             <td><%= report.type %></td>
-            <td><%= report.location %></td>
+            <td>
+              <%= report.location %>
+              <% if (canReviewUnverifiedLocations && report.locationVerificationStatus === 'UNVERIFIED') { %>
+                <span class="status-badge status-location-unverified">Unverified location</span>
+              <% } %>
+            </td>
             <td><%= report.reportingOfficerDisplay %></td>
             <td><span class="status-badge status-<%= statusKey(report.status) %>"><%= report.status %></span></td>
             <td><%= report.createdDate %></td>

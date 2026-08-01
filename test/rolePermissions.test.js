@@ -29,6 +29,12 @@ test('only admin can manage incident date and time', () => {
   assert.equal(hasPermission(ROLES.ADMIN, PERMISSIONS.MANAGE_INCIDENT_DATETIME), true);
 });
 
+test('only Higher Rank/Admin can review unverified incident locations', () => {
+  assert.equal(hasPermission(ROLES.NORMAL, PERMISSIONS.REVIEW_UNVERIFIED_LOCATIONS), false);
+  assert.equal(hasPermission(ROLES.HR, PERMISSIONS.REVIEW_UNVERIFIED_LOCATIONS), false);
+  assert.equal(hasPermission(ROLES.ADMIN, PERMISSIONS.REVIEW_UNVERIFIED_LOCATIONS), true);
+});
+
 test('HR can create only normal accounts while admin can assign approved roles', () => {
   assert.deepEqual(getCreatableRoles(ROLES.HR), [ROLES.NORMAL]);
   assert.deepEqual(getCreatableRoles(ROLES.ADMIN), [ROLES.NORMAL, ROLES.HR, ROLES.ADMIN]);

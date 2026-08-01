@@ -4,6 +4,9 @@ const {
   buildMapData,
   mapIncident
 } = require('../helpers/incidentPresenter');
+const {
+  LOCATION_VERIFICATION_STATUSES
+} = require('../config/locationVerification');
 
 function report(overrides = {}) {
   return {
@@ -38,6 +41,11 @@ test('map data keeps only active incidents with real coordinates as markers', as
       incident_id: 'INC-COMPLETED',
       response_status: 'Completed',
       status: 'Completed'
+    }),
+    report({
+      id: 'INC-UNVERIFIED',
+      incident_id: 'INC-UNVERIFIED',
+      location_verification_status: LOCATION_VERIFICATION_STATUSES.UNVERIFIED
     })
   ]);
 
@@ -48,6 +56,20 @@ test('map data keeps only active incidents with real coordinates as markers', as
   assert.equal(mapData.markers[0].longitude, 103.709);
   assert.equal(mapData.markers[0].incident_date, '2026-06-25');
   assert.equal(mapData.unmapped[0].incident_id, 'INC-NO-COORDS');
+  assert.equal(mapData.incidents.some((incident) => incident.incident_id === 'INC-UNVERIFIED'), false);
+});
+
+test('a newly verified report enters map and heatmap source data', async () => {
+  const mapData = await buildMapData([
+    report({
+      id: 'INC-REVIEWED',
+      incident_id: 'INC-REVIEWED',
+      location_verification_status: LOCATION_VERIFICATION_STATUSES.VERIFIED
+    })
+  ]);
+
+  assert.deepEqual(mapData.incidents.map((incident) => incident.incident_id), ['INC-REVIEWED']);
+  assert.deepEqual(mapData.markers.map((incident) => incident.incident_id), ['INC-REVIEWED']);
 });
 
 test('draft coordinates do not count as verified location completion', () => {

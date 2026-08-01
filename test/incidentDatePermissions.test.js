@@ -5,31 +5,46 @@ const incidentController = require('../controllers/incidentController');
 const aiController = require('../controllers/aiController');
 const geminiService = require('../services/geminiService');
 const { ROLES } = require('../middleware/rolePermissions');
+const {
+  recordLocationVerification
+} = require('../helpers/locationVerificationTrust');
 
 const submittedBackdate = '2001-01-01T01:01';
 
 function requestFor(role, body = {}) {
+  const requestBody = {
+    incidentLocation: 'Test location',
+    incidentType: 'Test incident',
+    incidentDateTime: submittedBackdate,
+    responseStatus: 'Pending Review',
+    incidentSummary: 'Permission test',
+    hazards: 'No hazards reported',
+    injuredPersons: 'No injured or trapped persons reported',
+    latitude: '1.3404',
+    longitude: '103.7090',
+    locationVerified: 'true',
+    ...body
+  };
+  const session = {
+    officer_id: 99
+  };
+  recordLocationVerification(session, requestBody.incidentLocation, {
+    verified: true,
+    verifiedLocation: {
+      address: requestBody.incidentLocation,
+      latitude: 1.3404,
+      longitude: 103.709,
+      source: 'onemap'
+    }
+  });
+
   return {
-    body: {
-      incidentLocation: 'Test location',
-      incidentType: 'Test incident',
-      incidentDateTime: submittedBackdate,
-      responseStatus: 'Pending Review',
-      incidentSummary: 'Permission test',
-      hazards: 'No hazards reported',
-      injuredPersons: 'No injured or trapped persons reported',
-      latitude: '1.3404',
-      longitude: '103.7090',
-      locationVerified: 'true',
-      ...body
-    },
+    body: requestBody,
     currentOfficer: {
       officer_id: 99,
       officer_role: role
     },
-    session: {
-      officer_id: 99
-    },
+    session,
     params: {
       incidentId: 'INC-TEST'
     }
@@ -227,7 +242,7 @@ test('create rejects whitespace-only mandatory fields before saving', { concurre
   }
 });
 
-test('create rejects unverified or invalid coordinates before saving', { concurrency: false }, async () => {
+test('create does not trust invalid client coordinates as a verified location', { concurrency: false }, async () => {
   const originalCreate = incidentModel.createIncident;
   let createCalled = false;
   incidentModel.createIncident = async () => {
@@ -244,7 +259,10 @@ test('create rejects unverified or invalid coordinates before saving', { concurr
 
     assert.equal(createCalled, false);
     assert.equal(res.statusCode, 400);
-    assert.match(res.renderedData.validationErrors.incidentLocation, /Latitude must be between -90 and 90/);
+    assert.match(
+      res.renderedData.validationErrors.unverifiedLocationAcknowledged,
+      /saved with an unverified location/i
+    );
   } finally {
     incidentModel.createIncident = originalCreate;
   }

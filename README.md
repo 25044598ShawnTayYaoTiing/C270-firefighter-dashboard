@@ -410,6 +410,8 @@ npm run seed:users
 
 Use only non-production data for local demonstrations.
 
+The incident model applies a non-destructive compatibility migration when it first accesses an existing database. It adds one `location_verification_status` column with the states `VERIFIED` and `UNVERIFIED`. Existing non-draft records default to `VERIFIED` so currently displayed operational reports remain visible; existing drafts are marked `UNVERIFIED` because they were not yet officer-complete. New writes always store an explicit state, and no database reset is required. The seed command creates and populates the same column.
+
 ### 3. Start the Node Application
 
 ```powershell
