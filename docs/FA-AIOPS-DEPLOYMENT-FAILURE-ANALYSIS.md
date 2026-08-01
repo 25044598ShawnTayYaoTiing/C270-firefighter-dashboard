@@ -108,29 +108,43 @@ incomplete evidence requires human review.
 If the first response contains unsupported evidence IDs, the analyzer permits
 exactly one corrective request using the same catalog, the safe validation
 error, and an instruction to use only allowed IDs. There is no retry loop. A
-second invalid response remains `FALLBACK`.
+second structurally valid but evidence-invalid response becomes
+`LIVE_UNVALIDATED`: deterministic fallback remains official, while a bounded,
+sanitized copy of the known response fields is displayed separately for human
+review.
 
-If Gemini is unavailable, malformed, or still returns unsupported evidence,
-the analyzer emits a clearly labelled `FALLBACK` assessment from deterministic
-pipeline facts. The summary records Gemini request, structured-validation, and
+`LIVE_VALIDATED` is used only after request, parsing, schema, and evidence
+validation all pass. `LIVE_UNVALIDATED` requires successful parsing and schema
+validation but failed evidence validation. In that mode the proposed model
+classification, risk, and recommendations are non-authoritative and cannot
+replace the deterministic assessment. `FALLBACK` is used when Gemini is
+unavailable, parsing fails, schema validation fails, or no safe structured
+response exists.
+
+The summary records Gemini request, structured-validation, and
 evidence-validation status, whether the one corrective retry was used, and a
-bounded redacted failure category. API transport failures remain separate from
-response parsing, schema validation, and evidence-ID validation. Safe HTTP
-status and provider code fields are included when available; credentials,
-headers, raw response bodies, and environment data are never included. A
-complete successful all-pass record remains
+bounded redacted failure category. It also identifies valid, missing, and
+unsupported evidence IDs for an unvalidated draft. API transport failures
+remain separate from response parsing, schema validation, and evidence-ID
+validation. Safe HTTP status and provider code fields are included when
+available; credentials, headers, raw response bodies, arbitrary response
+fields, and environment data are never included. A complete successful
+all-pass record remains
 `HEALTHY_DEPLOYMENT / LOW`; failed or incomplete records require review. The
-fallback cannot change deployment state.
+fallback and unvalidated draft cannot change deployment state.
 
 ## GitHub Actions summary
 
 Every completed deploy job produces `# AIOps Deployment Summary` with:
 
-- execution mode, model, outcome, classification, risk, and duration;
+- authoritative deployment result and explicit AIOps validation mode;
+- model, official classification, official risk, and duration;
 - test, security, scan, stabilization, health, and smoke evidence;
 - safe image and task-definition identifiers;
 - Gemini request and structured/evidence validation status;
 - selected allowlisted evidence IDs, operational summary, and recommended checks;
+- a separately warned, sanitized `LIVE_UNVALIDATED` draft only when parsing and
+  schema validation passed but evidence validation failed;
 - failure cause and rollback evidence when applicable; and
 - the explicit no-authority safety boundary.
 
@@ -214,7 +228,7 @@ variable. It has `contents: read` only, no OIDC permission, no AWS credentials,
 and no deployment or rollback commands. It uses small synthetic sanitized
 failure evidence and no mock client. A fallback writes its safe failure stage
 and category to the Actions summary and fails the smoke job without affecting
-ECS. A successful run reports `LIVE GEMINI`, request `SUCCESS`, structured
+ECS. A successful run reports `LIVE_VALIDATED`, request `SUCCESS`, structured
 validation `PASS`, evidence validation `PASS`, the selected model,
 classification, risk, evidence IDs, and human-review decision.
 
@@ -229,4 +243,4 @@ evidence would create unnecessary production risk.
 - A failure before evidence preparation receives a safe fallback summary with
   unavailable fields rather than fabricated evidence.
 - External Gemini availability, credentials, quota, and model access remain
-  operational dependencies for `LIVE GEMINI` mode.
+  operational dependencies for `LIVE_VALIDATED` and `LIVE_UNVALIDATED` modes.

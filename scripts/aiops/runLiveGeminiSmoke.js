@@ -151,7 +151,7 @@ async function runCli() {
   writeWorkflowSummary(renderSmokeSummary(result));
 
   if (result.available) {
-    console.log(`[AIOps Smoke] LIVE GEMINI succeeded with model=${result.model}.`);
+    console.log(`[AIOps Smoke] ${result.mode} succeeded with model=${result.model}.`);
     console.log(`[AIOps Smoke] classification=${result.analysis.classification}.`);
     console.log(
       `[AIOps Smoke] request=${result.validation.geminiRequest} `
@@ -163,7 +163,7 @@ async function runCli() {
   }
 
   console.error(
-    `[AIOps Smoke] LIVE GEMINI failed safely. ${formatFailureForLog(result.failure)}`
+    `[AIOps Smoke] ${result.mode} did not produce a validated assessment. ${formatFailureForLog(result.failure)}`
   );
   process.exitCode = 1;
 }

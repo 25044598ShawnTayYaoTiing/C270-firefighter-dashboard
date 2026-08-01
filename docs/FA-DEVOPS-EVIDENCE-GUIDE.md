@@ -220,8 +220,8 @@ as **SIMULATED LOCAL FAILURE EVIDENCE**, not cloud-failure proof.
 From any normal successful deployment, capture the executed
 `AIOps Deployment Assessment` job and `# AIOps Deployment Summary`. Show the
 successful outcome, `HEALTHY_DEPLOYMENT`, low risk, PASS evidence, selected
-`LIVE GEMINI` or `FALLBACK` mode, and zero AIOps AWS, deployment, rollback, and
-remediation actions.
+`LIVE_VALIDATED`, `LIVE_UNVALIDATED`, or `FALLBACK` mode, and zero AIOps AWS,
+deployment, rollback, and remediation actions.
 
 For integrated synthetic failure evidence, manually run **DevSecOps CI/CD**
 with `run_aiops_demo=true`. Capture the successful gates, normal AWS deployment,

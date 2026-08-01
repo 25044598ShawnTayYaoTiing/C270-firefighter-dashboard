@@ -14,7 +14,14 @@ const {
 const DEFAULT_AIOPS_GEMINI_MODEL = 'gemini-3.5-flash-lite';
 const SAFE_ERROR_MESSAGE_MAX_LENGTH = 320;
 const MAX_SUPPORTED_EVIDENCE = 6;
+const MAX_UNVALIDATED_FIELD_LENGTH = 480;
+const MAX_UNVALIDATED_OUTPUT_BYTES = 5 * 1024;
 const DEPLOYMENT_OUTCOMES = Object.freeze(['SUCCESS', 'FAILED']);
+const ANALYSIS_MODES = Object.freeze({
+  liveValidated: 'LIVE_VALIDATED',
+  liveUnvalidated: 'LIVE_UNVALIDATED',
+  fallback: 'FALLBACK'
+});
 const FAILURE_STAGES = Object.freeze({
   api: 'API',
   parsing: 'PARSING',
@@ -156,6 +163,30 @@ function safeErrorText(value, sensitiveValues = []) {
   );
 }
 
+function sanitizeUnvalidatedText(
+  value,
+  sensitiveValues = [],
+  maximumLength = MAX_UNVALIDATED_FIELD_LENGTH
+) {
+  let text = String(value || '');
+
+  for (const sensitiveValue of sensitiveValues) {
+    const secret = String(sensitiveValue || '');
+    if (secret.length >= 4) {
+      text = text.replaceAll(secret, '[REDACTED]');
+    }
+  }
+
+  return truncateString(
+    redactSensitiveText(text)
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/[<>]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+    maximumLength
+  );
+}
+
 function parseProviderPayload(value) {
   const text = String(value || '').trim();
   if (!text) {
@@ -210,14 +241,18 @@ function createFailureDetails(stage, category, options = {}) {
       : FAILURE_CATEGORIES.unknown,
     httpStatus: normalizeHttpStatus(options.httpStatus),
     providerCode: safeProviderCode(options.providerCode, options.sensitiveValues),
-    message: safeErrorText(options.message, options.sensitiveValues)
+    message: sanitizeUnvalidatedText(
+      options.message || 'No additional safe error detail was available.',
+      options.sensitiveValues,
+      SAFE_ERROR_MESSAGE_MAX_LENGTH
+    )
   };
 
   for (const property of ['unsupportedEvidenceIds', 'requiredEvidenceIds']) {
     if (Array.isArray(options[property]) && options[property].length > 0) {
       details[property] = [...new Set(options[property])]
         .slice(0, MAX_SUPPORTED_EVIDENCE)
-        .map((item) => truncateString(safeErrorText(item, options.sensitiveValues), 80));
+        .map((item) => sanitizeUnvalidatedText(item, options.sensitiveValues, 80));
     }
   }
 
@@ -480,6 +515,7 @@ function buildPrompt(
     promptLines.push(
       'CORRECTIVE RETRY: The previous response failed strict evidence validation.',
       `Rejected evidence IDs: ${JSON.stringify(correction.unsupportedEvidenceIds || [])}`,
+      `Required evidence IDs omitted: ${JSON.stringify(correction.requiredEvidenceIds || [])}`,
       'Regenerate the complete JSON object once, using only IDs from the allowed supportedEvidence list.'
     );
   }
@@ -741,6 +777,100 @@ function fallbackAnalysis(
   };
 }
 
+function compactUnvalidatedAnalysis(draft, textLimit, evidenceIdLimit) {
+  return {
+    ...draft,
+    suppliedEvidenceIds: draft.suppliedEvidenceIds.map(
+      (item) => truncateString(item, evidenceIdLimit)
+    ),
+    validEvidenceIds: draft.validEvidenceIds.map(
+      (item) => truncateString(item, evidenceIdLimit)
+    ),
+    unsupportedEvidenceIds: draft.unsupportedEvidenceIds.map(
+      (item) => truncateString(item, evidenceIdLimit)
+    ),
+    missingRequiredEvidenceIds: draft.missingRequiredEvidenceIds.map(
+      (item) => truncateString(item, evidenceIdLimit)
+    ),
+    operationalSummary: truncateString(draft.operationalSummary, textLimit),
+    likelyRootCause: truncateString(draft.likelyRootCause, textLimit),
+    recommendedHumanChecks: truncateString(draft.recommendedHumanChecks, textLimit)
+  };
+}
+
+function sanitizeUnvalidatedAnalysis(
+  structuredAnalysis,
+  evidenceCatalog,
+  failure,
+  sensitiveValues = []
+) {
+  const catalogIds = new Set(evidenceCatalog.map((entry) => entry.id));
+  const suppliedEvidenceIds = structuredAnalysis.supportedEvidence
+    .slice(0, MAX_SUPPORTED_EVIDENCE)
+    .map((item) => sanitizeUnvalidatedText(item, sensitiveValues, 80));
+  const validEvidenceIds = suppliedEvidenceIds.filter((item) => catalogIds.has(item));
+  const unsupportedEvidenceIds = (failure.unsupportedEvidenceIds || [])
+    .slice(0, MAX_SUPPORTED_EVIDENCE)
+    .map((item) => sanitizeUnvalidatedText(item, sensitiveValues, 80));
+  const missingRequiredEvidenceIds = (failure.requiredEvidenceIds || [])
+    .slice(0, MAX_SUPPORTED_EVIDENCE)
+    .map((item) => sanitizeUnvalidatedText(item, sensitiveValues, 80));
+  const claimsWithoutEvidenceReferences = validEvidenceIds.length === 0
+    ? [
+      'operationalSummary',
+      ...(structuredAnalysis.likelyRootCause ? ['likelyRootCause'] : [])
+    ]
+    : [];
+  let draft = {
+    authority: 'NON_AUTHORITATIVE',
+    validationStatus: 'NOT_VALIDATED',
+    proposedClassification: structuredAnalysis.classification,
+    proposedRiskLevel: structuredAnalysis.riskLevel,
+    proposedConfidence: structuredAnalysis.confidence,
+    suppliedEvidenceIds,
+    validEvidenceIds,
+    unsupportedEvidenceIds,
+    missingRequiredEvidenceIds,
+    claimsWithoutEvidenceReferences,
+    operationalSummary: sanitizeUnvalidatedText(
+      structuredAnalysis.operationalSummary,
+      sensitiveValues
+    ),
+    likelyRootCause: sanitizeUnvalidatedText(
+      structuredAnalysis.likelyRootCause,
+      sensitiveValues
+    ),
+    recommendedHumanChecks: sanitizeUnvalidatedText(
+      structuredAnalysis.recommendedNextAction,
+      sensitiveValues
+    )
+  };
+
+  if (Buffer.byteLength(JSON.stringify(draft), 'utf8') > MAX_UNVALIDATED_OUTPUT_BYTES) {
+    draft = compactUnvalidatedAnalysis(draft, 240, 40);
+  }
+
+  if (Buffer.byteLength(JSON.stringify(draft), 'utf8') > MAX_UNVALIDATED_OUTPUT_BYTES) {
+    draft = compactUnvalidatedAnalysis(draft, 120, 24);
+  }
+
+  if (Buffer.byteLength(JSON.stringify(draft), 'utf8') > MAX_UNVALIDATED_OUTPUT_BYTES) {
+    draft = {
+      ...draft,
+      suppliedEvidenceIds: [],
+      validEvidenceIds: [],
+      unsupportedEvidenceIds: [],
+      missingRequiredEvidenceIds: [],
+      claimsWithoutEvidenceReferences: ['unvalidatedDraft'],
+      operationalSummary: 'Unvalidated draft omitted because it exceeded the safe display limit.',
+      likelyRootCause: '',
+      recommendedHumanChecks: 'Review the deterministic fallback and validation failure details.'
+    };
+  }
+
+  return Object.freeze(draft);
+}
+
 function unavailableResult(
   diagnostics = null,
   model = null,
@@ -761,7 +891,7 @@ function unavailableResult(
 
   return {
     available: false,
-    mode: 'FALLBACK',
+    mode: ANALYSIS_MODES.fallback,
     message: 'AI analysis unavailable',
     model,
     deploymentOutcome: outcome,
@@ -777,6 +907,47 @@ function unavailableResult(
     },
     diagnostics,
     humanReviewRequired: analysis.humanReviewRequired
+  };
+}
+
+function unvalidatedResult({
+  diagnostics,
+  model,
+  deploymentOutcome,
+  evidenceCatalog,
+  structuredAnalysis,
+  failure,
+  validation,
+  correctiveRetryAttempted,
+  sensitiveValues = []
+}) {
+  const analysis = {
+    ...fallbackAnalysis(diagnostics, deploymentOutcome, evidenceCatalog),
+    humanReviewRequired: true
+  };
+
+  return {
+    available: false,
+    mode: ANALYSIS_MODES.liveUnvalidated,
+    message: 'Gemini analysis did not pass evidence validation',
+    model,
+    deploymentOutcome,
+    liveGeminiAttempted: true,
+    failure,
+    analysis,
+    unvalidatedAnalysis: sanitizeUnvalidatedAnalysis(
+      structuredAnalysis,
+      evidenceCatalog,
+      failure,
+      sensitiveValues
+    ),
+    evidenceCatalog,
+    validation: {
+      ...validation,
+      correctiveRetryAttempted: correctiveRetryAttempted === true
+    },
+    diagnostics,
+    humanReviewRequired: true
   };
 }
 
@@ -803,6 +974,7 @@ async function performAnalysisAttempt({
   } catch (error) {
     return {
       analysis: null,
+      structuredAnalysis: null,
       failure: classifyGeminiApiError(error, { apiKey }),
       validation: {
         geminiRequest: 'FAIL',
@@ -815,10 +987,18 @@ async function performAnalysisAttempt({
   let parsedResponse;
   try {
     parsedResponse = parseResponseObject(extractResponseText(response));
-  } catch (error) {
+  } catch {
     return {
       analysis: null,
-      failure: classifyResponseFailure(error, FAILURE_STAGES.parsing, [apiKey]),
+      structuredAnalysis: null,
+      failure: createFailureDetails(
+        FAILURE_STAGES.parsing,
+        FAILURE_CATEGORIES.responseParse,
+        {
+          message: 'Gemini response could not be parsed as the required JSON object.',
+          sensitiveValues: [apiKey]
+        }
+      ),
       validation: {
         geminiRequest: 'SUCCESS',
         structuredResponse: 'FAIL',
@@ -833,6 +1013,7 @@ async function performAnalysisAttempt({
   } catch (error) {
     return {
       analysis: null,
+      structuredAnalysis: null,
       failure: classifyResponseFailure(error, FAILURE_STAGES.schema, [apiKey]),
       validation: {
         geminiRequest: 'SUCCESS',
@@ -845,6 +1026,7 @@ async function performAnalysisAttempt({
   try {
     return {
       analysis: validateSupportedEvidence(structuredAnalysis, evidenceCatalog),
+      structuredAnalysis,
       failure: null,
       validation: {
         geminiRequest: 'SUCCESS',
@@ -855,6 +1037,7 @@ async function performAnalysisAttempt({
   } catch (error) {
     return {
       analysis: null,
+      structuredAnalysis,
       failure: classifyResponseFailure(
         error,
         FAILURE_STAGES.evidenceValidation,
@@ -880,7 +1063,7 @@ function liveResult({
 }) {
   return {
     available: true,
-    mode: 'LIVE GEMINI',
+    mode: ANALYSIS_MODES.liveValidated,
     message: null,
     model,
     deploymentOutcome,
@@ -1037,12 +1220,21 @@ async function analyzeDiagnostics(rawDiagnostics, options = {}) {
     });
   }
 
-  return unavailableResult(diagnostics, model, deploymentOutcome, {
+  const unvalidatedAttempt = correctiveAttempt.structuredAnalysis
+    && correctiveAttempt.failure.stage === FAILURE_STAGES.evidenceValidation
+    ? correctiveAttempt
+    : firstAttempt;
+
+  return unvalidatedResult({
+    diagnostics,
+    model,
+    deploymentOutcome,
     evidenceCatalog,
-    liveGeminiAttempted: true,
+    structuredAnalysis: unvalidatedAttempt.structuredAnalysis,
+    failure: unvalidatedAttempt.failure,
+    validation: unvalidatedAttempt.validation,
     correctiveRetryAttempted: true,
-    failure: correctiveAttempt.failure,
-    validation: correctiveAttempt.validation
+    sensitiveValues: [apiKey]
   });
 }
 
@@ -1084,6 +1276,14 @@ function formatRollback(diagnostics) {
   ].join('; ');
 }
 
+function formatInlineList(values) {
+  if (!Array.isArray(values) || values.length === 0) {
+    return 'None';
+  }
+
+  return values.map((item) => `\`${escapeMarkdown(item)}\``).join(', ');
+}
+
 function renderSummary(result) {
   const analysis = result.analysis || fallbackAnalysis(
     result.diagnostics,
@@ -1107,7 +1307,7 @@ function renderSummary(result) {
   const duration = displayPath(diagnostics, 'deployment.durationSeconds');
   const durationText = duration === UNAVAILABLE ? UNAVAILABLE : `${duration} seconds`;
   const liveAttempted = result.liveGeminiAttempted === true || result.available === true;
-  const failureLines = !result.available && result.failure
+  const failureLines = result.failure
     ? [
       `- Failure stage: **${escapeMarkdown(result.failure.stage)}**`,
       `- Safe failure category: **${escapeMarkdown(result.failure.category)}**`,
@@ -1126,25 +1326,42 @@ function renderSummary(result) {
       `- Safe failure message: ${escapeMarkdown(result.failure.message)}`
     ]
     : [];
+  const isLiveValidated = result.mode === ANALYSIS_MODES.liveValidated;
+  const isLiveUnvalidated = result.mode === ANALYSIS_MODES.liveUnvalidated;
+  const assessmentHeading = isLiveValidated
+    ? '## Validated AIOps Assessment'
+    : '## Deterministic Fallback Assessment';
+  const assessmentSource = isLiveValidated
+    ? 'VALIDATED GEMINI RESPONSE'
+    : 'DETERMINISTIC FALLBACK';
 
   const lines = [
     '# AIOps Deployment Summary',
     '',
     '> **AI-GENERATED OPERATIONAL ASSESSMENT — ADVISORY ONLY**',
     '',
-    '## Execution',
-    `- Mode: **${escapeMarkdown(result.mode || (result.available ? 'LIVE GEMINI' : 'FALLBACK'))}**`,
+    '## Authoritative Deployment Result',
+    `- Deployment outcome: **${escapeMarkdown(analysis.deploymentOutcome)}**`,
+    `- ECS stabilization: **${escapeMarkdown(displayPath(diagnostics, 'pipeline.ecsStabilization'))}**`,
+    `- Backend health: **${escapeMarkdown(displayPath(diagnostics, 'pipeline.backendHealth'))}**`,
+    `- Frontend smoke test: **${escapeMarkdown(displayPath(diagnostics, 'pipeline.frontendSmoke'))}**`,
+    `- Rollback result: ${escapeMarkdown(formatRollback(diagnostics))}`,
+    '',
+    'ECS, Ansible, health checks, smoke tests, and rollback results remain authoritative.',
+    '',
+    '## Validated AIOps Status',
+    `- Mode: **${escapeMarkdown(result.mode || (result.available ? ANALYSIS_MODES.liveValidated : ANALYSIS_MODES.fallback))}**`,
     `- Model: **${escapeMarkdown(result.model || DEFAULT_AIOPS_GEMINI_MODEL)}**`,
     `- Live Gemini attempted: **${liveAttempted ? 'YES' : 'NO'}**`,
     `- Gemini request: **${escapeMarkdown(validation.geminiRequest || 'NOT_ATTEMPTED')}**`,
     `- Structured validation: **${escapeMarkdown(validation.structuredResponse || 'NOT_RUN')}**`,
     `- Evidence validation: **${escapeMarkdown(validation.evidence || 'NOT_RUN')}**`,
     `- Corrective evidence retry: **${validation.correctiveRetryAttempted ? 'YES' : 'NO'}**`,
-    ...failureLines,
     `- Deployment outcome: **${escapeMarkdown(analysis.deploymentOutcome)}**`,
     `- Classification: **${escapeMarkdown(analysis.classification)}**`,
     `- Risk level: **${escapeMarkdown(analysis.riskLevel)}**`,
     `- Confidence: ${escapeMarkdown(formatConfidence(analysis.confidence))}`,
+    `- Official assessment source: **${escapeMarkdown(assessmentSource)}**`,
     `- Deployment duration: ${escapeMarkdown(durationText)}`,
     '',
     '## Pipeline Evidence',
@@ -1159,7 +1376,7 @@ function renderSummary(result) {
     `- Backend image: ${escapeMarkdown(displayPath(diagnostics, 'images.backend'))}`,
     `- Frontend image: ${escapeMarkdown(displayPath(diagnostics, 'images.frontend'))}`,
     '',
-    '## AI Assessment',
+    assessmentHeading,
     `**Operational summary:** ${escapeMarkdown(analysis.operationalSummary)}`,
     ''
   ];
@@ -1180,9 +1397,56 @@ function renderSummary(result) {
     lines.push(`**Rollback evidence:** ${escapeMarkdown(formatRollback(diagnostics))}`, '');
   }
 
+  if (isLiveUnvalidated && result.unvalidatedAnalysis) {
+    const draft = result.unvalidatedAnalysis;
+    lines.push(
+      '## Unvalidated Gemini Analysis',
+      '',
+      '> **WARNING: This Gemini analysis did not pass evidence validation and must not be treated as an authoritative operational assessment. Review it manually against the pipeline evidence.**',
+      '',
+      '- Validation status: **NOT VALIDATED**',
+      '- Authority: **NON-AUTHORITATIVE DRAFT**',
+      '- Human review required: **YES**',
+      `- Proposed classification: **${escapeMarkdown(draft.proposedClassification)}**`,
+      `- Proposed risk level: **${escapeMarkdown(draft.proposedRiskLevel)}**`,
+      `- Proposed confidence: ${escapeMarkdown(formatConfidence(draft.proposedConfidence))}`,
+      '',
+      `**Operational summary draft:** ${escapeMarkdown(draft.operationalSummary)}`,
+      ''
+    );
+
+    if (draft.likelyRootCause) {
+      lines.push(`**Likely cause draft:** ${escapeMarkdown(draft.likelyRootCause)}`, '');
+    }
+
+    lines.push(
+      `**Recommended human checks draft:** ${escapeMarkdown(draft.recommendedHumanChecks)}`,
+      '',
+      `- Gemini-supplied evidence IDs (global): ${formatInlineList(draft.suppliedEvidenceIds)}`,
+      `- Valid supplied evidence IDs: ${formatInlineList(draft.validEvidenceIds)}`,
+      `- Missing required evidence IDs: ${formatInlineList(draft.missingRequiredEvidenceIds)}`,
+      `- Unsupported evidence IDs: ${formatInlineList(draft.unsupportedEvidenceIds)}`,
+      `- Claims without a valid evidence reference: ${formatInlineList(draft.claimsWithoutEvidenceReferences)}`,
+      '',
+      'The response schema supplies one global evidence-ID list rather than per-sentence references. No references were added on Gemini\'s behalf.',
+      '',
+      'This draft did not affect deployment, rollback, health verification, classification, risk, pipeline status, or recommendations used by automation.',
+      ''
+    );
+  }
+
+  if (failureLines.length > 0) {
+    lines.push(
+      '## Validation Failure Details',
+      ...failureLines,
+      `- Corrective retry attempted: **${validation.correctiveRetryAttempted ? 'YES' : 'NO'}**`,
+      ''
+    );
+  }
+
   lines.push(
-    '## Safety',
-    `- Human review required: **${analysis.humanReviewRequired ? 'YES' : 'NO'}**`,
+    '## Safety and Authority Boundaries',
+    `- Human review required: **${result.humanReviewRequired ? 'YES' : 'NO'}**`,
     '- AWS credentials available to AI job: **NO**',
     '- OIDC permission: **NO**',
     '- AWS calls: **0**',
@@ -1251,6 +1515,7 @@ async function runCli() {
     failure: result.failure,
     validation: result.validation,
     analysis: result.analysis,
+    unvalidatedAnalysis: result.unvalidatedAnalysis || null,
     evidenceCatalog: result.evidenceCatalog,
     humanReviewRequired: result.humanReviewRequired
   };
@@ -1260,6 +1525,10 @@ async function runCli() {
 
   if (result.available) {
     console.log('[AIOps] Advisory deployment assessment generated.');
+  } else if (result.mode === ANALYSIS_MODES.liveUnvalidated) {
+    console.warn(
+      `[AIOps] Gemini draft failed evidence validation; deterministic fallback remains authoritative. ${formatFailureForLog(result.failure)}`
+    );
   } else {
     console.warn(
       `[AIOps] Gemini unavailable; deterministic fallback assessment generated. ${formatFailureForLog(result.failure)}`
@@ -1283,6 +1552,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  ANALYSIS_MODES,
   CLASSIFICATIONS,
   DEFAULT_AIOPS_GEMINI_MODEL,
   DEPLOYMENT_OUTCOMES,
@@ -1291,6 +1561,8 @@ module.exports = {
   FAILURE_CLASSIFICATIONS,
   FIXED_SYSTEM_INSTRUCTION,
   MAX_SUPPORTED_EVIDENCE,
+  MAX_UNVALIDATED_FIELD_LENGTH,
+  MAX_UNVALIDATED_OUTPUT_BYTES,
   RESPONSE_KEYS,
   RISK_LEVELS,
   SAFE_ERROR_MESSAGE_MAX_LENGTH,
@@ -1311,6 +1583,7 @@ module.exports = {
   renderSummary,
   resolvePath,
   safeErrorText,
+  sanitizeUnvalidatedAnalysis,
   unavailableResult,
   validateAnalysisResponse,
   validateAnalysisStructure,

@@ -13,6 +13,7 @@ const {
   buildDeploymentEvidence
 } = require('../scripts/aiops/prepareDeploymentEvidence');
 const {
+  ANALYSIS_MODES,
   DEFAULT_AIOPS_GEMINI_MODEL,
   FIXED_SYSTEM_INSTRUCTION,
   analyzeDiagnostics,
@@ -339,7 +340,7 @@ test('valid Gemini structured analysis is accepted without tools or function cal
   });
 
   assert.equal(result.available, true);
-  assert.equal(result.mode, 'LIVE GEMINI');
+  assert.equal(result.mode, ANALYSIS_MODES.liveValidated);
   assert.equal(result.analysis.deploymentOutcome, 'FAILED');
   assert.equal(result.analysis.classification, 'BACKEND_HEALTH_FAILURE');
   assert.equal(result.analysis.riskLevel, 'HIGH');
@@ -357,7 +358,7 @@ test('valid Gemini structured analysis is accepted without tools or function cal
   const summary = renderSummary(result);
   assert.doesNotMatch(summary, new RegExp(apiKey));
   assert.match(summary, /^# AIOps Deployment Summary/m);
-  assert.match(summary, /Mode: \*\*LIVE GEMINI\*\*/);
+  assert.match(summary, /Mode: \*\*LIVE\\_VALIDATED\*\*/);
   assert.match(summary, /Deployment outcome: \*\*FAILED\*\*/);
   assert.match(summary, /Classification: \*\*BACKEND\\_HEALTH\\_FAILURE\*\*/);
   assert.match(summary, /Risk level: \*\*HIGH\*\*/);

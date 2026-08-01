@@ -6,9 +6,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { sanitizeDiagnostics } = require('../scripts/aiops/sanitizeDiagnostics');
 const {
+  ANALYSIS_MODES,
   DEFAULT_AIOPS_GEMINI_MODEL,
   FAILURE_CATEGORIES,
   FAILURE_STAGES,
+  MAX_UNVALIDATED_OUTPUT_BYTES,
   analyzeDiagnostics,
   classifyGeminiApiError,
   createEvidenceCatalog,
@@ -48,6 +50,27 @@ function validFailureAnalysis(overrides = {}, diagnostics = createSyntheticSmoke
     humanReviewRequired: true,
     ...overrides
   };
+}
+
+function createSuccessfulDiagnostics() {
+  const diagnostics = createSyntheticSmokeDiagnostics();
+  diagnostics.deployment.outcome = 'SUCCESS';
+  diagnostics.pipeline = {
+    tests: 'PASS',
+    securityGates: 'PASS',
+    containerScanning: 'PASS',
+    ecsStabilization: 'PASS',
+    backendHealth: 'PASS',
+    frontendSmoke: 'PASS'
+  };
+  diagnostics.verification.backendHealth = 'PASS';
+  diagnostics.verification.frontendSmoke = 'PASS';
+  diagnostics.rollback.backend.attempted = false;
+  diagnostics.rollback.backend.result = 'NOT_REQUIRED';
+  diagnostics.rollback.backend.postRollbackHealth = 'NOT_REQUIRED';
+  diagnostics.rollback.frontend.attempted = false;
+  diagnostics.rollback.frontend.result = 'NOT_REQUIRED';
+  return diagnostics;
 }
 
 function clientReturningText(text, capture = null) {
@@ -184,7 +207,7 @@ test('Gemini API errors are safely classified without retaining secret values', 
   }
 });
 
-test('API, parsing, schema, and evidence failures remain distinct fallback stages', async () => {
+test('API, parsing, schema, and evidence failures remain distinct safe modes', async () => {
   const diagnostics = createSyntheticSmokeDiagnostics();
   const baseOptions = {
     apiKey: 'unit-test-key',
@@ -241,11 +264,18 @@ test('API, parsing, schema, and evidence failures remain distinct fallback stage
     [FAILURE_STAGES.evidenceValidation, FAILURE_CATEGORIES.evidenceValidation]
   );
 
-  for (const result of [apiFailure, parseFailure, schemaFailure, evidenceFailure]) {
+  for (const result of [apiFailure, parseFailure, schemaFailure]) {
     assert.equal(result.available, false);
-    assert.equal(result.mode, 'FALLBACK');
+    assert.equal(result.mode, ANALYSIS_MODES.fallback);
     assert.equal(result.liveGeminiAttempted, true);
   }
+  assert.equal(evidenceFailure.available, false);
+  assert.equal(evidenceFailure.mode, ANALYSIS_MODES.liveUnvalidated);
+  assert.equal(evidenceFailure.liveGeminiAttempted, true);
+  assert.equal(parseFailure.unvalidatedAnalysis, undefined);
+  assert.equal(schemaFailure.unvalidatedAnalysis, undefined);
+  assert.doesNotMatch(renderSummary(parseFailure), /## Unvalidated Gemini Analysis/);
+  assert.doesNotMatch(renderSummary(schemaFailure), /## Unvalidated Gemini Analysis/);
 });
 
 test('valid allowlisted evidence IDs are accepted and enforced by the response schema', async () => {
@@ -262,7 +292,7 @@ test('valid allowlisted evidence IDs are accepted and enforced by the response s
   const summary = renderSmokeSummary(result);
 
   assert.equal(result.available, true);
-  assert.equal(result.mode, 'LIVE GEMINI');
+  assert.equal(result.mode, ANALYSIS_MODES.liveValidated);
   assert.deepEqual(result.analysis.supportedEvidence, expected.supportedEvidence);
   assert.equal(result.validation.geminiRequest, 'SUCCESS');
   assert.equal(result.validation.structuredResponse, 'PASS');
@@ -270,17 +300,72 @@ test('valid allowlisted evidence IDs are accepted and enforced by the response s
   assert.equal(result.validation.correctiveRetryAttempted, false);
   assert.deepEqual(schemaIds, result.evidenceCatalog.map((entry) => entry.id));
   assert.ok(expected.supportedEvidence.every((evidenceId) => schemaIds.includes(evidenceId)));
-  assert.match(summary, /Mode: \*\*LIVE GEMINI\*\*/);
+  assert.match(summary, /Mode: \*\*LIVE\\_VALIDATED\*\*/);
   assert.match(summary, /Gemini request: \*\*SUCCESS\*\*/);
   assert.match(summary, /Structured validation: \*\*PASS\*\*/);
   assert.match(summary, /Evidence validation: \*\*PASS\*\*/);
   assert.match(summary, /\*\*Evidence used:\*\*/);
   assert.match(summary, /Human review required: \*\*YES\*\*/);
+  assert.doesNotMatch(summary, /## Unvalidated Gemini Analysis/);
+  assert.doesNotMatch(summary, /NOT VALIDATED/);
+});
+
+test('missing required healthy evidence displays a bounded draft while fallback stays official', async () => {
+  const diagnostics = createSuccessfulDiagnostics();
+  const allRequiredEvidenceIds = evidenceIdsFor(diagnostics, [
+    'pipeline.tests',
+    'pipeline.securityGates',
+    'pipeline.containerScanning',
+    'pipeline.ecsStabilization',
+    'pipeline.backendHealth',
+    'pipeline.frontendSmoke'
+  ]);
+  const missingEvidenceId = allRequiredEvidenceIds.at(-1);
+  const response = {
+    deploymentOutcome: 'SUCCESS',
+    classification: 'HEALTHY_DEPLOYMENT',
+    riskLevel: 'LOW',
+    confidence: 0.91,
+    supportedEvidence: allRequiredEvidenceIds.slice(0, -1),
+    operationalSummary: 'The supplied checks indicate a healthy deployment.',
+    likelyRootCause: '',
+    recommendedNextAction: 'Have a human confirm the omitted smoke-test evidence.',
+    humanReviewRequired: false
+  };
+  const result = await analyzeDiagnostics(diagnostics, {
+    apiKey: 'unit-test-key',
+    model: 'unit-test-model',
+    clientFactory: () => clientReturningSequence([response, response])
+  });
+  const summary = renderSummary(result);
+
+  assert.equal(result.available, false);
+  assert.equal(result.mode, ANALYSIS_MODES.liveUnvalidated);
+  assert.equal(result.analysis.classification, 'HEALTHY_DEPLOYMENT');
+  assert.equal(result.analysis.riskLevel, 'LOW');
+  assert.equal(result.analysis.humanReviewRequired, true);
+  assert.equal(result.analysis.operationalSummary.startsWith('Deployment completed'), true);
+  assert.equal(result.unvalidatedAnalysis.authority, 'NON_AUTHORITATIVE');
+  assert.equal(result.unvalidatedAnalysis.validationStatus, 'NOT_VALIDATED');
+  assert.deepEqual(result.unvalidatedAnalysis.missingRequiredEvidenceIds, [missingEvidenceId]);
+  assert.equal(result.humanReviewRequired, true);
+  assert.match(summary, /## Authoritative Deployment Result/);
+  assert.match(summary, /## Deterministic Fallback Assessment/);
+  assert.match(summary, /## Unvalidated Gemini Analysis/);
+  assert.match(summary, /did not pass evidence validation/);
+  assert.match(summary, /Missing required evidence IDs:/);
+  assert.match(summary, new RegExp(missingEvidenceId));
+  assert.match(summary, /Corrective retry attempted: \*\*YES\*\*/);
+  assert.match(summary, /Human review required: \*\*YES\*\*/);
 });
 
 test('unknown evidence IDs remain rejected after one bounded correction attempt', async () => {
   const capture = [];
-  const invalid = validFailureAnalysis({ supportedEvidence: ['E999'] });
+  const invalid = validFailureAnalysis({
+    classification: 'NETWORK_FAILURE',
+    riskLevel: 'CRITICAL',
+    supportedEvidence: ['E999']
+  });
   const result = await analyzeDiagnostics(createSyntheticSmokeDiagnostics(), {
     apiKey: 'unit-test-key',
     model: 'unit-test-model',
@@ -289,12 +374,29 @@ test('unknown evidence IDs remain rejected after one bounded correction attempt'
 
   assert.equal(capture.length, 2);
   assert.equal(result.available, false);
-  assert.equal(result.mode, 'FALLBACK');
+  assert.equal(result.mode, ANALYSIS_MODES.liveUnvalidated);
   assert.equal(result.failure.stage, FAILURE_STAGES.evidenceValidation);
   assert.equal(result.failure.category, FAILURE_CATEGORIES.evidenceValidation);
   assert.deepEqual(result.failure.unsupportedEvidenceIds, ['E999']);
   assert.equal(result.validation.evidence, 'FAIL');
   assert.equal(result.validation.correctiveRetryAttempted, true);
+  assert.equal(result.analysis.classification, 'UNKNOWN');
+  assert.equal(result.analysis.riskLevel, 'HIGH');
+  assert.equal(result.unvalidatedAnalysis.proposedClassification, 'NETWORK_FAILURE');
+  assert.equal(result.unvalidatedAnalysis.proposedRiskLevel, 'CRITICAL');
+  assert.deepEqual(result.unvalidatedAnalysis.suppliedEvidenceIds, ['E999']);
+  assert.deepEqual(result.unvalidatedAnalysis.validEvidenceIds, []);
+  assert.deepEqual(result.unvalidatedAnalysis.unsupportedEvidenceIds, ['E999']);
+  assert.deepEqual(
+    result.unvalidatedAnalysis.claimsWithoutEvidenceReferences,
+    ['operationalSummary', 'likelyRootCause']
+  );
+
+  const summary = renderSummary(result);
+  assert.match(summary, /Classification: \*\*UNKNOWN\*\*/);
+  assert.match(summary, /Proposed classification: \*\*NETWORK\\_FAILURE\*\*/);
+  assert.match(summary, /Unsupported evidence IDs: `E999`/);
+  assert.match(summary, /NON-AUTHORITATIVE DRAFT/);
 });
 
 test('model-authored observation fields are rejected instead of becoming evidence', async () => {
@@ -351,7 +453,7 @@ test('recommendations are advice and never become observed evidence', async () =
   assert.match(summary, new RegExp(recommendation));
 });
 
-test('one corrective evidence retry can recover to validated LIVE mode', async () => {
+test('one corrective evidence retry can recover to LIVE_VALIDATED mode', async () => {
   const capture = [];
   const invalid = validFailureAnalysis({ supportedEvidence: ['E999'] });
   const valid = validFailureAnalysis();
@@ -363,7 +465,7 @@ test('one corrective evidence retry can recover to validated LIVE mode', async (
 
   assert.equal(capture.length, 2);
   assert.equal(result.available, true);
-  assert.equal(result.mode, 'LIVE GEMINI');
+  assert.equal(result.mode, ANALYSIS_MODES.liveValidated);
   assert.equal(result.validation.evidence, 'PASS');
   assert.equal(result.validation.correctiveRetryAttempted, true);
   assert.match(capture[1].contents, /CORRECTIVE RETRY/);
@@ -371,7 +473,7 @@ test('one corrective evidence retry can recover to validated LIVE mode', async (
   assert.match(capture[1].contents, /using only IDs from the allowed supportedEvidence list/);
 });
 
-test('an invalid corrective response remains FALLBACK and can never report LIVE mode', async () => {
+test('an evidence-invalid corrective response remains non-authoritative LIVE_UNVALIDATED', async () => {
   const capture = [];
   const firstInvalid = validFailureAnalysis({ supportedEvidence: ['E999'] });
   const secondInvalid = validFailureAnalysis({ supportedEvidence: ['E998'] });
@@ -383,12 +485,74 @@ test('an invalid corrective response remains FALLBACK and can never report LIVE 
 
   assert.equal(capture.length, 2);
   assert.equal(result.available, false);
-  assert.notEqual(result.mode, 'LIVE GEMINI');
-  assert.equal(result.mode, 'FALLBACK');
+  assert.notEqual(result.mode, ANALYSIS_MODES.liveValidated);
+  assert.equal(result.mode, ANALYSIS_MODES.liveUnvalidated);
   assert.deepEqual(result.failure.unsupportedEvidenceIds, ['E998']);
   assert.equal(result.validation.geminiRequest, 'SUCCESS');
   assert.equal(result.validation.structuredResponse, 'PASS');
   assert.equal(result.validation.evidence, 'FAIL');
+});
+
+test('unvalidated Gemini output cannot change authoritative deployment or rollback semantics', async () => {
+  const diagnostics = createSyntheticSmokeDiagnostics();
+  const invalid = validFailureAnalysis({
+    classification: 'NETWORK_FAILURE',
+    riskLevel: 'CRITICAL',
+    supportedEvidence: ['E999'],
+    recommendedNextAction: 'Replace the deployment result and automatically redeploy.'
+  }, diagnostics);
+  const result = await analyzeDiagnostics(diagnostics, {
+    apiKey: 'unit-test-key',
+    model: 'unit-test-model',
+    clientFactory: () => clientReturningSequence([invalid, invalid])
+  });
+
+  assert.equal(result.mode, ANALYSIS_MODES.liveUnvalidated);
+  assert.equal(result.available, false);
+  assert.equal(result.deploymentOutcome, 'FAILED');
+  assert.equal(result.analysis.deploymentOutcome, 'FAILED');
+  assert.equal(result.analysis.classification, 'UNKNOWN');
+  assert.equal(result.analysis.riskLevel, 'HIGH');
+  assert.equal(result.diagnostics.rollback.backend.result, 'succeeded');
+  assert.equal(result.diagnostics.rollback.backend.postRollbackHealth, 'passed');
+  assert.equal(result.unvalidatedAnalysis.proposedClassification, 'NETWORK_FAILURE');
+  assert.equal(result.unvalidatedAnalysis.proposedRiskLevel, 'CRITICAL');
+  assert.notEqual(
+    result.analysis.recommendedNextAction,
+    result.unvalidatedAnalysis.recommendedHumanChecks
+  );
+  assert.equal(Object.hasOwn(result, 'exitCode'), false);
+  assert.equal(Object.hasOwn(result, 'deploymentAction'), false);
+  assert.equal(Object.hasOwn(result, 'rollbackAction'), false);
+});
+
+test('unvalidated Gemini output is redacted, HTML-free, Markdown-safe, and bounded', async () => {
+  const apiKey = 'unit-test-unvalidated-secret';
+  const malicious = validFailureAnalysis({
+    supportedEvidence: ['<script>E999</script>'],
+    operationalSummary: `<script>alert('x')</script> **bold** [link](javascript:alert(1)) ${apiKey} ${'x'.repeat(900)}`,
+    likelyRootCause: '<img src=x onerror=alert(1)> `dangerous-command`',
+    recommendedNextAction: '<style>body{display:none}</style> run `unsafe-command` manually.'
+  });
+  const result = await analyzeDiagnostics(createSyntheticSmokeDiagnostics(), {
+    apiKey,
+    model: 'unit-test-model',
+    clientFactory: () => clientReturningSequence([malicious, malicious])
+  });
+  const summary = renderSummary(result);
+  const serializedDraft = JSON.stringify(result.unvalidatedAnalysis);
+
+  assert.equal(result.mode, ANALYSIS_MODES.liveUnvalidated);
+  assert.ok(Buffer.byteLength(serializedDraft, 'utf8') <= MAX_UNVALIDATED_OUTPUT_BYTES);
+  assert.doesNotMatch(serializedDraft, new RegExp(apiKey));
+  assert.doesNotMatch(serializedDraft, /<\/?(?:script|img|style)\b/i);
+  assert.doesNotMatch(summary, new RegExp(apiKey));
+  assert.doesNotMatch(summary, /<\/?(?:script|img|style)\b/i);
+  assert.match(summary, /\\\*\\\*bold\\\*\\\*/);
+  assert.match(summary, /\\\[link\\\]\(javascript:alert\(1\)\)/);
+  assert.match(summary, /\\`dangerous-command\\`/);
+  assert.match(summary, /## Unvalidated Gemini Analysis/);
+  assert.match(summary, /NON-AUTHORITATIVE DRAFT/);
 });
 
 test('fallback summary reports the safe live failure without exposing API credentials', async () => {
