@@ -2,7 +2,13 @@
 
 The Firefighter Smart Incident Dashboard is a Node.js incident-management platform for emergency-response teams. It combines operational reporting, geospatial intelligence, live voice transcription, and AI-assisted report drafting with a containerised AWS deployment pipeline.
 
-## Overview
+## Live Deployed Application
+
+[Open the Firefighter Smart Incident Dashboard](https://fi-6c256163a7464fe3b386b068e0bc31c6.ecs.ap-southeast-1.on.aws/dashboard)
+
+This is the browser-facing application deployed on AWS ECS. Authentication is required to access the operational dashboard.
+
+## Executive Summary
 
 Emergency incident records can become incomplete, inconsistent, or difficult to review when responders must move quickly. This dashboard helps duty officers and supervisors capture calls, verify locations, prepare structured incident reports, monitor active incidents, and review operational trends from one authenticated interface.
 
@@ -13,13 +19,39 @@ The application is designed to improve:
 - reporting efficiency through voice transcription and editable AI-generated drafts;
 - operational visibility through analytics, search, filters, and service diagnostics.
 
+The primary users are duty officers who capture and review incidents, Higher Rank/Admin users who oversee report and location quality, and authorised personnel who manage accounts or inspect operational information according to their role.
+
+## Application Preview
+
+The screenshots below use demonstration incident data and show the main operational workflow without exposing credentials or cloud configuration.
+
+![Firefighter operational dashboard with incident totals, review queue, map, and location summaries](docs/images/application-dashboard.png)
+
+*The operational dashboard combines verified demonstration incidents, officer-review queues, status summaries, and geospatial context in one authenticated view.*
+
+![Live Call Intake screen with transcript areas, transcription controls, service status, and manual fallback](docs/images/live-call-intake.png)
+
+*Live Call Intake supports streaming transcription, editable cleanup, manual fallback, and separate raw or cleaned transcript handoff to Create Report.*
+
+![Create Report screen showing a Gemini-generated editable draft and an acknowledged unverified location](docs/images/create-report-ai-draft.png)
+
+*Using synthetic demonstration data, Gemini generated an editable draft while the officer acknowledged an unverified location. The report remains outside firefighter operational views until Higher Rank/Admin verification.*
+
+![Incident heatmap view with type, status, and date filters over a Singapore map](docs/images/incident-heatmap.png)
+
+*Verified demonstration incident locations support marker and heatmap views with operational filters; unverified reports remain outside firefighter-facing map data.*
+
+![Analytics page showing report totals, type distribution, status distribution, and high-frequency locations](docs/images/analytics.png)
+
+*Analytics summarises reviewed incident data by type, status, and location to support situational awareness.*
+
 ## Key Features
 
 ### Incident Management
 
 - Create, view, search, edit, and delete incident reports stored in MySQL.
 - Track incident type, status, date and time, location, hazards, casualties, notes, and transcript evidence.
-- Enforce required fields and location verification before reports are saved.
+- Enforce mandatory report fields and server-trusted location verification. An explicitly acknowledged unverified report is held outside firefighter operational views until Higher Rank/Admin review.
 - Preserve officer review: AI-generated content remains editable and is never saved automatically.
 - Apply role-based permissions for duty officers, HR users, and higher-rank administrators.
 
@@ -28,7 +60,7 @@ The application is designed to improve:
 - Display active incidents with Leaflet and OpenStreetMap tiles.
 - Switch between clustered markers and an incident heatmap.
 - Filter map data and show high-frequency location/type summaries.
-- Keep unmapped incidents visible for follow-up instead of silently dropping them.
+- Keep verified but unmapped incidents visible for follow-up while excluding unverified locations from operational map and analytics data.
 - Validate Singapore locations through the configured OneMap service, with repository-provided fallback location handling.
 
 ### AI-Assisted Reporting
@@ -77,6 +109,10 @@ Local development uses Google Application Default Credentials (ADC). The ECS bac
 
 ## Deployed Architecture
 
+![Deployed AWS architecture with separate frontend and backend ECS Express services and key external integrations](docs/images/deployed-architecture.png)
+
+*The browser-facing Nginx service proxies HTTP and WebSocket traffic to the backend, which uses external data and AI services; Google Speech authentication uses the backend ECS task role through Workload Identity Federation.*
+
 ```text
 User browser
      |
@@ -109,6 +145,10 @@ The frontend and backend run as separate images and separate ECS services. Nginx
 The repository deploys into existing AWS resources. It does not provision IAM roles, ECR repositories, ECS services, or networking. Those resources are managed externally; this repository automates image delivery and application rollout.
 
 ## Local Docker Architecture
+
+![Local Docker architecture with Nginx frontend, Docker service DNS, Node.js backend, and external MySQL](docs/images/local-docker-architecture.png)
+
+*Docker Compose exposes the frontend on `127.0.0.1:3000`, routes internal traffic to `backend:3000`, and keeps the configured MySQL database external.*
 
 ```text
 Browser
@@ -181,6 +221,10 @@ See [Backend Dockerisation](docs/FA-BACKEND-DOCKER.md).
 
 The main workflow is [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
 
+![Sanitized successful GitHub Actions run showing quality, security, container, deployment, and AIOps jobs](docs/images/github-actions-pipeline.png)
+
+*The fail-closed GitHub Actions pipeline runs testing, dependency security, secret scanning, source scanning, container security, AWS deployment verification, and a post-deployment advisory AIOps assessment. Contributor and incidental run identifiers were redacted from this public copy.*
+
 ```text
 Pull request / push / manual run
               |
@@ -216,7 +260,19 @@ Export exact scanned images + SHA-256 metadata
               Ansible backend-first rollout
                         |
                         v
-              Health check + smoke test
+              Pin exact backend service revision
+              and new service-deployment ARN
+                        |
+                        v
+              Wait for backend deployment state
+              SUCCESSFUL, then verify /health
+                        |
+                        v
+              Pin and wait for the exact frontend
+              deployment, then run smoke verification
+                        |
+                        v
+              Advisory AIOps deployment assessment
 ```
 
 Pipeline behavior:
@@ -228,6 +284,8 @@ Pipeline behavior:
 - images are tagged with the Git commit SHA;
 - the exact image archives scanned by Trivy are checksummed, transferred as artifacts, verified, and then pushed—deployment does not rebuild a different image;
 - task-definition revisions are derived from active service definitions so existing runtime configuration, secrets, task roles, and execution roles are preserved.
+
+ECS deployment state and Ansible's deterministic checks decide whether rollout succeeded. A service being `ACTIVE` is not sufficient: Ansible must correlate the requested task definition to the exact service revision and exact new service-deployment ARN, then observe that pinned deployment reach `SUCCESSFUL` before HTTP verification. AIOps runs afterward as an advisory assessment only; it cannot deploy, roll back, modify AWS, or change the authoritative deployment result.
 
 ## DevSecOps Controls
 
@@ -261,13 +319,19 @@ New backend/frontend task-definition revisions
       |
       v
 Ansible
-  -> backend ECS service
-  -> backend stabilization
+  -> request backend ECS service revision
+  -> pin exact backend service revision
+  -> pin exact new backend service-deployment ARN
+  -> wait for authoritative SUCCESSFUL state
   -> backend /health
-  -> frontend ECS service
-  -> frontend stabilization
+  -> request and pin exact frontend deployment
+  -> wait for authoritative SUCCESSFUL state
   -> frontend smoke test
   -> verified rollback on failure
+      |
+      v
+Isolated advisory AIOps assessment
+(no AWS, deployment, rollback, or remediation authority)
 ```
 
 The deployment workflow:
@@ -573,6 +637,8 @@ SECURITY.md              Security and credential-handling guidance
 
 Together, these components demonstrate automated validation, immutable container promotion, short-lived cloud authentication, deterministic deployment, failure recovery, and security controls integrated before release.
 
+Detailed individual ownership, shared-file boundaries, and presentation evidence are documented in the [FA DevOps Team Responsibility Map](docs/FA-TEAM-RESPONSIBILITY-MAP.md).
+
 ## Documentation
 
 - [Frontend Dockerisation](docs/FA-FRONTEND-DOCKER.md)
@@ -582,6 +648,7 @@ Together, these components demonstrate automated validation, immutable container
 - [FA L4 DevSecOps Evidence](docs/FA-L4-DEVSECOPS.md)
 - [AIOps Deployment Assessment and Failure Analysis](docs/FA-AIOPS-DEPLOYMENT-FAILURE-ANALYSIS.md)
 - [FA DevOps Evidence Guide](docs/FA-DEVOPS-EVIDENCE-GUIDE.md)
+- [FA DevOps Team Responsibility Map](docs/FA-TEAM-RESPONSIBILITY-MAP.md)
 - [Security Policy](SECURITY.md)
 
 ## Scope and External Dependencies
