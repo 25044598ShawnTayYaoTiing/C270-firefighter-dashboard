@@ -565,7 +565,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function validateConditionalField(name) {
     const input = form.elements[name];
-    if (!input) return true;
+    const field = conditionalFields.find((candidate) => candidate.name === name);
+    if (!input || !field) return true;
 
     const value = String(input.value || '').trim()
       .replace(/\s+/g, ' ')
@@ -573,12 +574,12 @@ document.addEventListener('DOMContentLoaded', () => {
       .replace(/\.+$/, '');
 
     if (!value) {
-      setFieldError(name, conditionalFields.find((field) => field.name === name).message);
+      setFieldError(name, field.message);
       return false;
     }
 
     if (['null', 'undefined', 'not identified in transcript', 'not available', 'n/a'].includes(value)) {
-      setFieldError(name, conditionalFields.find((field) => field.name === name).message);
+      setFieldError(name, field.message);
       return false;
     }
 
