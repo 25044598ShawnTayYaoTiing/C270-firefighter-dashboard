@@ -87,9 +87,44 @@ test('the verification endpoint rejects "33" even when summary text contains a l
 });
 
 test('generic location terms are rejected without useful identifying information', () => {
-  for (const location of ['block', 'street', 'woodlands', 'Block 263']) {
+  for (const location of ['block', 'street', 'woodlands']) {
     assert.equal(validateLocationQuery(location).valid, false);
   }
+});
+
+test('qualified named places and block-number searches are accepted without auto-verification', async () => {
+  assert.equal(validateLocationQuery('Singapore Polytechnic').valid, true);
+  assert.equal(validateLocationQuery('singapore   polytechnic').valid, true);
+  assert.equal(validateLocationQuery('Block 263').valid, true);
+
+  let searchedQuery = '';
+  const result = await verifyLocationQuery(' Singapore   Polytechnic ', {
+    searchCandidates: async (query) => {
+      searchedQuery = query;
+      return [
+        candidate({
+          name: 'SINGAPORE POLYTECHNIC',
+          address: '500 DOVER ROAD SINGAPORE 139651',
+          postalCode: '139651',
+          latitude: 1.3099,
+          longitude: 103.7784
+        }),
+        candidate({
+          name: 'SINGAPORE POLYTECHNIC SPORTS COMPLEX',
+          address: '500 DOVER ROAD SINGAPORE 139651',
+          postalCode: '139651',
+          latitude: 1.3100,
+          longitude: 103.7785
+        })
+      ];
+    }
+  });
+
+  assert.equal(searchedQuery, 'Singapore Polytechnic');
+  assert.equal(result.verified, false);
+  assert.equal(result.requiresSelection, true);
+  assert.equal(result.candidates.length, 2);
+  assert.equal(result.candidates[0].postalCode, '139651');
 });
 
 test('a valid 6-digit Singapore postal code can be searched and strongly matched', async () => {

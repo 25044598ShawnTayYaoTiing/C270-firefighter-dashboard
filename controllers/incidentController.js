@@ -597,6 +597,7 @@ exports.verifyLocation = async (req, res) => {
     if (!result.verified) {
       return res.json({
         success: true,
+        status: 'candidates',
         verified: false,
         requiresSelection: true,
         normalizedQuery: result.normalizedQuery,
@@ -606,6 +607,7 @@ exports.verifyLocation = async (req, res) => {
 
     return res.json({
       success: true,
+      status: 'verified',
       verified: true,
       requiresSelection: false,
       location,

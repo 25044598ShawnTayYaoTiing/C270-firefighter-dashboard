@@ -37,6 +37,8 @@
     'walk',
     'way'
   ]);
+  const NUMBERED_LOCATION_TERMS = new Set(['block', 'blk', 'building']);
+  const QUALIFIED_PLACE_TERMS = new Set(['singapore']);
 
   function normalizeLocationQuery(value) {
     return String(value || '')
@@ -56,6 +58,10 @@
     const tokens = getLocationTokens(normalized);
     const numericTokens = tokens.filter((token) => /^\d+$/.test(token));
     const postalCodes = numericTokens.filter((token) => /^\d{6}$/.test(token));
+    const hasNumberedLocationTerm = tokens.some((token) => (
+      NUMBERED_LOCATION_TERMS.has(token)
+    ));
+    const hasPlaceQualifier = tokens.some((token) => QUALIFIED_PLACE_TERMS.has(token));
     const meaningfulWords = tokens.filter((token) => (
       /[a-z]/.test(token)
       && token.length > 1
@@ -67,6 +73,8 @@
       tokens,
       numericTokens,
       postalCodes,
+      hasNumberedLocationTerm,
+      hasPlaceQualifier,
       meaningfulWords
     };
   }
@@ -106,7 +114,10 @@
       };
     }
 
-    if (parts.numericTokens.length > 0 && parts.meaningfulWords.length > 0) {
+    if (parts.numericTokens.length > 0 && (
+      parts.meaningfulWords.length > 0
+      || parts.hasNumberedLocationTerm
+    )) {
       return {
         valid: true,
         kind: 'address',
@@ -114,7 +125,8 @@
       };
     }
 
-    if (parts.meaningfulWords.length >= 2) {
+    if (parts.meaningfulWords.length >= 2
+      || (parts.meaningfulWords.length >= 1 && parts.hasPlaceQualifier)) {
       return {
         valid: true,
         kind: 'named_place',

@@ -82,7 +82,7 @@ async function verifyLocationQuery(location, options = {}) {
   if (!Array.isArray(candidates) || candidates.length === 0) {
     throw new LocationVerificationError(
       'location_not_found',
-      'No matching Singapore location was found. Check the address or postal code.',
+      'No matching OneMap location was found. Add a block number, road name, building name, or six-digit postal code and search again.',
       404
     );
   }

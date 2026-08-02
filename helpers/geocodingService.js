@@ -40,7 +40,7 @@ function hasOneMapCredentials() {
 }
 
 function normalizeSearchText(value) {
-  return String(value || '').replace(/\s+/g, ' ').trim();
+  return String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
 }
 
 async function fetchJson(url, options = {}) {

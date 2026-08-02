@@ -156,7 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function verifyLocation() {
-    const location = controls.locationInput.value.trim();
+    const location = locationVerification.normalizeLocationQuery(controls.locationInput.value);
     const validation = locationVerification.validateLocationQuery(location);
 
     if (!validation.valid) {
@@ -192,7 +192,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Unable to verify this location.');
+        const error = new Error(data.error || 'Unable to verify this location.');
+        error.code = data.code || '';
+        throw error;
       }
 
       if (!verificationState.isCurrentRequest(requestVersion, location)) return;
