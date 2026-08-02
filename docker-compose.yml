@@ -1,7 +1,13 @@
-# FA responsibility: Ji Xun — Docker Compose / Multi-container Orchestration
+# FA contribution owner: Kong Ji Xun
+# Purpose: Orchestrates the frontend and backend on a private bridge network with
+# Docker DNS, health-aware ordering, bounded probes, and host-only development ports.
+# Demo focus: Trace browser-to-frontend-to-backend traffic, then show health and recovery.
 name: firefighter-dashboard
 
 services:
+  # Frontend service builds the Nginx gateway and addresses the backend by Compose DNS name.
+  # It starts only after backend health passes, then exposes the application on localhost.
+  # Demo focus: Point out BACKEND_URL=http://backend:3000 and service_healthy ordering.
   frontend:
     build:
       context: .
@@ -11,6 +17,8 @@ services:
       BACKEND_URL: http://backend:3000
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
+    # Health-based dependency ordering prevents Nginx from starting against an unready API.
+    # Once the backend is healthy, the frontend probe validates its own gateway endpoint.
     depends_on:
       backend:
         condition: service_healthy
@@ -30,6 +38,9 @@ services:
     restart: unless-stopped
     stop_grace_period: 15s
 
+  # Backend service receives runtime configuration without baking secrets into its image.
+  # Its /health probe gates frontend startup and supports failure/recovery demonstration.
+  # Demo focus: Show the internal port, optional host port, and bounded health retries.
   backend:
     build:
       context: .
@@ -79,6 +90,8 @@ services:
     restart: unless-stopped
     stop_grace_period: 15s
 
+# A user-defined bridge supplies private service discovery as backend on firefighter-network.
+# Demo focus: Show that container-to-container traffic does not use localhost or host ports.
 networks:
   firefighter-network:
     driver: bridge

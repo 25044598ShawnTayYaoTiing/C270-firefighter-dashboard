@@ -1,5 +1,12 @@
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Runs a manual, synthetic Gemini failure-diagnostics demonstration with
+# sanitized evidence and no AWS, deployment, rollback, or remediation authority.
+# Demo focus: Show the advisory result and safety counters without affecting ECS.
 name: Gemini Deployment Demo
 
+# Manual-only trigger and read-only permissions keep the demonstration isolated.
+# The main-branch guard ensures the checked demonstration matches reviewed code.
+# Demo focus: Point out the absence of id-token and AWS credential steps.
 on:
   workflow_dispatch:
 
@@ -13,6 +20,9 @@ concurrency:
 env:
   NODE_VERSION: '22'
 
+# Synthetic evidence preparation runs before the guarded Gemini analysis.
+# The same production sanitizer and analyzer are exercised without a cloud failure.
+# Demo focus: Show the generated summary and confirm the evidence is explicitly synthetic.
 jobs:
   demonstrate:
     name: Synthetic Gemini failure diagnostics

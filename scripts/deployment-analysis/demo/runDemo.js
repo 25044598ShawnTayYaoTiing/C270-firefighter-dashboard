@@ -1,5 +1,9 @@
 'use strict';
 
+// FA contribution owner: Shawn Tay Yao Ting
+// Purpose: Runs a local mocked Gemini failure-diagnostics demonstration through production safety controls.
+// Demo focus: Show sanitization, schema validation, advisory output, and zero cloud authority offline.
+
 const assert = require('node:assert/strict');
 const {
   MAX_STRING_LENGTH,
@@ -18,6 +22,8 @@ const {
   createRawSimulatedFailure
 } = require('./simulatedFailure');
 
+// Deterministic mocked output lets the local demonstration prove control flow without an API key.
+// It still passes through the production evidence catalogue and response validation.
 function createMockAnalysis(diagnostics) {
   const catalog = createEvidenceCatalog(diagnostics);
   const supportedEvidence = [
@@ -68,6 +74,8 @@ function createMockClientFactory(mockAnalysis, capture) {
   });
 }
 
+// Sanitization assertions verify allowlisting, redaction, bounded payloads, and prompt-injection isolation.
+// Demo focus: Point out that fake credential markers and unapproved fields are absent.
 function evaluateSanitization(rawDiagnostics, sanitizedDiagnostics) {
   const serialized = JSON.stringify(sanitizedDiagnostics);
   const fakeValuesAbsent = Object.fromEntries(
@@ -138,6 +146,8 @@ function assertDemoSafety(demo) {
   }
 }
 
+// The demonstration prepares synthetic evidence, runs the analyzer, and preserves FAILED as authoritative.
+// No AWS credentials, OIDC permissions, deployment, rollback, or automatic remediation are available.
 async function runLocalDemo(options = {}) {
   const rawDiagnostics = createRawSimulatedFailure();
   const sanitizedDiagnostics = sanitizeDiagnostics(rawDiagnostics);
@@ -182,6 +192,8 @@ function previewMessage(message, maximumLength = 320) {
   return `${message.slice(0, maximumLength)}...[presentation preview shortened]`;
 }
 
+// Presenter output combines the advisory result with explicit safety and deterministic-result assertions.
+// The process exits non-zero if any required demo guarantee is missing.
 function formatDemoOutput(demo) {
   const diagnostics = demo.sanitizedDiagnostics;
   const analysis = demo.analysisResult.analysis;

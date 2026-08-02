@@ -1,7 +1,13 @@
 'use strict';
 
+// FA contribution owner: Shawn Tay Yao Ting
+// Purpose: Correlates a requested task definition to one exact ECS Express service deployment.
+// Demo focus: Show that ACTIVE service state alone is insufficient; the pinned deployment must finish.
+
 const { spawnSync } = require('node:child_process');
 
+// Authoritative lifecycle sets distinguish waiting, success, rollback, and failure outcomes.
+// These states drive bounded polling before Ansible performs public health or smoke checks.
 const WAITING_STATES = new Set([
   'PENDING',
   'IN_PROGRESS',
@@ -18,6 +24,8 @@ const KNOWN_STATES = new Set([
 ]);
 const MAX_DIAGNOSTIC_LENGTH = 512;
 
+// Safe normalization bounds status details before they are returned to Ansible diagnostics.
+// Revision and deployment correlation then excludes older successful deployments.
 function boundedText(value, fallback = 'unavailable') {
   const normalized = String(value || '')
     .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ')
@@ -174,6 +182,8 @@ function timeoutResult(lastObservation, options = {}) {
   };
 }
 
+// Input parsing requires every correlation key, operation, and timeout from the Ansible wrapper.
+// The AWS helper executes fixed ECS read operations without shell interpolation.
 function parseArguments(argv) {
   const values = {};
 
@@ -277,6 +287,9 @@ function writeProgress(observation, reason) {
   );
 }
 
+// Deployment polling verifies task definition -> service revision -> new deployment ARN -> final state.
+// Progress remains visible while PENDING/IN_PROGRESS; only an authoritative terminal state returns.
+// Demo focus: Point out the baseline exclusion and exact ARN pinned before state evaluation.
 async function waitForServiceDeployment(options, dependencies = {}) {
   const callAws = dependencies.runAwsJson || runAwsJson;
   const currentTime = dependencies.now || Date.now;
@@ -402,6 +415,8 @@ async function waitForServiceDeployment(options, dependencies = {}) {
   return timeoutResult(lastObservation, options);
 }
 
+// CLI output is one structured JSON result consumed by wait_for_service.yml.
+// A non-success outcome exits non-zero so Ansible enters diagnostics and rollback.
 async function runCli() {
   let result;
 

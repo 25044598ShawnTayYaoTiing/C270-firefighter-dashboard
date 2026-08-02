@@ -1,5 +1,9 @@
 'use strict';
 
+// FA contribution owner: Shawn Tay Yao Ting
+// Purpose: Prepares and analyzes synthetic sanitized evidence in the manual GitHub demonstration workflow.
+// Demo focus: Distinguish LIVE GEMINI, mocked fallback, and the separate real deployment result.
+
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -33,6 +37,8 @@ const MODES = Object.freeze({
   mockedFallback: 'MOCKED FALLBACK (LIVE GEMINI UNAVAILABLE)'
 });
 
+// Preparation validates sanitization checks before writing a private synthetic evidence file.
+// The resulting JSON is safe for the same analyzer used by production deployment summaries.
 function assertSanitizationChecks(checks) {
   for (const [name, absent] of Object.entries(checks.fakeValuesAbsent)) {
     assert.equal(absent, true, `fake sensitive value survived sanitization: ${name}`);
@@ -87,6 +93,8 @@ function resolveOption(options, name, environmentName) {
   return String(process.env[environmentName] || '').trim();
 }
 
+// Analysis attempts LIVE Gemini when configured and uses the validated mocked result only as fallback.
+// Neither path receives AWS credentials or authority to execute its recommendations.
 async function runMockedAnalysis(diagnostics) {
   const capture = {
     modelCalls: 0,
@@ -189,6 +197,8 @@ function yesNo(value) {
   return value ? 'YES' : 'NO';
 }
 
+// GitHub summary output labels the synthetic scenario, model mode, evidence, and safety counters clearly.
+// Demo focus: Show that human review remains required and the real deployment is not reported as failed.
 function renderWorkflowSummary(result) {
   const analysis = result.analysisResult.analysis;
   const liveFailureLines = result.liveFailure
@@ -296,6 +306,8 @@ function appendWorkflowSummary(summary, summaryPath = process.env.GITHUB_STEP_SU
   });
 }
 
+// CLI subcommands separate evidence preparation from advisory analysis for transparent workflow steps.
+// A failed assertion stops only this demonstration and cannot alter deployment or rollback behavior.
 async function runCli() {
   const [command, diagnosticsPath = 'gemini-deployment-demo-sanitized.json'] = process.argv.slice(2);
 

@@ -1,4 +1,11 @@
 ---
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Coordinates automatic-rollback detection and explicit backend-then-frontend restoration.
+# Demo focus: Show each verified rollback result while the original deployment remains failed.
+
+# Rollback result initialization and automatic rollback detection.
+# Explicit defaults distinguish not-required, attempted, succeeded, and failed recovery states.
+# ECS automatic rollback evidence may satisfy recovery without issuing a duplicate update.
 - name: Initialize rollback outcome tracking
   ansible.builtin.set_fact:
     ecs_express_deploy_backend_rollback_result: >-
@@ -21,187 +28,21 @@
          and ecs_express_deploy_frontend_deployment_result.rollbackServiceRevisionArn | default('')
              == ecs_express_deploy_frontend_service_state.serviceRevision }}
 
-- name: Restore and verify previous backend ECS Express revision
-  when: ecs_express_deploy_backend_update_required | default(false) | bool
-  block:
-    - name: Record authoritative automatic backend rollback deployment
-      ansible.builtin.set_fact:
-        ecs_express_deploy_backend_rollback_deployment_result: >-
-          {{ ecs_express_deploy_backend_deployment_result }}
-      when: ecs_express_deploy_backend_automatic_rollback_complete | bool
+# Backend rollback runs before frontend rollback.
+# The controller preserves the established recovery order and imports exact backend verification.
+# Demo focus: Show backend restoration and post-rollback health before frontend handling.
+- name: Run backend rollback deployment and verification tasks
+  ansible.builtin.import_tasks: rollback_backend.yml
 
-    - name: Snapshot backend deployments before explicit rollback
-      ansible.builtin.include_tasks: capture_deployment_baseline.yml
-      vars:
-        ecs_express_deploy_baseline_label: backend rollback
-        ecs_express_deploy_baseline_service_arn: '{{ ecs_express_deploy_backend_service_arn }}'
-        ecs_express_deploy_baseline_fact: ecs_express_deploy_backend_rollback_deployment_baseline
-      when: not ecs_express_deploy_backend_automatic_rollback_complete | bool
+# Frontend rollback retains the existing second position.
+# It runs only after backend rollback handling and verifies its own exact ECS deployment when needed.
+# The combined outcome is reported next without changing the original failure.
+- name: Run frontend rollback deployment and verification tasks
+  ansible.builtin.import_tasks: rollback_frontend.yml
 
-    - name: Request previous backend ECS Express revision
-      ansible.builtin.command:
-        argv:
-          - aws
-          - ecs
-          - update-express-gateway-service
-          - --region
-          - '{{ ecs_express_deploy_aws_region }}'
-          - --service-arn
-          - '{{ ecs_express_deploy_backend_service_arn }}'
-          - --task-definition-arn
-          - '{{ ecs_express_deploy_previous_backend_task_definition_arn }}'
-          - --query
-          - 'service.targetConfiguration.{serviceRevisionArn:serviceRevisionArn,taskDefinitionArn:taskDefinitionArn}'
-          - --output
-          - json
-          - --no-cli-pager
-      register: ecs_express_deploy_backend_rollback_request
-      changed_when: ecs_express_deploy_backend_rollback_request.rc == 0
-      failed_when: false
-      when: not ecs_express_deploy_backend_automatic_rollback_complete | bool
-
-    - name: Require successful backend rollback request
-      ansible.builtin.assert:
-        that:
-          - ecs_express_deploy_backend_rollback_request.rc == 0
-        fail_msg: The request to restore the previous backend task definition failed.
-      when: not ecs_express_deploy_backend_automatic_rollback_complete | bool
-
-    - name: Record backend rollback target service revision
-      ansible.builtin.set_fact:
-        ecs_express_deploy_backend_rollback_target_configuration: >-
-          {{ ecs_express_deploy_backend_rollback_request.stdout | from_json }}
-      when: not ecs_express_deploy_backend_automatic_rollback_complete | bool
-
-    - name: Verify backend rollback response matches the previous task definition
-      ansible.builtin.assert:
-        that:
-          - ecs_express_deploy_backend_rollback_target_configuration.serviceRevisionArn is match('^arn:aws:ecs:')
-          - ecs_express_deploy_backend_rollback_target_configuration.taskDefinitionArn == ecs_express_deploy_previous_backend_task_definition_arn
-        fail_msg: ECS did not return a rollback service revision for the previous backend task definition.
-      when: not ecs_express_deploy_backend_automatic_rollback_complete | bool
-
-    - name: Wait for authoritative backend rollback deployment
-      ansible.builtin.include_tasks: wait_for_service.yml
-      vars:
-        ecs_express_deploy_service_label: backend rollback
-        ecs_express_deploy_service_arn: '{{ ecs_express_deploy_backend_service_arn }}'
-        ecs_express_deploy_expected_task_definition_arn: '{{ ecs_express_deploy_previous_backend_task_definition_arn }}'
-        ecs_express_deploy_expected_service_revision_arn: '{{ ecs_express_deploy_backend_rollback_target_configuration.serviceRevisionArn }}'
-        ecs_express_deploy_baseline_deployment_arns: '{{ ecs_express_deploy_backend_rollback_deployment_baseline }}'
-        ecs_express_deploy_wait_operation: rollback
-        ecs_express_deploy_wait_result_fact: ecs_express_deploy_backend_rollback_deployment_result
-      when: not ecs_express_deploy_backend_automatic_rollback_complete | bool
-
-    - name: Verify backend health after rollback
-      ansible.builtin.uri:
-        url: '{{ ecs_express_deploy_backend_health_url }}'
-        method: GET
-        status_code: 200
-        return_content: true
-        validate_certs: true
-        timeout: '{{ ecs_express_deploy_health_timeout }}'
-      register: ecs_express_deploy_backend_rollback_health
-      retries: '{{ ecs_express_deploy_health_retries }}'
-      delay: '{{ ecs_express_deploy_health_delay }}'
-      until:
-        - ecs_express_deploy_backend_rollback_health.status == 200
-        - ecs_express_deploy_backend_rollback_health.json is defined
-        - ecs_express_deploy_backend_rollback_health.json.status | default('') == 'ok'
-
-    - name: Record successful backend rollback
-      ansible.builtin.set_fact:
-        ecs_express_deploy_backend_rollback_result: succeeded
-        ecs_express_deploy_backend_rollback_health_result: passed
-  rescue:
-    - name: Record failed backend rollback verification
-      ansible.builtin.set_fact:
-        ecs_express_deploy_backend_rollback_result: verification-failed
-        ecs_express_deploy_backend_rollback_health_result: >-
-          {{ 'failed'
-             if 'health' in (ansible_failed_task.name | default('') | lower)
-             else 'not-verified' }}
-
-- name: Restore and verify previous frontend ECS Express revision
-  when: ecs_express_deploy_frontend_update_required | default(false) | bool
-  block:
-    - name: Record authoritative automatic frontend rollback deployment
-      ansible.builtin.set_fact:
-        ecs_express_deploy_frontend_rollback_deployment_result: >-
-          {{ ecs_express_deploy_frontend_deployment_result }}
-      when: ecs_express_deploy_frontend_automatic_rollback_complete | bool
-
-    - name: Snapshot frontend deployments before explicit rollback
-      ansible.builtin.include_tasks: capture_deployment_baseline.yml
-      vars:
-        ecs_express_deploy_baseline_label: frontend rollback
-        ecs_express_deploy_baseline_service_arn: '{{ ecs_express_deploy_frontend_service_arn }}'
-        ecs_express_deploy_baseline_fact: ecs_express_deploy_frontend_rollback_deployment_baseline
-      when: not ecs_express_deploy_frontend_automatic_rollback_complete | bool
-
-    - name: Request previous frontend ECS Express revision
-      ansible.builtin.command:
-        argv:
-          - aws
-          - ecs
-          - update-express-gateway-service
-          - --region
-          - '{{ ecs_express_deploy_aws_region }}'
-          - --service-arn
-          - '{{ ecs_express_deploy_frontend_service_arn }}'
-          - --task-definition-arn
-          - '{{ ecs_express_deploy_previous_frontend_task_definition_arn }}'
-          - --query
-          - 'service.targetConfiguration.{serviceRevisionArn:serviceRevisionArn,taskDefinitionArn:taskDefinitionArn}'
-          - --output
-          - json
-          - --no-cli-pager
-      register: ecs_express_deploy_frontend_rollback_request
-      changed_when: ecs_express_deploy_frontend_rollback_request.rc == 0
-      failed_when: false
-      when: not ecs_express_deploy_frontend_automatic_rollback_complete | bool
-
-    - name: Require successful frontend rollback request
-      ansible.builtin.assert:
-        that:
-          - ecs_express_deploy_frontend_rollback_request.rc == 0
-        fail_msg: The request to restore the previous frontend task definition failed.
-      when: not ecs_express_deploy_frontend_automatic_rollback_complete | bool
-
-    - name: Record frontend rollback target service revision
-      ansible.builtin.set_fact:
-        ecs_express_deploy_frontend_rollback_target_configuration: >-
-          {{ ecs_express_deploy_frontend_rollback_request.stdout | from_json }}
-      when: not ecs_express_deploy_frontend_automatic_rollback_complete | bool
-
-    - name: Verify frontend rollback response matches the previous task definition
-      ansible.builtin.assert:
-        that:
-          - ecs_express_deploy_frontend_rollback_target_configuration.serviceRevisionArn is match('^arn:aws:ecs:')
-          - ecs_express_deploy_frontend_rollback_target_configuration.taskDefinitionArn == ecs_express_deploy_previous_frontend_task_definition_arn
-        fail_msg: ECS did not return a rollback service revision for the previous frontend task definition.
-      when: not ecs_express_deploy_frontend_automatic_rollback_complete | bool
-
-    - name: Wait for authoritative frontend rollback deployment
-      ansible.builtin.include_tasks: wait_for_service.yml
-      vars:
-        ecs_express_deploy_service_label: frontend rollback
-        ecs_express_deploy_service_arn: '{{ ecs_express_deploy_frontend_service_arn }}'
-        ecs_express_deploy_expected_task_definition_arn: '{{ ecs_express_deploy_previous_frontend_task_definition_arn }}'
-        ecs_express_deploy_expected_service_revision_arn: '{{ ecs_express_deploy_frontend_rollback_target_configuration.serviceRevisionArn }}'
-        ecs_express_deploy_baseline_deployment_arns: '{{ ecs_express_deploy_frontend_rollback_deployment_baseline }}'
-        ecs_express_deploy_wait_operation: rollback
-        ecs_express_deploy_wait_result_fact: ecs_express_deploy_frontend_rollback_deployment_result
-      when: not ecs_express_deploy_frontend_automatic_rollback_complete | bool
-
-    - name: Record successful frontend rollback
-      ansible.builtin.set_fact:
-        ecs_express_deploy_frontend_rollback_result: succeeded
-  rescue:
-    - name: Record failed frontend rollback verification
-      ansible.builtin.set_fact:
-        ecs_express_deploy_frontend_rollback_result: verification-failed
-
+# Combined rollback diagnostics output.
+# Backend health and both service recovery states are condensed for operators and later summaries.
+# Demo focus: Point out whether rollback was required, attempted, and authoritatively verified.
 - name: Report rollback verification outcome
   ansible.builtin.debug:
     msg:

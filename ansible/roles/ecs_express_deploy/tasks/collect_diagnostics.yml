@@ -1,4 +1,11 @@
 ---
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Collects bounded, non-secret backend and frontend ECS state before rollback.
+# Demo focus: Show service revisions, deployment states, and reasons without task environments.
+
+# Backend ECS failure-state collection.
+# Bounded service and recent-deployment fields capture where the backend rollout stopped.
+# The frontend state is collected next before any explicit rollback is requested.
 - name: Read backend ECS Express failure state
   ansible.builtin.command:
     argv:
@@ -45,6 +52,9 @@
   changed_when: false
   failed_when: false
 
+# Frontend ECS failure-state collection.
+# This distinguishes a frontend failure from a backend failure that prevented frontend rollout.
+# Both service snapshots then enter strict safe-field normalization.
 - name: Read frontend ECS Express failure state
   ansible.builtin.command:
     argv:
@@ -91,6 +101,9 @@
   changed_when: false
   failed_when: false
 
+# Safe diagnostic normalization and reporting.
+# Only selected states, revisions, reasons, and events are retained for rollback and artifacts.
+# Demo focus: Show useful failure context without credentials or complete AWS responses.
 - name: Record safe ECS failure diagnostics
   ansible.builtin.set_fact:
     ecs_express_deploy_backend_failure_state: >-

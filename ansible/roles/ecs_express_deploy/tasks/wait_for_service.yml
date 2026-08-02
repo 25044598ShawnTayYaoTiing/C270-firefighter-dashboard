@@ -1,4 +1,11 @@
 ---
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Invokes the exact ECS Express waiter and validates its structured terminal result.
+# Demo focus: Show the pinned deployment ARN and observed states before success is accepted.
+
+# Waiter input validation.
+# Service, task definition, service revision, baseline, operation, and timeout are all required.
+# Valid inputs are passed to the fixed Node.js waiter command next.
 - name: Assert authoritative ECS deployment tracking inputs - {{ ecs_express_deploy_service_label }}
   ansible.builtin.assert:
     that:
@@ -9,6 +16,9 @@
       - ecs_express_deploy_wait_result_fact | length > 0
     fail_msg: The ECS deployment waiter requires an exact task definition, service revision, operation, and pre-update deployment baseline.
 
+# Authoritative deployment polling.
+# The helper reads ECS service revision and deployment APIs until a bounded terminal result.
+# Demo focus: Watch PENDING/IN_PROGRESS messages tied to one deployment ARN.
 - name: Wait for authoritative ECS service deployment state - {{ ecs_express_deploy_service_label }}
   ansible.builtin.command:
     argv:
@@ -34,6 +44,9 @@
   changed_when: false
   failed_when: false
 
+# Structured result capture, diagnostics, and verification.
+# JSON output becomes safe Ansible facts and only outcome=success satisfies the assertion.
+# A failure exposes bounded state/reason details and returns control to the role's rescue path.
 - name: Record authoritative ECS deployment result - {{ ecs_express_deploy_service_label }}
   ansible.builtin.set_fact:
     ecs_express_deploy_wait_result: >-

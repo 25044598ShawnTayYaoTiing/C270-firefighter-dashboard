@@ -1,4 +1,6 @@
-# Frontend-only build context: the image needs static assets and two runtime files.
+# FA contribution owner: Kaung Min Khant
+# Purpose: Restricts the frontend build context to static assets and two runtime gateway files.
+# Demo focus: Show that backend source, credentials, tests, and documentation are excluded.
 **
 !public/
 !public/**

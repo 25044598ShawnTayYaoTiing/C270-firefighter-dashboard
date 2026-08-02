@@ -1,6 +1,10 @@
 ---
-# All service identifiers and URLs are supplied by GitHub Actions as non-secret
-# extra variables. Keep credentials in the existing OIDC environment only.
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Defines non-secret ECS deployment inputs and bounded verification defaults.
+# Demo focus: Show the 30-minute Express Mode waiter and separate HTTP retry controls.
+
+# GitHub Actions supplies service identifiers and URLs as extra variables.
+# Credentials remain in the existing OIDC environment and never become role defaults.
 ecs_express_deploy_aws_region: ''
 ecs_express_deploy_backend_service_arn: ''
 ecs_express_deploy_frontend_service_arn: ''

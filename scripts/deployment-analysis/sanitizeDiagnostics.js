@@ -1,5 +1,9 @@
 'use strict';
 
+// FA contribution owner: Shawn Tay Yao Ting
+// Purpose: Converts deployment diagnostics into a bounded, allowlisted, and redacted evidence document.
+// Demo focus: Show that secrets, raw environments, transcripts, and task definitions never reach Gemini.
+
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -10,6 +14,8 @@ const MAX_RECENT_DEPLOYMENTS = 5;
 const MAX_TOTAL_BYTES = 32 * 1024;
 const TRUNCATION_SUFFIX = '...[truncated]';
 
+// Scalar redaction removes credential-shaped text and bounds every diagnostic string.
+// Safe values then enter fixed service and deployment evidence structures only.
 function truncateString(value, maximumLength = MAX_STRING_LENGTH) {
   const text = String(value);
 
@@ -102,6 +108,8 @@ function sanitizeRecentDeployments(value) {
   });
 }
 
+// Service sanitization explicitly selects operational fields instead of copying raw AWS responses.
+// Demo focus: Point out deployment state and reason fields while excluded fields remain absent.
 function sanitizeService(value) {
   const service = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 
@@ -141,6 +149,8 @@ function compactStrings(value, maximumLength) {
   return value;
 }
 
+// Total-size enforcement compacts bounded text and rejects evidence that still exceeds the limit.
+// The analyzer receives a predictable maximum payload after this final safety check.
 function enforceTotalPayloadSize(document) {
   let boundedDocument = document;
 
@@ -154,6 +164,8 @@ function enforceTotalPayloadSize(document) {
   throw new Error('Sanitized diagnostic payload exceeds the maximum allowed size.');
 }
 
+// Top-level allowlisting rebuilds the complete success/failure document before redaction output.
+// Deterministic deployment and rollback facts remain authoritative regardless of later AI analysis.
 function sanitizeDiagnostics(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new TypeError('Diagnostics must be a JSON object.');
@@ -259,6 +271,8 @@ function sanitizeDiagnostics(value) {
   return enforceTotalPayloadSize(allowlistedDocument);
 }
 
+// File mode reads local diagnostics, applies the same production sanitizer, and writes private JSON.
+// This is the hand-off used by deployment evidence preparation and isolated demonstrations.
 function sanitizeDiagnosticsFile(inputPath, outputPath) {
   const inputSize = fs.statSync(inputPath).size;
   if (inputSize > MAX_INPUT_BYTES) {

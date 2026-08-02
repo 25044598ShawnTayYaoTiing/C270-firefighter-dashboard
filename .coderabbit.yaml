@@ -1,4 +1,7 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# FA contribution owner: Khin Kyi Phyu Zin
+# Purpose: Configures focused automatic pull-request reviews across application and DevOps files.
+# Demo focus: Explain how actionable correctness, security, and deployment risks are prioritized.
 
 language: "en-US"
 early_access: false
@@ -6,6 +9,9 @@ tone_instructions: >-
   Be concise, technical, and actionable. Avoid praise, jokes, and style-only
   feedback; explain concrete impact and recommend the smallest safe correction.
 
+# Review behavior keeps feedback concise and avoids style-only noise.
+# Automatic reviews skip drafts, selected labels, and dependency-bot pull requests.
+# Demo focus: Show that human reviewers receive a risk-focused summary on each eligible PR.
 reviews:
   profile: "chill"
   request_changes_workflow: false
@@ -37,6 +43,9 @@ reviews:
     - "!docs/images/**"
     - "!server*.log"
 
+  # Path-specific guidance gives CodeRabbit the repository architecture and safety boundaries.
+  # Reviews then focus on relevant runtime, container, workflow, Ansible, and evidence risks.
+  # Demo focus: Point out the least-privilege and deterministic-deployment instructions.
   path_instructions:
     - path: "**/*"
       instructions: |

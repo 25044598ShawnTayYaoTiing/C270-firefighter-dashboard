@@ -1,4 +1,4 @@
-# FA Docker Compose / Multi-container Orchestration
+# FA DevOps — Docker Compose
 
 ## Ownership and Scope
 
@@ -22,7 +22,7 @@ Frontend service
 Backend service
   Node.js/Express container, internal port 3000
   |
-  +--> external MySQL/Railway
+  +--> external MySQL-compatible database
   +--> external Gemini
   +--> optional Google Speech-to-Text credentials
 ```
@@ -392,7 +392,7 @@ Every developer builds the same Dockerfiles, uses the same service names, networ
 
     Versioned Compose definitions, pinned container bases, locked dependencies, explicit health contracts, required configuration, and an automated integration test.
 
-## L4 Evidence Checklist
+## FA DevOps Evidence Checklist
 
 Ji Xun should capture or demonstrate:
 

@@ -1,4 +1,11 @@
 ---
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Deploys the backend revision, verifies its exact ECS deployment, then checks /health.
+# Demo focus: Show that frontend deployment cannot begin until this backend sequence succeeds.
+
+# Backend deployment decision and baseline capture.
+# An already-active revision is a safe no-op; a real update first records existing deployment ARNs.
+# Demo focus: Point out idempotency and the baseline used to identify only the new deployment.
 - name: Determine whether backend deployment is required
   ansible.builtin.set_fact:
     ecs_express_deploy_backend_update_required: >-
@@ -13,6 +20,9 @@
     ecs_express_deploy_baseline_fact: ecs_express_deploy_backend_deployment_baseline
   when: ecs_express_deploy_backend_update_required | bool
 
+# Backend deployment request and service-revision correlation.
+# ECS returns the target service revision, which must reference the requested task definition.
+# The verified revision becomes the key used to find the exact service deployment next.
 - name: Deploy backend ECS Express service revision
   # ECS Express uses UpdateExpressGatewayService, which is not managed by the
   # standard ECS Ansible service module. This command changes only the revision.
@@ -50,6 +60,9 @@
     fail_msg: ECS did not return a target service revision for the requested backend task definition.
   when: ecs_express_deploy_backend_update_required | bool
 
+# Authoritative backend deployment wait and post-deployment health verification.
+# ECS must complete the pinned deployment before the public /health check can prove the new API.
+# Demo focus: Show SUCCESSFUL first, then HTTP 200; either failure enters rescue and rollback.
 - name: Wait for backend ECS Express service stability
   ansible.builtin.include_tasks: wait_for_service.yml
   vars:

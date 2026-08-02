@@ -1,0 +1,49 @@
+---
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Initializes deployment, health, smoke, rollback, and diagnostic result facts.
+# Demo focus: Explain that all later summaries start from explicit, deterministic states.
+
+- name: Initialize deployment outcome tracking
+  ansible.builtin.set_fact:
+    ecs_express_deploy_result: succeeded
+    ecs_express_deploy_failure_stage: unavailable
+    ecs_express_deploy_failure_task: ''
+    ecs_express_deploy_failure_message: ''
+    ecs_express_deploy_backend_update_required: false
+    ecs_express_deploy_frontend_update_required: false
+    ecs_express_deploy_backend_health_result: not-reached
+    ecs_express_deploy_frontend_health_result: not-reached
+    ecs_express_deploy_backend_rollback_result: not-required
+    ecs_express_deploy_frontend_rollback_result: not-required
+    ecs_express_deploy_backend_rollback_health_result: not-required
+    ecs_express_deploy_backend_deployment_result:
+      outcome: not-required
+      status: NOT_REQUIRED
+      serviceDeploymentArn: unavailable
+      targetServiceRevisionArn: unavailable
+      requestedTaskDefinitionArn: '{{ ecs_express_deploy_backend_task_definition_arn }}'
+      statusReason: No backend update was required.
+      lifecycleStage: unavailable
+    ecs_express_deploy_frontend_deployment_result:
+      outcome: not-required
+      status: NOT_REQUIRED
+      serviceDeploymentArn: unavailable
+      targetServiceRevisionArn: unavailable
+      requestedTaskDefinitionArn: '{{ ecs_express_deploy_frontend_task_definition_arn }}'
+      statusReason: No frontend update was required.
+      lifecycleStage: unavailable
+    ecs_express_deploy_backend_rollback_deployment_result:
+      outcome: not-required
+      status: NOT_REQUIRED
+      serviceDeploymentArn: unavailable
+      targetServiceRevisionArn: unavailable
+      statusReason: Backend rollback was not required.
+      lifecycleStage: unavailable
+    ecs_express_deploy_frontend_rollback_deployment_result:
+      outcome: not-required
+      status: NOT_REQUIRED
+      serviceDeploymentArn: unavailable
+      targetServiceRevisionArn: unavailable
+      statusReason: Frontend rollback was not required.
+      lifecycleStage: unavailable
+  tags: [deploy]

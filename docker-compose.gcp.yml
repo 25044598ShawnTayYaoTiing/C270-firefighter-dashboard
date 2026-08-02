@@ -1,6 +1,9 @@
-# FA responsibility: Ji Xun — Docker Compose / Multi-container Orchestration
-# Optional local-development overlay. It mounts an existing ADC file read-only;
-# it never copies credentials into an image or repository.
+# FA contribution owner: Kong Ji Xun
+# Purpose: Adds an optional local Compose overlay that mounts existing Google ADC read-only.
+# Demo focus: Explain that credentials stay outside the image and repository.
+
+# The overlay changes only backend runtime environment and volume configuration.
+# The base services, private network, health ordering, and ports remain unchanged.
 services:
   backend:
     environment:

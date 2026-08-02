@@ -1,4 +1,6 @@
-# Shared FA responsibility: Min, Thein, and Fatin — container build-context hygiene
+# FA contribution owners: Kaung Khant Thein, Kaung Min Khant, and Fatin Farha Binte Sahidin
+# Purpose: Excludes secrets, development output, tests, and documentation from Docker contexts.
+# Demo focus: Show that .env files and repository metadata cannot enter either image build context.
 node_modules
 .git
 .github

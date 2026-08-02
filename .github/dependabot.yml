@@ -1,6 +1,10 @@
-# FA responsibility: Fatin — dependency and supply-chain update governance
+# FA contribution owner: Fatin Farha Binte Sahidin
+# Purpose: Schedules controlled npm, GitHub Actions, and Docker dependency update proposals.
+# Demo focus: Explain that updates still pass the full tests and blocking security gates.
 version: 2
 updates:
+  # Weekly npm updates are grouped so production dependency changes can be reviewed together.
+  # The resulting pull request proceeds through npm audit before any deployment is possible.
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -11,6 +15,7 @@ updates:
       production-dependencies:
         dependency-type: production
 
+  # Workflow action updates keep CI/CD dependencies current while preserving review controls.
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -21,12 +26,14 @@ updates:
         patterns:
           - '*'
 
+  # Backend and frontend base images are tracked independently for container security review.
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
       day: monday
 
+  # Frontend Docker updates remain separate so the Nginx image can be validated independently.
   - package-ecosystem: docker
     directory: /frontend
     schedule:

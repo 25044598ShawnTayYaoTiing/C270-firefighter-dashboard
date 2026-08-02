@@ -1,4 +1,4 @@
-# FA Ansible ECS Express Deployment
+# FA DevOps — Ansible Cloud Deployment
 
 ## Purpose and architecture
 
@@ -38,7 +38,10 @@ ansible/
   roles/ecs_express_deploy/
     defaults/main.yml
     files/waitForServiceDeployment.js
-    tasks/{preflight,backend,frontend,capture_deployment_baseline,wait_for_service,rollback}.yml
+    tasks/{main,initialize,preflight,backend,frontend}.yml
+    tasks/{capture_deployment_baseline,wait_for_service}.yml
+    tasks/{collect_diagnostics,write_failure_diagnostics,summary}.yml
+    tasks/{rollback,rollback_backend,rollback_frontend}.yml
 ```
 
 The production inventory contains only localhost with a local connection. Ansible never creates EC2 instances and never SSHs into ECS tasks.
@@ -56,6 +59,21 @@ The official `amazon.aws` collection performs the OIDC credential preflight. ECS
 7. If ECS already completed an automatic rollback to the exact saved prior service revision, Ansible verifies that authoritative result. Otherwise it requests the saved task definition, tracks the new rollback deployment rather than an older successful deployment, and verifies backend health afterward. The original deployment remains failed even when rollback succeeds.
 
 The playbook does not force a deployment, recreate services, change networking, load balancers, roles, secrets, task-definition properties, deployment-controller settings, managed database, Gemini, or Google Speech-to-Text/WIF configuration.
+
+The application uses an external MySQL-compatible database. This role does not provision, migrate, or modify that database.
+
+## Supervised health-failure practice
+
+The `inject_health_failure` input is a manual-only `workflow_dispatch` control. It
+defaults to `false`, requires `deploy=true`, and is applied only to the new
+backend practice revision. When explicitly enabled, that revision sets
+`FA_DEMO_HEALTH_FAILURE=true`, so the running application remains up while its
+backend `/health` endpoint returns HTTP 503. The existing deployment waiter,
+frontend-prevention, rollback, and failure-summary behavior remain authoritative.
+
+This input is intended for supervised rollback practice and is not the
+recommended presentation demonstration. Use the isolated synthetic Gemini
+deployment demo for a repeatable presentation without changing an ECS service.
 
 ## Security
 
@@ -79,6 +97,11 @@ No GitHub variables or secrets are added. The existing variables are passed to A
 | `APP_SMOKE_URL` | Variable | Yes | Public frontend endpoint | HTTPS origin URL |
 
 There are no new GitHub Actions secrets. Existing runtime secrets remain in the ECS task/runtime configuration and are not passed to Ansible.
+
+Ansible adds no GitHub variables or secrets. The isolated Gemini deployment
+summary and failure-diagnostics feature is separate from Ansible and uses the
+`DEPLOYMENT_GEMINI_API_KEY` secret and `DEPLOYMENT_GEMINI_MODEL` repository
+variable only in its own analysis steps.
 
 ## Validation
 

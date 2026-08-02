@@ -1,19 +1,23 @@
-# FA DevOps Team Responsibility Map
+# FA DevOps — Team Responsibility Map
 
 ## Executive Summary
 
 This map assigns responsibility for the repository's current DevOps implementation. It is a presentation and maintenance boundary, not a claim about original authorship. The allocation is based on the agreed FA team split and the technical responsibilities visible in the current repository.
 
-| Member | Primary Component | Extended Component | Current Scope Size | Key Evidence |
-|---|---|---|---|---|
-| Kiki | GitHub Actions CI/CD orchestration | Pipeline observability, artifact lifecycle, and release evidence | LARGE | Workflow triggers, job dependencies, PR/main behavior, image artifact hand-off, and deployment gating in `.github/workflows/deploy.yml` |
-| Min | Frontend Dockerisation and Nginx runtime gateway | Frontend container hardening and runtime validation | SMALL | `frontend/Dockerfile`, `frontend/nginx.conf.template`, and `frontend/validate-backend-url.sh` |
-| Thein | Backend Node.js Dockerisation | Runtime lifecycle and production-container validation | MEDIUM | Root `Dockerfile`, production dependency installation, distroless non-root runtime, and container health check |
-| Ji Xun | Local Docker Compose orchestration | Automated integration smoke testing and recovery validation | MEDIUM | `docker-compose.yml`, `docker-compose.gcp.yml`, `scripts/compose-smoke.js`, and `docs/FA-DOCKER-COMPOSE.md` |
-| Shawn | AWS cloud deployment and deployment reliability | Ansible rollback/diagnostics and Gemini deployment assistance | LARGE | Deployment portion of `.github/workflows/deploy.yml`, all `ansible/` deployment automation, `scripts/deployment-analysis/`, and deployment evidence documents |
-| Fatin | DevSecOps security gates | Security evidence, dependency governance, and supply-chain controls | LARGE | npm audit, Gitleaks, Semgrep, Trivy, Dependabot, security artifacts, and fail-closed workflow dependencies |
+| Member | Primary Component | Extended Component | Key Evidence |
+|---|---|---|---|
+| Kiki | GitHub Actions CI/CD orchestration | Pipeline observability, artifact lifecycle, and release evidence | Workflow triggers, job dependencies, PR/main behavior, image artifact hand-off, and deployment gating in `.github/workflows/deploy.yml` |
+| Min | Frontend Dockerisation and Nginx runtime gateway | Frontend container hardening and runtime validation | `frontend/Dockerfile`, `frontend/nginx.conf.template`, and `frontend/validate-backend-url.sh` |
+| Thein | Backend Node.js Dockerisation | Runtime lifecycle and production-container validation | Root `Dockerfile`, production dependency installation, distroless non-root runtime, and container health check |
+| Ji Xun | Local Docker Compose orchestration | Automated integration smoke testing and recovery validation | `docker-compose.yml`, `docker-compose.gcp.yml`, `scripts/compose-smoke.js`, and `docs/FA-DOCKER-COMPOSE.md` |
+| Shawn | AWS cloud deployment and deployment reliability | Ansible rollback/diagnostics and Gemini deployment assistance | Deployment portion of `.github/workflows/deploy.yml`, all `ansible/` deployment automation, `scripts/deployment-analysis/`, and deployment evidence documents |
+| Fatin | DevSecOps security gates | Security evidence, dependency governance, and supply-chain controls | npm audit, Gitleaks, Semgrep, Trivy, Dependabot, security artifacts, and fail-closed workflow dependencies |
 
-The allocation is technically coherent but not equal in size. Shawn has the broadest current scope because cloud identity, image publication, ECS task definitions, deployment ordering, verification, rollback, diagnostics, and Gemini-assisted summaries form one integrated production responsibility. Min has the narrowest current scope. Ji Xun's original Compose scope has been strengthened with automated DNS, health, proxy, degradation, recovery, and cleanup validation without overlapping another member's primary ownership.
+The allocation follows the agreed component boundaries. Each member has a
+primary area and an extended area that can be demonstrated through the listed
+files. Ji Xun's Compose work includes automated DNS, health, proxy,
+degradation, recovery, and cleanup validation without overlapping another
+member's primary ownership.
 
 ## Overall DevOps Architecture
 
@@ -123,10 +127,6 @@ Kiki should demonstrate:
 - fail-fast versus `if: always()` cleanup/reporting;
 - deterministic release sequencing.
 
-### Current Scope Size
-
-**LARGE.** Pipeline orchestration crosses every team component and requires clear control of events, dependencies, permissions, artifacts, failure semantics, and release eligibility. It remains smaller than Shawn's operational cloud scope because it excludes scanner policy and deployment internals.
-
 ## Min — Frontend Dockerisation
 
 ### Primary Ownership
@@ -195,10 +195,6 @@ Min should demonstrate:
 - health endpoints;
 - pinned base images;
 - image-size and least-privilege trade-offs.
-
-### Current Scope Size
-
-**SMALL.** The current implementation is technically valid but concentrated in three tightly related files and one container boundary. Runtime-hardening evidence, container validation, and troubleshooting ownership are the natural additions needed for stronger individual FA depth.
 
 ## Thein — Backend Dockerisation
 
@@ -269,10 +265,6 @@ Thein should demonstrate:
 - Docker health checks;
 - container lifecycle and signal handling.
 
-### Current Scope Size
-
-**MEDIUM.** The backend image includes meaningful production engineering—multi-stage construction, deterministic dependencies, a distroless runtime, non-root execution, selective runtime copying, and health behavior—but remains one bounded deliverable.
-
 ## Ji Xun — Docker Compose
 
 ### Primary Ownership
@@ -288,12 +280,12 @@ Ji Xun owns the reproducible local two-service environment:
 - frontend dependency on backend health;
 - frontend health check;
 - restart behavior;
-- external database configuration rather than introducing a database container;
+- external MySQL-compatible database configuration rather than introducing a database container;
 - optional read-only Google ADC mount overlay for local development.
 
 ### Secondary / Extended Ownership
 
-Recommended extension:
+Implemented extension:
 
 - own the repeatable local integration smoke-test procedure;
 - test cold start, backend-unhealthy, restart, and recovery scenarios;
@@ -345,10 +337,6 @@ Ji Xun should demonstrate:
 - persistent versus external services;
 - reproducible local integration testing.
 
-### Current Scope Size
-
-**MEDIUM.** The component now combines two-service orchestration, health-aware startup, service DNS, environment validation, credential-safe overlays, automated build/health/proxy checks, a failure/recovery exercise, clean shutdown verification, and focused FA documentation.
-
 ## Shawn — Cloud Deployment
 
 ### Primary Ownership
@@ -372,7 +360,7 @@ Shawn owns production cloud delivery after the CI/security gates:
 
 ### Secondary / Extended Ownership
 
-Shawn's current scope is already the largest. The recommended focus is depth and operational evidence rather than additional components:
+Implemented extension:
 
 - maintain rollback drills and failure-injection evidence;
 - maintain least-privilege IAM action/resource guidance outside repository-managed infrastructure;
@@ -431,10 +419,6 @@ Shawn should demonstrate:
 - observability through allowlisted diagnostics;
 - Gemini analysis guardrails and human-in-the-loop operations.
 
-### Current Scope Size
-
-**LARGE — the largest current scope.** It spans cloud identity, two image repositories, two production services, task-definition preservation, Ansible sequencing, health/smoke verification, idempotency, rollback, diagnostics, summaries, and a security-isolated Gemini-assisted analysis workflow.
-
 ## Fatin — DevSecOps
 
 ### Primary Ownership
@@ -476,7 +460,7 @@ Recommended extension:
 | `.github/workflows/deploy.yml` — security report artifacts | Primary/shared with Kiki | Evidence policy and retention |
 | `.github/dependabot.yml` | Primary security policy | Automated dependency-update coverage |
 | `SECURITY.md` | Primary documentation | Secret, vulnerability, exception, and response policy |
-| `docs/FA-L4-DEVSECOPS.md` | Primary evidence | Gate rationale, demonstration, and rubric mapping |
+| `docs/FA-DEVOPS-DEVSECOPS.md` | Primary evidence | Gate rationale, demonstration, and FA assessment mapping |
 | `test/deploymentAnalysisDiagnostics.test.js` — sanitizer and workflow-boundary cases | Supporting/shared with Shawn | Regression evidence for secret-safe diagnostics and isolated Gemini-analysis permissions |
 | `.gitignore` and `.dockerignore` | Shared | Credential/build-context hygiene |
 | `package-lock.json` | Supporting evidence | Reproducible dependency graph examined by npm audit |
@@ -510,10 +494,6 @@ Fatin should demonstrate:
 - scanner and action pinning;
 - software supply-chain integrity;
 - vulnerability triage and exception governance.
-
-### Current Scope Size
-
-**LARGE.** Four mandatory security controls, fail-closed release policy, scanner pinning, artifact evidence, Dependabot, and security governance provide broad technical content. It is substantial but more bounded than Shawn's end-to-end production operations scope.
 
 ## Shared Components
 
@@ -582,18 +562,19 @@ Application feature ownership—including Gemini report generation, Speech-to-Te
 - AWS service administration;
 - automatic remediation of application findings.
 
-## Recommended Additional Responsibilities
+## Additional Contributions
 
-| Priority | Member | Natural Additional Contribution | Concrete FA Evidence | Why It Fits |
-|---|---|---|---|---|
-| High | Min | Frontend container runtime/hardening validation | Valid/invalid `BACKEND_URL` demonstration, health proof, image inspection, Nginx troubleshooting matrix | Extends the existing frontend container boundary |
-| Completed | Ji Xun | Local integration smoke and recovery validation | Compose config proof, health-order demo, restart/recovery scenario, overlay documentation | Adds operational depth to local orchestration |
-| Medium | Kiki | Pipeline observability and artifact lifecycle | Trigger matrix, job DAG, artifact-retention map, failure-propagation evidence | Strengthens orchestration without taking scanner/cloud ownership |
-| Medium | Thein | Backend lifecycle and production-runtime evidence | Signal/health/runbook evidence, image UID/size/runtime inspection | Deepens the existing backend image responsibility |
-| Low | Fatin | Security evidence governance | Scanner-version register, triage process, exception expiry, optional SBOM evaluation | Current scope is already substantial |
-| None required | Shawn | Reliability drills rather than new scope | Rollback/no-op/failure-diagnostic demonstrations | Current scope is already the largest |
+| Member | Contribution | Concrete FA Evidence |
+|---|---|---|
+| Min | Frontend container runtime and hardening validation | Valid/invalid `BACKEND_URL`, health proof, image inspection, and Nginx troubleshooting |
+| Ji Xun | Local integration smoke and recovery validation | Compose config proof, health ordering, restart/recovery scenario, and overlay documentation |
+| Kiki | Pipeline observability and artifact lifecycle | Trigger matrix, job DAG, artifact retention, and failure propagation |
+| Thein | Backend lifecycle and production-runtime evidence | Signal/health/runbook evidence, image identity, and runtime inspection |
+| Fatin | Security evidence governance | Scanner-version register, triage process, exception handling, and security artifacts |
+| Shawn | Deployment reliability demonstrations | Rollback, no-op, fault-injection, and failure-diagnostic evidence |
 
-No member should receive a second unrelated platform merely to make the allocation look equal. Balanced assessment is better achieved by giving narrower component owners deeper validation, troubleshooting, documentation, and demonstration responsibility within their existing boundary.
+These contributions remain within the agreed component boundaries and provide
+concrete implementation evidence for the final assessment.
 
 ## Final Allocation
 
@@ -606,16 +587,16 @@ No member should receive a second unrelated platform merely to make the allocati
 | Shawn | Secure AWS/ECS deployment with Ansible | Verified rollback, diagnostics, summaries, and Gemini-assisted analysis | Backend-first production deployment and failure recovery | Not pipeline/scanner/container ownership |
 | Fatin | Fail-closed DevSecOps gates | Security evidence and dependency governance | Unsafe releases blocked before AWS access | Not deployment implementation |
 
-## FA Readiness
+## Presentation Preparation
 
-| Member | Current Readiness | Evidence Strength | Readiness Action |
-|---|---|---|---|
-| Kiki | High | Strong integrated workflow and artifact chain | Prepare a concise job-DAG and failure-propagation demonstration |
-| Min | Medium | Working frontend image and Nginx configuration, but narrower scope | Complete runtime/hardening validation evidence |
-| Thein | High | Strong multi-stage, pinned, distroless, non-root backend image | Prepare lifecycle and standalone health demonstration |
-| Ji Xun | High | Two-service Compose plus automated DNS, health, proxy, recovery, and cleanup evidence | Rehearse the documented 3–5 minute demonstration |
-| Shawn | High | Broad production deployment, rollback, diagnostics, and Gemini deployment evidence | Rehearse success, no-op, and rollback demonstrations |
-| Fatin | High | Four integrated gates plus supporting governance/evidence | Rehearse one safe blocked-release demonstration |
+| Member | Evidence to Rehearse |
+|---|---|
+| Kiki | Job DAG, trigger behavior, artifact hand-off, and failure propagation |
+| Min | Frontend image, Nginx runtime validation, and proxy/health behavior |
+| Thein | Multi-stage backend image, non-root runtime, and standalone health behavior |
+| Ji Xun | Compose startup ordering, service DNS, proxying, recovery, and cleanup |
+| Shawn | Backend-first deployment, authoritative verification, no-op behavior, and rollback |
+| Fatin | Four security gates, thresholds, artifacts, and blocked-release behavior |
 
 ## Presentation Summary
 

@@ -1,5 +1,7 @@
 ---
-# FA responsibility: Shawn — ECS deployment sequencing and rollback
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Applies the ECS Express deployment role locally with fatal error propagation.
+# Demo focus: Start here, then follow the role into preflight and backend-first rollout.
 - name: Deploy Firefighter Dashboard ECS Express services
   hosts: production
   gather_facts: false

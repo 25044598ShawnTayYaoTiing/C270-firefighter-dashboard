@@ -1,12 +1,16 @@
 'use strict';
 
-// FA responsibility: Ji Xun — Docker Compose / Multi-container Orchestration
+// FA contribution owner: Kong Ji Xun
+// Purpose: Validates Compose build, health ordering, Docker DNS, proxying, failure, recovery, and cleanup.
+// Demo focus: Stop the backend, observe degraded routing, recover it, and show the isolated project is removed.
 
 const crypto = require('node:crypto');
 const net = require('node:net');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
+// Isolated project names, ports, and bounded timeouts prevent collisions with normal local services.
+// The smoke flow creates temporary resources and always targets its own Compose project.
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PROJECT_NAME = `firefighter-compose-smoke-${process.pid}`;
 const STARTUP_TIMEOUT_MS = 180_000;
@@ -18,6 +22,8 @@ let smokeEnvironment = process.env;
 let projectRemoved = false;
 let cleanupStarted = false;
 
+// Command wrappers run Docker and Compose without a shell and preserve useful failure output.
+// Successful setup proceeds into HTTP, container-health, and network assertions.
 function formatCommand(executable, args) {
   return [executable, ...args].join(' ');
 }
@@ -109,6 +115,8 @@ async function reserveDistinctPorts() {
   return { frontendPort, backendPort };
 }
 
+// Bounded HTTP and container-health helpers wait for real readiness rather than fixed sleeps.
+// Demo focus: Show backend and frontend health becoming ready in dependency order.
 async function request(url) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -209,6 +217,8 @@ async function waitForContainerHealth(service, timeoutMs) {
   throw new Error(`${service} container did not become healthy; last state was ${lastState}.`);
 }
 
+// Network assertions prove the frontend can resolve and reach the backend by Docker DNS and internal port.
+// The next phase deliberately interrupts the backend and validates recovery through the gateway.
 function assertInternalBackendAccess() {
   const dnsResult = runCompose(
     ['exec', '--no-TTY', 'frontend', 'getent', 'hosts', 'backend'],
@@ -247,6 +257,8 @@ function assertInternalBackendAccess() {
   console.log('[PASS] frontend reaches backend:3000 inside the Compose network');
 }
 
+// Cleanup is idempotent and also runs on signals so demo containers, networks, and volumes do not linger.
+// Demo focus: Confirm the temporary Compose project is absent after success or failure.
 function removeSmokeProject(options = {}) {
   if (cleanupStarted) return;
   cleanupStarted = true;
@@ -276,6 +288,8 @@ function handleSignal(signal) {
 process.once('SIGINT', () => handleSignal('SIGINT'));
 process.once('SIGTERM', () => handleSignal('SIGTERM'));
 
+// End-to-end flow: reserve ports, build/start, verify DNS and proxying, simulate failure, recover, and clean up.
+// Each assertion is deterministic; a failed check exits non-zero for CI or presenter troubleshooting.
 async function main() {
   const { frontendPort, backendPort } = await reserveDistinctPorts();
 

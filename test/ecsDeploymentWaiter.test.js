@@ -313,13 +313,21 @@ test('Ansible performs health checks only after authoritative deployment success
     'tasks',
     'backend.yml'
   ), 'utf8');
-  const rollback = fs.readFileSync(path.join(
+  const rollbackController = fs.readFileSync(path.join(
     projectRoot,
     'ansible',
     'roles',
     'ecs_express_deploy',
     'tasks',
     'rollback.yml'
+  ), 'utf8');
+  const rollbackBackend = fs.readFileSync(path.join(
+    projectRoot,
+    'ansible',
+    'roles',
+    'ecs_express_deploy',
+    'tasks',
+    'rollback_backend.yml'
   ), 'utf8');
 
   assert.doesNotMatch(waiter, /describe-express-gateway-service/);
@@ -328,13 +336,17 @@ test('Ansible performs health checks only after authoritative deployment success
   assert.match(helper, /describe-service-deployments/);
   assert.match(backend, /service\.targetConfiguration\.\{serviceRevisionArn:serviceRevisionArn,taskDefinitionArn:taskDefinitionArn\}/);
   assert.match(backend, /ecs_express_deploy_backend_deployment_baseline/);
-  assert.match(rollback, /ecs_express_deploy_wait_operation: rollback/);
+  assert.ok(
+    rollbackController.indexOf('import_tasks: rollback_backend.yml')
+      < rollbackController.indexOf('import_tasks: rollback_frontend.yml')
+  );
+  assert.match(rollbackBackend, /ecs_express_deploy_wait_operation: rollback/);
   assert.ok(
     backend.indexOf('Wait for backend ECS Express service stability')
       < backend.indexOf('Verify backend application health endpoint')
   );
   assert.ok(
-    rollback.indexOf('Wait for authoritative backend rollback deployment')
-      < rollback.indexOf('Verify backend health after rollback')
+    rollbackBackend.indexOf('Wait for authoritative backend rollback deployment')
+      < rollbackBackend.indexOf('Verify backend health after rollback')
   );
 });

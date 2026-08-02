@@ -1,4 +1,7 @@
 ---
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Provides the local execution target used by GitHub Actions for AWS API automation.
+# Demo focus: Explain that no SSH host is required because ECS is controlled through AWS APIs.
 production:
   hosts:
     localhost:

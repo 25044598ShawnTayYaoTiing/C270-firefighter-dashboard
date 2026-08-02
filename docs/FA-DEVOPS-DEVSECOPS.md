@@ -1,10 +1,10 @@
-# FA L4 DevSecOps Evidence
+# FA DevOps — DevSecOps
 
 ## 1. Problem being solved
 
 The dashboard previously had a single GitHub Actions job that ran unit tests, built one backend image, then authenticated to AWS and deployed it. A test failure stopped that job, but there was no integrated secret scan, dependency vulnerability gate, source-security scan, or image-vulnerability gate. This implementation makes those checks mandatory prerequisites for ECR and the existing ECS Express Mode deployment.
 
-The backend continues to use Railway MySQL and Gemini as external services. The local frontend Nginx image and backend Node.js image remain separate; no production database container is introduced.
+The backend continues to use an external MySQL-compatible database and Gemini as external services. The local frontend Nginx image and backend Node.js image remain separate; no production database container is introduced.
 
 ## 2. Why security is before deployment
 
@@ -58,7 +58,7 @@ The workflow is in [`.github/workflows/deploy.yml`](../.github/workflows/deploy.
 | ECS verification | Ansible and AWS CLI | Requested task definition maps to the exact service revision and new service-deployment ARN, which reaches `SUCCESSFUL` | Correlation failure, timeout, or authoritative stopped/rollback failure state | Deployment job fails and requests rollback | Ansible log and summary |
 | App smoke test | Ansible `uri` | JSON backend health plus reachable frontend/login redirect | No `{ "status": "ok" }` or unexpected status | Deployment job fails and requests rollback | Ansible log and summary |
 
-## 4. L4 rubric mapping
+## 4. FA assessment mapping
 
 | Requirement | Implementation and demonstrable evidence |
 |---|---|

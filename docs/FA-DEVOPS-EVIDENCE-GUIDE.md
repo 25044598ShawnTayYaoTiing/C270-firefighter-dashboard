@@ -1,4 +1,4 @@
-# FA DevOps Evidence Guide
+# FA DevOps — Evidence Guide
 
 ## Purpose
 
@@ -152,9 +152,10 @@ Ansible
 For rollback evidence, show:
 
 - `ansible/roles/ecs_express_deploy/tasks/main.yml`;
-- `rollback.yml`;
+- `initialize.yml`;
+- `rollback.yml`, `rollback_backend.yml`, and `rollback_frontend.yml`;
 - `wait_for_service.yml`; and
-- `failure_diagnostics.yml`.
+- `collect_diagnostics.yml` and `write_failure_diagnostics.yml`.
 
 Do not intentionally break production. Explain the code path and use existing
 unit/static evidence rather than creating a real ECS failure.
@@ -184,7 +185,7 @@ Explain that:
 These are mandatory controls in the current pipeline. CodeRabbit is not one of
 these security gates.
 
-Primary reference: [`FA-L4-DEVSECOPS.md`](FA-L4-DEVSECOPS.md).
+Primary reference: [`FA-DEVOPS-DEVSECOPS.md`](FA-DEVOPS-DEVSECOPS.md).
 
 ## Gemini-Assisted Deployment Summary and Failure Diagnostics
 

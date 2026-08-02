@@ -1,4 +1,11 @@
 ---
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Validates inputs and OIDC identity, then captures both active ECS service states.
+# Demo focus: Show that invalid targets or credentials fail before any service update is requested.
+
+# Input and identity validation.
+# Required non-secret targets and OIDC-provided credentials must be usable before ECS reads begin.
+# Demo focus: Show that malformed or unauthorized runs stop before service mutation.
 - name: Assert required non-secret deployment inputs
   ansible.builtin.assert:
     that:
@@ -22,6 +29,9 @@
   no_log: true
   register: ecs_express_deploy_aws_caller_identity
 
+# Existing service-state discovery.
+# Current backend and frontend task definitions become the idempotency and rollback baseline.
+# Both states are verified next before the requested revisions are reported.
 - name: Read backend ECS Express service state
   ansible.builtin.command:
     argv:
@@ -61,6 +71,9 @@
     ecs_express_deploy_backend_service_state: '{{ ecs_express_deploy_backend_service_info.stdout | from_json }}'
     ecs_express_deploy_frontend_service_state: '{{ ecs_express_deploy_frontend_service_info.stdout | from_json }}'
 
+# Service-state verification and safe target reporting.
+# Active services with task definitions are required, and only non-secret targets are displayed.
+# A passing preflight hands control to deployment-result initialization and backend rollout.
 - name: Assert both ECS Express services are active and have task definitions
   ansible.builtin.assert:
     that:

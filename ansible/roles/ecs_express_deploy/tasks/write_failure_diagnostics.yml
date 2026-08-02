@@ -1,6 +1,14 @@
 ---
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Writes allowlisted deployment and rollback failure evidence for downstream sanitization.
+# Demo focus: Show that diagnostics omit credentials, environment variables, and raw task definitions.
+
+# Non-blocking allowlisted diagnostics generation.
+# Deployment, service, health, smoke, and rollback facts are selected into bounded JSON after recovery.
+# Demo focus: The artifact feeds advisory Gemini diagnostics but cannot mask the deployment failure.
 - name: Produce non-blocking deployment failure diagnostics
   block:
+    # Parse the bounded ECS command responses
     - name: Parse bounded ECS diagnostic responses
       ansible.builtin.set_fact:
         ecs_express_deploy_backend_failure_state_document: >-
@@ -13,6 +21,7 @@
           {{ ecs_express_deploy_frontend_recent_deployments | from_json }}
       no_log: true
 
+    # Build the allowlisted diagnostic document
     - name: Build the allowlisted deployment failure document
       ansible.builtin.set_fact:
         ecs_express_deploy_diagnostic_document:
@@ -130,6 +139,7 @@
                    | default('unavailable', true) }}
       no_log: true
 
+    # Persist and report the diagnostics artifact
     - name: Write structured deployment failure diagnostics
       ansible.builtin.copy:
         dest: '{{ ecs_express_deploy_diagnostics_path }}'
@@ -143,6 +153,7 @@
       ansible.builtin.debug:
         msg: Deployment diagnostics were written for the isolated advisory analysis job.
   rescue:
+    # Diagnostic failure must not mask the original deployment failure
     - name: Report unavailable advisory diagnostics without masking deployment failure
       ansible.builtin.debug:
         msg: Deployment diagnostics could not be written; deterministic rollback results remain authoritative.

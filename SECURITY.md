@@ -1,3 +1,7 @@
+<!-- FA contribution owner: Fatin Farha Binte Sahidin -->
+<!-- Purpose: Documents credential handling, dependency updates, vulnerability gates, and response. -->
+<!-- Demo focus: Explain how unsafe builds and leaked credentials are blocked before AWS access. -->
+
 # Security Policy
 
 ## Supported version

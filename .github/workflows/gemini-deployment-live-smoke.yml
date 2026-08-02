@@ -1,5 +1,12 @@
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Validates the production Gemini client, schema, and evidence grounding
+# against synthetic sanitized input without invoking AWS or a deployment.
+# Demo focus: Show LIVE Gemini validation while every infrastructure action remains zero.
 name: Gemini Deployment Summary and Failure Diagnostics LIVE Smoke Test
 
+# The workflow is manual, main-only, and read-only so it cannot alter cloud resources.
+# Concurrency prevents overlapping smoke tests from producing confusing evidence.
+# Demo focus: Point out that only the Gemini secret and model variable are consumed.
 on:
   workflow_dispatch:
 
@@ -13,6 +20,9 @@ concurrency:
 env:
   NODE_VERSION: '22'
 
+# The isolated smoke job installs locked dependencies and invokes the real analyzer path.
+# A pass proves request, parsing, schema, and evidence validation work together.
+# Demo focus: Show LIVE GEMINI, validation PASS results, and no OIDC permission.
 jobs:
   live-gemini-smoke:
     name: Validate production Gemini summary and diagnostics path

@@ -1,9 +1,17 @@
-# FA responsibility: Min — frontend Nginx runtime gateway
+# FA contribution owner: Kaung Min Khant
+# Purpose: Serves frontend assets and proxies page, API, and WebSocket traffic to BACKEND_URL.
+# Demo focus: Trace a browser request through Nginx to the backend service without hard-coded URLs.
+
+# WebSocket connection mapping preserves upgrades for live transcription while closing normal requests.
+# The server block uses this value when proxying /api traffic to the backend.
 map $http_upgrade $connection_upgrade {
   default upgrade;
   ''      close;
 }
 
+# Core Nginx runtime and response hardening.
+# Compression serves static assets efficiently and security headers protect browser responses.
+# Demo focus: Point out the hidden server version and explicit content types.
 server {
   include /etc/nginx/mime.types;
   default_type application/octet-stream;
@@ -29,16 +37,23 @@ server {
   add_header X-Frame-Options "SAMEORIGIN" always;
   add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
+  # Frontend-local health endpoint proves Nginx is serving without depending on the backend.
+  # Compose/ECS can therefore distinguish gateway health from API health.
   location = /health {
     access_log off;
     default_type application/json;
     return 200 '{"status":"ok"}';
   }
 
+  # Static assets are served locally and fall back to the backend only when absent.
+  # Demo focus: Show that browser assets do not make unnecessary backend round trips.
   location ~* \.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|map)$ {
     try_files $uri @backend;
   }
 
+  # API and WebSocket gateway forwards upgrade and client context headers to BACKEND_URL.
+  # This is the production path for REST calls and live transcription traffic.
+  # Demo focus: Point out proxy_http_version 1.1 and the Upgrade/Connection headers.
   location /api/ {
     proxy_ssl_server_name on;
     proxy_http_version 1.1;
@@ -51,6 +66,8 @@ server {
     proxy_pass ${BACKEND_URL};
   }
 
+  # Page requests are proxied to the backend-rendered application through the same runtime origin.
+  # The browser therefore uses one frontend address for pages, APIs, and WebSockets.
   location / {
     proxy_ssl_server_name on;
     proxy_set_header Host $proxy_host;
@@ -60,6 +77,8 @@ server {
     proxy_pass ${BACKEND_URL};
   }
 
+  # Missing local static paths use the named backend fallback with the same forwarding headers.
+  # This completes the gateway flow without embedding an environment-specific backend address.
   location @backend {
     proxy_ssl_server_name on;
     proxy_set_header Host $proxy_host;

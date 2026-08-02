@@ -1,6 +1,8 @@
 'use strict';
 
-// FA responsibility: Min — focused frontend image/runtime validation.
+// FA contribution owner: Kaung Min Khant
+// Purpose: Validates the frontend image, Nginx gateway, runtime BACKEND_URL, health, and WebSocket proxying.
+// Demo focus: Show valid traffic succeeding and unsafe runtime configurations failing closed.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -9,6 +11,8 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { WebSocket } = require('ws');
 
+// Unique names and bounded waits isolate every smoke run from developer or CI containers.
+// A temporary mock backend provides controlled page, API, health, and WebSocket responses.
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const RUN_ID = `${process.pid}-${crypto.randomBytes(3).toString('hex')}`;
 const IMAGE_NAME = `firefighter-frontend-validation:${RUN_ID}`;
@@ -87,6 +91,8 @@ server.listen(3000, '0.0.0.0');
 
 let cleanupStarted = false;
 
+// Docker command and readiness helpers collect actionable output without invoking a shell.
+// Once containers are ready, focused assertions inspect runtime behavior and image contents.
 function formatCommand(executable, args) {
   return [executable, ...args].join(' ');
 }
@@ -236,6 +242,8 @@ async function waitForHealthyContainer(containerName) {
   throw new Error(`Frontend did not become healthy; last state was ${lastState}.`);
 }
 
+// Gateway checks cover WebSocket upgrades plus expected image metadata, files, and Nginx rendering.
+// Demo focus: Trace one HTTP/API request and one WebSocket handshake through BACKEND_URL.
 function verifyWebSocket(url) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url);
@@ -336,6 +344,8 @@ function assertRuntimeProcesses() {
   console.log('[PASS] root Nginx master is running with nginx worker processes');
 }
 
+// Negative configuration cases prove missing, malformed, injected, or invalid-port origins cannot start.
+// These checks demonstrate fail-closed runtime validation without exposing configuration secrets.
 function assertRejectedConfiguration(containerName, backendUrl, expectedMessage) {
   const args = ['run', '--name', containerName];
   if (backendUrl !== undefined) {
@@ -355,6 +365,8 @@ function assertRejectedConfiguration(containerName, backendUrl, expectedMessage)
   console.log(`[PASS] rejected startup configuration: ${backendUrl || 'missing BACKEND_URL'}`);
 }
 
+// Cleanup removes every temporary container, network, and image on normal exit or interruption.
+// Demo focus: Confirm the validation leaves no reusable mock service or credentials behind.
 function cleanup() {
   if (cleanupStarted) return;
   cleanupStarted = true;
@@ -395,6 +407,8 @@ function handleSignal(signal) {
 process.once('SIGINT', () => handleSignal('SIGINT'));
 process.once('SIGTERM', () => handleSignal('SIGTERM'));
 
+// End-to-end flow builds the image, starts the mock backend, verifies gateway behavior,
+// exercises rejected configurations, and reports success only after all cleanup-safe checks pass.
 async function main() {
   const frontendPort = await reserveFreePort();
   const frontendOrigin = `http://127.0.0.1:${frontendPort}`;

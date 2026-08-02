@@ -1,6 +1,13 @@
-# FA responsibility: Kiki — CI/CD orchestration
+# FA contribution owners: Khin Kyi Phyu Zin, Fatin Farha Binte Sahidin, and Shawn Tay Yao Ting
+# Purpose: Orchestrates gated CI, container security, immutable image promotion,
+# AWS ECS deployment, and advisory Gemini deployment summaries.
+# Demo focus: Trace how every gate passes before OIDC, then follow the scanned
+# images through verified deployment and the final advisory summary.
 name: DevSecOps CI/CD
 
+# Workflow triggers and manual controls (Khin Kyi Phyu Zin).
+# Pull requests validate only, main pushes deploy, and manual runs require explicit inputs.
+# Demo focus: Point out that pull-request code cannot enter the AWS deployment path.
 on:
   pull_request:
     branches:
@@ -26,6 +33,9 @@ on:
         default: false
         type: boolean
 
+# Workflow-wide permissions and concurrency keep orchestration least-privileged and serialized.
+# Jobs request additional authority only where required; a newer run replaces stale work.
+# Demo focus: Contrast read-only CI jobs with the single OIDC-enabled deployment job.
 permissions:
   contents: read
 
@@ -46,6 +56,9 @@ env:
   APP_HEALTH_URL: ${{ vars.APP_HEALTH_URL }}
   APP_SMOKE_URL: ${{ vars.APP_SMOKE_URL }}
 
+# CI and dependency gate (Khin Kyi Phyu Zin and Fatin Farha Binte Sahidin).
+# Locked dependencies, tests, and the production audit must pass before image building.
+# Demo focus: Show that test or HIGH/CRITICAL dependency failures stop the flow here.
 jobs:
   quality:
     name: Test and dependency security gate
@@ -67,11 +80,14 @@ jobs:
       - name: Run automated tests
         run: npm test
 
-      # FA responsibility: Fatin — production dependency security gate
+      # The production dependency audit blocks vulnerable runtime packages before images exist.
+      # A passing result allows the remaining security gates to feed the build job.
       - name: Block HIGH or CRITICAL production dependency vulnerabilities
         run: npm audit --omit=dev --audit-level=high
 
-  # FA responsibility: Fatin — Gitleaks secret-scanning gate
+  # Secret scanning gate (Fatin Farha Binte Sahidin).
+  # Full Git history is scanned so exposed credentials block downstream image production.
+  # Demo focus: Show Gitleaks completing before any AWS authentication is available.
   secret-scan:
     name: Secret scanning gate
     permissions:
@@ -93,7 +109,9 @@ jobs:
           GITLEAKS_ENABLE_SUMMARY: 'true'
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'true'
 
-  # FA responsibility: Fatin — Semgrep source-security gate
+  # Source security gate (Fatin Farha Binte Sahidin).
+  # Semgrep checks JavaScript and OWASP rules, then retains a SARIF report for review.
+  # Demo focus: Show that an ERROR finding prevents the container build from starting.
   sast:
     name: Source security gate
     runs-on: ubuntu-latest
@@ -128,7 +146,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-  # FA responsibility: Kiki — gated build and immutable artifact orchestration
+  # Gated image build and artifact orchestration (Khin Kyi Phyu Zin), using the
+  # backend image from Kaung Khant Thein and frontend image from Kaung Min Khant.
+  # This job starts only after every CI/security prerequisite passes.
+  # Demo focus: Identify the two SHA-tagged images that will be scanned and promoted.
   build-and-scan:
     name: Build and container security gate
     needs:
@@ -165,7 +186,9 @@ jobs:
           echo "backend_image=${BACKEND_IMAGE}" >> "$GITHUB_OUTPUT"
           echo "frontend_image=${FRONTEND_IMAGE}" >> "$GITHUB_OUTPUT"
 
-      # FA responsibility: Fatin — Trivy container security gate
+      # Container security gate (Fatin Farha Binte Sahidin).
+      # Trivy scans both images and blocks HIGH/CRITICAL findings before export.
+      # Demo focus: Show the blocking scan result and retained SARIF evidence.
       - name: Install pinned Trivy
         uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
         with:
@@ -194,6 +217,9 @@ jobs:
           set -euo pipefail
           trivy image --scanners vuln --pkg-types os,library --severity HIGH,CRITICAL --exit-code 1 --format table "${FRONTEND_IMAGE}"
 
+      # Immutable image hand-off (Khin Kyi Phyu Zin).
+      # The exact scanned images and checksums become short-lived deployment artifacts.
+      # Demo focus: Explain that deployment cannot rebuild or substitute another image.
       - name: Export the exact scanned images
         id: image-artifact
         run: |
@@ -240,7 +266,10 @@ jobs:
             echo '- Tests, Gitleaks, npm audit, Semgrep, and Trivy passed before any AWS authentication.'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # FA responsibility: Shawn — AWS ECS deployment automation
+  # AWS ECS deployment automation (Shawn Tay Yao Ting), entered only through
+  # Khin Kyi Phyu Zin's completed job dependencies and deployment conditions.
+  # It promotes the scanned artifacts, verifies backend first, then verifies frontend.
+  # Demo focus: Follow OIDC, ECR, task revisions, Ansible, health, and smoke results.
   deploy:
     name: Push, deploy, verify, and smoke test
     needs:
@@ -264,6 +293,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Deployment preconditions and artifact integrity.
+      # Required repository variables and image checksums are verified before AWS access.
+      # Demo focus: Show that only the previously scanned image archives are loaded.
       - name: Validate deployment configuration
         run: |
           set -euo pipefail
@@ -318,6 +350,9 @@ jobs:
           docker image inspect "${BACKEND_IMAGE}" > /dev/null
           docker image inspect "${FRONTEND_IMAGE}" > /dev/null
 
+      # OIDC authentication and ECR promotion (Shawn Tay Yao Ting).
+      # GitHub assumes the deployment role temporarily, verifies identity, then pushes both images.
+      # Demo focus: Highlight that no long-lived AWS access key is stored in GitHub.
       - name: Configure AWS credentials with OIDC
         uses: aws-actions/configure-aws-credentials@v5
         with:
@@ -378,6 +413,9 @@ jobs:
             echo "ECR_REGISTRY=${ECR_REGISTRY}"
           } >> "$GITHUB_ENV"
 
+      # ECS task-definition registration (Shawn Tay Yao Ting).
+      # Active definitions are cloned with only the intended image and supervised demo flag changes.
+      # Demo focus: Point out the previous and requested backend/frontend revision ARNs.
       - name: Create task-definition revisions for both ECS services
         env:
           FA_DEMO_HEALTH_FAILURE_REQUESTED: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy && inputs.inject_health_failure && 'true' || 'false' }}
@@ -511,6 +549,10 @@ jobs:
             echo "FRONTEND_CONTAINER_NAME=${frontend_container_name}"
           } >> "$GITHUB_ENV"
 
+      # Ansible backend-first rollout and verification (Shawn Tay Yao Ting).
+      # Constrained tooling deploys the backend, verifies its exact ECS deployment and /health,
+      # then deploys the frontend and runs the smoke test; failures enter verified rollback.
+      # Demo focus: Show that frontend rollout starts only after backend verification passes.
       - name: Install constrained Ansible deployment tooling
         run: |
           set -euo pipefail
@@ -539,6 +581,9 @@ jobs:
             --extra-vars "ecs_express_deploy_github_commit_sha=${GITHUB_SHA}" \
             --extra-vars "ecs_express_deploy_github_branch=${GITHUB_REF_NAME}"
 
+      # Sanitized deployment-evidence hand-off (Shawn Tay Yao Ting).
+      # Deterministic Ansible/ECS results are reduced to bounded non-secret evidence for Gemini.
+      # Demo focus: Show the retained artifact without exposing task environments or credentials.
       - name: Prepare sanitized deployment evidence
         id: prepare-deployment-analysis
         if: >-
@@ -597,6 +642,9 @@ jobs:
           fi
           echo "ready=${ready}" >> "$GITHUB_OUTPUT"
 
+      # Authoritative deployment summary.
+      # GitHub Actions records immutable images, revisions, and Ansible outcomes before advisory analysis.
+      # Demo focus: Emphasize that these deterministic results remain the source of truth.
       - name: Write deployment summary
         if: always()
         env:
@@ -621,7 +669,9 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # FA responsibility: Shawn — isolated Gemini deployment summaries, failure diagnostics, and safe synthetic FA demo
+  # Advisory Gemini deployment summary and failure diagnostics (Shawn Tay Yao Ting).
+  # This isolated read-only job consumes sanitized evidence and cannot deploy or roll back.
+  # Demo focus: Show the model assessment, human-review flag, and zero AWS authority.
   gemini-deployment-analysis:
     name: Gemini Deployment Summary
     needs: deploy
@@ -657,6 +707,9 @@ jobs:
         with:
           name: deployment-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
 
+      # Production advisory analysis.
+      # Gemini summarizes success or suggests failure checks; validation and fallback preserve safety.
+      # Demo focus: Compare the AI assessment with the authoritative deployment result above it.
       - name: Generate Gemini Deployment Summary
         if: always()
         continue-on-error: true
@@ -721,6 +774,9 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # Optional supervised FA demonstration.
+      # A manual successful deployment may analyze synthetic failure evidence without changing AWS.
+      # Demo focus: Identify the separate synthetic label and confirm no remediation is executed.
       - name: Prepare Gemini Deployment Demo synthetic sanitized diagnostics
         if: >-
           github.event_name == 'workflow_dispatch' &&

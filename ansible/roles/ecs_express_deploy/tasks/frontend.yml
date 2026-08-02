@@ -1,4 +1,11 @@
 ---
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Deploys the frontend revision, verifies its exact ECS deployment, then smoke tests it.
+# Demo focus: Show that this file runs only after backend deployment and /health verification.
+
+# Frontend deployment decision and baseline capture.
+# An already-active revision is a safe no-op; otherwise existing deployment ARNs are recorded.
+# Demo focus: Show this section is reached only after backend health has passed.
 - name: Determine whether frontend deployment is required
   ansible.builtin.set_fact:
     ecs_express_deploy_frontend_update_required: >-
@@ -13,6 +20,9 @@
     ecs_express_deploy_baseline_fact: ecs_express_deploy_frontend_deployment_baseline
   when: ecs_express_deploy_frontend_update_required | bool
 
+# Frontend deployment request and service-revision correlation.
+# ECS must return a service revision that references the requested frontend task definition.
+# The verified revision is then used to pin one newly created deployment.
 - name: Deploy frontend ECS Express service revision
   # ECS Express uses UpdateExpressGatewayService, which is not managed by the
   # standard ECS Ansible service module. This command changes only the revision.
@@ -50,6 +60,9 @@
     fail_msg: ECS did not return a target service revision for the requested frontend task definition.
   when: ecs_express_deploy_frontend_update_required | bool
 
+# Authoritative frontend deployment wait and post-deployment smoke verification.
+# The exact deployment must complete before the public frontend URL is accepted as updated.
+# Demo focus: Show SUCCESSFUL followed by HTTP 200; a failure enters the shared rescue path.
 - name: Wait for frontend ECS Express service stability
   ansible.builtin.include_tasks: wait_for_service.yml
   vars:

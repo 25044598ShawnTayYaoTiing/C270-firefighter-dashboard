@@ -1,3 +1,6 @@
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Constrains Ansible, lint, and AWS SDK tooling used by the deployment job.
+# Demo focus: Show that CI installs bounded tool versions before running the playbook.
 ansible-core>=2.18,<2.20
 ansible-lint>=25.0,<26.0
 boto3>=1.35,<2.0

@@ -1,5 +1,9 @@
 'use strict';
 
+// FA contribution owner: Shawn Tay Yao Ting
+// Purpose: Produces a schema- and evidence-validated Gemini deployment summary or safe fallback.
+// Demo focus: Explain that Gemini is advisory only and deterministic deployment results stay authoritative.
+
 const fs = require('node:fs');
 const path = require('node:path');
 const { GoogleGenAI, Type } = require('@google/genai');
@@ -11,6 +15,8 @@ const {
   truncateString
 } = require('./sanitizeDiagnostics');
 
+// Fixed modes, classifications, bounds, and system instructions define the advisory safety contract.
+// The model may summarize or suggest checks but cannot supply executable deployment actions.
 const DEFAULT_DEPLOYMENT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
 const SAFE_ERROR_MESSAGE_MAX_LENGTH = 320;
 const MAX_SUPPORTED_EVIDENCE = 6;
@@ -147,6 +153,8 @@ const FIXED_EVIDENCE_PATHS = Object.freeze([
   'rollback.frontend.deploymentStatusReason'
 ]);
 
+// Safe error handling separates provider, parsing, schema, and evidence failures without leaking secrets.
+// A classified failure is exposed in the summary while the deterministic fallback remains available.
 function safeErrorText(value, sensitiveValues = []) {
   let text = String(value || '');
 
@@ -393,6 +401,8 @@ function normalizeDeploymentOutcome(value, fallback = 'FAILED') {
   return DEPLOYMENT_OUTCOMES.includes(normalized) ? normalized : fallback;
 }
 
+// Evidence cataloguing assigns allowlisted IDs to facts from the sanitized diagnostics document.
+// Gemini must cite only these IDs, preventing invented observations from passing validation.
 function collectEvidencePaths(diagnostics) {
   const paths = [...FIXED_EVIDENCE_PATHS];
 
@@ -486,6 +496,8 @@ function buildResponseSchema(evidenceCatalog) {
   };
 }
 
+// Prompt and response schema require observations to be grounded while allowing clearly labelled inference.
+// Recommendations remain advisory and are never interpreted as commands by this repository.
 function buildPrompt(
   diagnostics,
   evidenceCatalog = createEvidenceCatalog(diagnostics),
@@ -561,6 +573,8 @@ function allPipelineChecksPassed(diagnostics) {
   ].every((field) => pipeline[field] === 'PASS');
 }
 
+// Structured and evidence validators enforce allowed fields, outcomes, classifications, and citations.
+// Unknown evidence IDs or unsupported observed claims reject LIVE mode and trigger bounded correction/fallback.
 class EvidenceValidationError extends Error {
   constructor(message, options = {}) {
     super(message);
@@ -730,6 +744,8 @@ function validateAnalysisResponse(value, evidenceCatalog, diagnostics) {
   return validateSupportedEvidence(analysis, evidenceCatalog);
 }
 
+// Deterministic fallback and unvalidated modes keep summaries available without claiming validated AI output.
+// The authoritative GitHub Actions, Ansible, ECS, health, and rollback results are never overwritten.
 function fallbackAnalysis(
   diagnostics,
   deploymentOutcome,
@@ -951,6 +967,8 @@ function unvalidatedResult({
   };
 }
 
+// One analysis attempt performs the Gemini request, JSON extraction, structure checks, and evidence checks.
+// At most one corrective evidence retry is allowed before the safe fallback path is selected.
 async function performAnalysisAttempt({
   client,
   model,
@@ -1080,6 +1098,8 @@ function liveResult({
   };
 }
 
+// Main advisory flow sanitizes input, selects the configured model, and records each validation stage.
+// Demo focus: Show LIVE GEMINI only when request, structure, and evidence validation all pass.
 async function analyzeDiagnostics(rawDiagnostics, options = {}) {
   let diagnostics;
   const requestedOutcome = normalizeDeploymentOutcome(options.deploymentOutcome);
@@ -1284,6 +1304,8 @@ function formatInlineList(values) {
   return values.map((item) => `\`${escapeMarkdown(item)}\``).join(', ');
 }
 
+// Human-readable output separates authoritative deployment facts from the Gemini assessment and safety proof.
+// The summary explicitly reports mode, validation, evidence IDs, human review, and zero AWS authority.
 function renderSummary(result) {
   const analysis = result.analysis || fallbackAnalysis(
     result.diagnostics,
@@ -1474,6 +1496,8 @@ function writeOutputFile(filePath, contents) {
   });
 }
 
+// CLI mode reads sanitized evidence and writes bounded Markdown/JSON artifacts for GitHub Actions.
+// It does not run AWS commands, deploy, roll back, approve a release, or remediate a failure.
 async function runCli() {
   const [
     inputPath = 'deployment-diagnostics.json',

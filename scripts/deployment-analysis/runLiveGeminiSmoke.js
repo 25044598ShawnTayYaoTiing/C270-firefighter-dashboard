@@ -1,5 +1,9 @@
 'use strict';
 
+// FA contribution owner: Shawn Tay Yao Ting
+// Purpose: Exercises the real Gemini request, schema, parsing, and evidence validation without AWS.
+// Demo focus: Show LIVE GEMINI validation and zero deployment, rollback, or remediation authority.
+
 const fs = require('node:fs');
 const path = require('node:path');
 const {
@@ -10,6 +14,8 @@ const {
   safeErrorText
 } = require('./analyzeDeploymentFailure');
 
+// Synthetic sanitized evidence mirrors a failed rollout while containing no live cloud data or secrets.
+// The production analyzer must ground every observation in the supplied evidence identifiers.
 function createSyntheticSmokeDiagnostics() {
   return {
     schemaVersion: '1.1',
@@ -105,6 +111,8 @@ function createSyntheticSmokeDiagnostics() {
   };
 }
 
+// Summary rendering makes API, structured, and evidence-validation outcomes visible for FA evidence.
+// A fallback result is labelled honestly and never presented as validated LIVE Gemini output.
 function renderSmokeSummary(result) {
   return [
     '# Gemini Deployment Summary and Failure Diagnostics LIVE Smoke Test',
@@ -127,6 +135,8 @@ function writeWorkflowSummary(summary, summaryPath = process.env.GITHUB_STEP_SUM
   });
 }
 
+// The unmocked smoke path uses the configured deployment Gemini key and model only.
+// It does not configure OIDC, call AWS, invoke Ansible, deploy, or roll back.
 async function runLiveSmokeTest(options = {}) {
   const apiKey = String(
     Object.hasOwn(options, 'apiKey')
@@ -146,6 +156,8 @@ async function runLiveSmokeTest(options = {}) {
   });
 }
 
+// CLI mode writes the GitHub Actions summary and exits non-zero when live validation is unavailable.
+// Demo focus: Point out the explicit safety counters alongside the analyzer result.
 async function runCli() {
   const result = await runLiveSmokeTest();
   writeWorkflowSummary(renderSmokeSummary(result));

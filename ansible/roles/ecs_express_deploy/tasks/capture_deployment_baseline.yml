@@ -1,4 +1,10 @@
 ---
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Captures existing deployment ARNs so a later update maps to one new exact deployment.
+# Demo focus: Explain how the baseline prevents an older SUCCESSFUL deployment from being reused.
+
+# Baseline discovery records deployment ARNs before any service update is sent.
+# The waiter later excludes this list so only the requested operation can satisfy verification.
 - name: Snapshot ECS service deployments before update - {{ ecs_express_deploy_baseline_label }}
   ansible.builtin.command:
     argv:

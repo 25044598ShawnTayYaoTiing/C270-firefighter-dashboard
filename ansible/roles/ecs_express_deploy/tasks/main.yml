@@ -1,53 +1,21 @@
 ---
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Orchestrates preflight, backend-first rollout, verification, diagnostics, and rollback.
+# Demo focus: Trace the guarded order and show that rollback never masks the original failure.
+
+# Preflight and deployment-result initialization.
+# Inputs, identity, and current service state are checked before deterministic result facts are reset.
+# The guarded backend-first block starts only after both imports succeed.
 - name: Run deployment preflight checks
   ansible.builtin.import_tasks: preflight.yml
   tags: [preflight, deploy]
 
-- name: Initialize deployment outcome tracking
-  ansible.builtin.set_fact:
-    ecs_express_deploy_result: succeeded
-    ecs_express_deploy_failure_stage: unavailable
-    ecs_express_deploy_failure_task: ''
-    ecs_express_deploy_failure_message: ''
-    ecs_express_deploy_backend_update_required: false
-    ecs_express_deploy_frontend_update_required: false
-    ecs_express_deploy_backend_health_result: not-reached
-    ecs_express_deploy_frontend_health_result: not-reached
-    ecs_express_deploy_backend_rollback_result: not-required
-    ecs_express_deploy_frontend_rollback_result: not-required
-    ecs_express_deploy_backend_rollback_health_result: not-required
-    ecs_express_deploy_backend_deployment_result:
-      outcome: not-required
-      status: NOT_REQUIRED
-      serviceDeploymentArn: unavailable
-      targetServiceRevisionArn: unavailable
-      requestedTaskDefinitionArn: '{{ ecs_express_deploy_backend_task_definition_arn }}'
-      statusReason: No backend update was required.
-      lifecycleStage: unavailable
-    ecs_express_deploy_frontend_deployment_result:
-      outcome: not-required
-      status: NOT_REQUIRED
-      serviceDeploymentArn: unavailable
-      targetServiceRevisionArn: unavailable
-      requestedTaskDefinitionArn: '{{ ecs_express_deploy_frontend_task_definition_arn }}'
-      statusReason: No frontend update was required.
-      lifecycleStage: unavailable
-    ecs_express_deploy_backend_rollback_deployment_result:
-      outcome: not-required
-      status: NOT_REQUIRED
-      serviceDeploymentArn: unavailable
-      targetServiceRevisionArn: unavailable
-      statusReason: Backend rollback was not required.
-      lifecycleStage: unavailable
-    ecs_express_deploy_frontend_rollback_deployment_result:
-      outcome: not-required
-      status: NOT_REQUIRED
-      serviceDeploymentArn: unavailable
-      targetServiceRevisionArn: unavailable
-      statusReason: Frontend rollback was not required.
-      lifecycleStage: unavailable
-  tags: [deploy]
+- name: Import deployment-result initialization tasks
+  ansible.builtin.import_tasks: initialize.yml
 
+# Backend-first deployment and verification.
+# Backend ECS completion and /health gate the frontend rollout and smoke test.
+# Demo focus: A failure collects diagnostics, verifies rollback, writes evidence, and preserves failure.
 - name: Deploy backend, verify it, then deploy frontend
   block:
     - name: Deploy and verify backend
@@ -58,6 +26,7 @@
       ansible.builtin.import_tasks: frontend.yml
       tags: [frontend, verify, deploy]
   rescue:
+    # Original failure capture and safe diagnostics collection
     - name: Preserve the original deployment failure
       ansible.builtin.set_fact:
         ecs_express_deploy_result: failed
@@ -89,22 +58,27 @@
              else ecs_express_deploy_frontend_health_result }}
 
     - name: Collect safe ECS failure diagnostics
-      ansible.builtin.import_tasks: diagnostics.yml
+      ansible.builtin.import_tasks: collect_diagnostics.yml
       tags: [deploy, diagnostics]
 
+    # Deterministic rollback remains after diagnostics collection
     - name: Restore and verify prior task definitions
       ansible.builtin.import_tasks: rollback.yml
       tags: [deploy, rollback]
   always:
+    # Summary and allowlisted diagnostics artifact generation
     - name: Record the deployment and rollback summary
       ansible.builtin.import_tasks: summary.yml
       tags: [deploy, summary]
 
     - name: Write allowlisted diagnostics after rollback outcome is known
-      ansible.builtin.import_tasks: failure_diagnostics.yml
+      ansible.builtin.import_tasks: write_failure_diagnostics.yml
       when: ecs_express_deploy_result == 'failed'
       tags: [deploy, diagnostics]
 
+# Original deployment failure propagation.
+# Rollback details are appended for operators but never replace the initial deployment error.
+# Demo focus: A recovered service can coexist with an intentionally FAILED deployment job.
 - name: Fail with the original deployment context after rollback verification
   ansible.builtin.fail:
     msg: >-

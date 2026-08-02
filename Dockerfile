@@ -1,4 +1,10 @@
-# FA responsibility: Thein — backend Dockerisation
+# FA contribution owner: Kaung Khant Thein
+# Purpose: Builds a minimal production backend with locked dependencies and a
+# pinned distroless, non-root Node.js runtime.
+# Demo focus: Explain the two stages, reduced runtime contents, and /health probe.
+
+# Dependency stage installs exactly the production packages recorded in package-lock.json.
+# The next stage copies only this resolved dependency tree into the runtime image.
 FROM node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3 AS dependencies
 
 WORKDIR /app
@@ -6,6 +12,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
+# Runtime stage removes package managers and shells, then runs as the distroless non-root user.
+# Demo focus: Point out the pinned digest and that build tooling never reaches production.
 FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:a2723a2817c5b01b8e7b98d567bc8b5a6b0e713e25bfb0a82b6ade4b9db06f50 AS runtime
 
 WORKDIR /app
@@ -15,8 +23,9 @@ ENV NODE_ENV=production \
 
 COPY --from=dependencies --chown=65532:65532 /app/node_modules ./node_modules
 
-# Keep documentation, tests, and the frontend build files out of the backend image.
-# Copy directories separately so their runtime-relative paths remain intact.
+# Runtime application assembly copies only backend-required files with non-root ownership.
+# Documentation, tests, and frontend build tooling remain outside the image.
+# Demo focus: Show the explicit allowlist rather than a broad repository COPY.
 COPY --chown=65532:65532 app.js ./app.js
 COPY --chown=65532:65532 config ./config
 COPY --chown=65532:65532 controllers ./controllers
@@ -28,6 +37,9 @@ COPY --chown=65532:65532 routes ./routes
 COPY --chown=65532:65532 services ./services
 COPY --chown=65532:65532 views ./views
 
+# Runtime contract exposes the API port, enforces non-root execution, and probes /health.
+# A healthy result is consumed by Compose and ECS before dependent traffic proceeds.
+# Demo focus: Show user 65532 and the bounded HTTP health check.
 EXPOSE 3000
 
 USER 65532

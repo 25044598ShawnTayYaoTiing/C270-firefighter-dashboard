@@ -1,4 +1,11 @@
 ---
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Reports deterministic deployment, verification, and rollback results to GitHub Actions.
+# Demo focus: Show previous-to-new revisions, health/smoke outcomes, and rollback status.
+
+# Human-readable deployment summary.
+# Previous/requested revisions, verification states, and rollback results are reported together.
+# Demo focus: Use this deterministic output as the authoritative account of the rollout.
 - name: Report deployment outcome
   ansible.builtin.debug:
     msg:
@@ -23,6 +30,9 @@
         smokeTest: '{{ ecs_express_deploy_frontend_health_result }}'
         rollback: '{{ ecs_express_deploy_frontend_rollback_result }}'
 
+# GitHub Actions summary artifact.
+# The same safe facts are written as Markdown for the workflow job summary.
+# Gemini assistance follows separately and cannot alter these recorded outcomes.
 - name: Write safe deployment details for the GitHub Actions summary
   ansible.builtin.copy:
     dest: '{{ ecs_express_deploy_summary_path }}'

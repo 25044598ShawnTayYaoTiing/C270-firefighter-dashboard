@@ -1,4 +1,7 @@
 ---
+# FA contribution owner: Shawn Tay Yao Ting
+# Purpose: Pins the compatible Amazon AWS collection range required by the ECS role.
+# Demo focus: Explain that collection installation is explicit and reproducible in CI.
 collections:
   - name: amazon.aws
     version: '>=11.0.0,<12.0.0'

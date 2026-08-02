@@ -1,5 +1,9 @@
 'use strict';
 
+// FA contribution owner: Shawn Tay Yao Ting
+// Purpose: Builds one sanitized evidence format from successful or failed deterministic deployments.
+// Demo focus: Compare pipeline PASS/FAIL facts with the later advisory Gemini interpretation.
+
 const fs = require('node:fs');
 const path = require('node:path');
 const {
@@ -10,6 +14,8 @@ const {
 
 const SUPPORTED_OUTCOMES = new Set(['SUCCESS', 'FAILED']);
 
+// Normalization maps workflow results into fixed deployment and verification status values.
+// The next stage combines these values with bounded service evidence and image identifiers.
 function normalizeOutcome(value) {
   const outcome = String(value || '').trim().toUpperCase();
 
@@ -102,6 +108,8 @@ function buildServiceEvidence(rawService, environment, prefix, outcome) {
   };
 }
 
+// Evidence construction selects tests, security, ECS, health, smoke, revision, and rollback facts.
+// No environment dump or raw task definition is accepted into the output document.
 function buildDeploymentEvidence(options = {}) {
   const outcome = normalizeOutcome(options.outcome);
   const rawDiagnostics = safeObject(options.rawDiagnostics);
@@ -173,6 +181,8 @@ function buildDeploymentEvidence(options = {}) {
   return sanitizeDiagnostics(evidence);
 }
 
+// File helpers enforce input limits and write only the sanitizer-approved document.
+// Demo focus: Show deployment-diagnostics.json as the isolated job's sole operational input.
 function readDiagnosticsFile(inputPath) {
   if (!inputPath) {
     return {};
@@ -194,6 +204,8 @@ function writeEvidenceFile(outputPath, evidence) {
   });
 }
 
+// CLI mode is invoked by deploy.yml after Ansible completes or fails.
+// A successful write enables artifact upload; failure leaves the advisory job on safe fallback.
 function runCli() {
   const [outcome, outputPath, inputPath] = process.argv.slice(2);
 

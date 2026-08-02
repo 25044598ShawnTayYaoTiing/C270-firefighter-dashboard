@@ -1,4 +1,4 @@
-# FA Gemini-Assisted Deployment Summary and Failure Diagnostics
+# FA DevOps — Gemini-Assisted Deployment Summary and Failure Diagnostics
 
 ## Purpose
 
