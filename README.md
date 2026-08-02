@@ -15,6 +15,7 @@ Low Level: Admin4 password123
 - [Key features](#key-features)
 - [Architecture](#architecture)
 - [DevOps implementation](#devops-implementation)
+- [AWS Cloud Deployment Evidence](#aws-cloud-deployment-evidence)
 - [Local setup](#local-setup)
 - [Docker Compose](#docker-compose)
 - [Testing and validation](#testing-and-validation)
@@ -140,6 +141,24 @@ A deployment is not considered successful merely because an ECS service is `ACTI
 > A recorded production run completed both ECS rollouts, backend health verification, frontend smoke testing, and the post-deployment Gemini stage. Deterministic ECS, Ansible, health, smoke, and rollback results remain authoritative when Gemini output does not pass evidence validation. See [Verified Deployment Evidence](docs/VERIFIED-DEPLOYMENT-EVIDENCE.md).
 
 Detailed assessment evidence is maintained in the [FA DevOps Evidence Guide](docs/FA-DEVOPS-EVIDENCE-GUIDE.md) instead of being duplicated here.
+
+## AWS Cloud Deployment Evidence
+
+### Backend health verification
+
+![AWS ECS backend health endpoint returning status ok](docs/images/aws/backend-health-check.png)
+
+*Backend health verification: The deployed AWS ECS backend `/health` endpoint returns `{"status":"ok"}`, confirming that the backend service is running and publicly reachable.*
+
+### Remaining evidence placeholders
+
+| Screenshot pending | Intended path | What the screenshot will prove |
+|---|---|---|
+| ECS cluster services | `docs/images/aws/ecs-cluster-services.png` | **ECS service separation:** The cluster contains distinct frontend and backend ECS services, confirming the deployed two-service architecture. |
+| Backend ECS service | `docs/images/aws/backend-ecs-service.png` | **Backend deployment state:** The backend service is `ACTIVE`, has the expected running-task count and task-definition revision, and shows a successful deployment. |
+| Frontend ECS service | `docs/images/aws/frontend-ecs-service.png` | **Frontend deployment state:** The frontend service is `ACTIVE`, has the expected running-task count and task-definition revision, and shows a successful deployment. |
+| ECR images | `docs/images/aws/ecr-commit-sha-images.png` | **Image traceability:** Separate frontend and backend ECR repositories contain the deployed images identified by commit-SHA tags. |
+| Live deployed dashboard | `docs/images/aws/live-deployed-dashboard.png` | **End-to-end availability:** The publicly deployed dashboard loads successfully after the ECS deployment. |
 
 ## Local setup
 
