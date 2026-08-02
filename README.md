@@ -5,7 +5,9 @@
 The Firefighter Smart Incident Dashboard is an authenticated emergency-response platform for capturing calls, validating locations, preparing incident reports, and reviewing operational trends. The application uses Node.js, Express, EJS, an external MySQL-compatible database, Gemini-assisted report drafting, and Google Speech-to-Text. It is delivered as separate frontend and backend containers through GitHub Actions, Amazon ECR, AWS ECS Express Mode, and a backend-first Ansible rollout.
 
 **Live application:** [Open the deployed dashboard](https://fi-6c256163a7464fe3b386b068e0bc31c6.ecs.ap-southeast-1.on.aws/dashboard) — authentication is required.
-
+Test Account: 
+Highest Level: Admin1 password123
+Low Level: Admin4 password123
 ## Contents
 
 - [Application preview](#application-preview)
