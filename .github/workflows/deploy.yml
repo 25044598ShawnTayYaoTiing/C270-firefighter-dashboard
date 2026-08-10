@@ -66,10 +66,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -97,12 +97,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out complete Git history
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Scan repository and history with Gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITLEAKS_ENABLE_COMMENTS: 'false'
@@ -118,7 +118,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run Semgrep JavaScript and OWASP rules
         run: |
@@ -139,7 +139,7 @@ jobs:
 
       - name: Upload Semgrep report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: semgrep-sarif
           path: semgrep.sarif
@@ -165,7 +165,7 @@ jobs:
       frontend_image_tar_sha256: ${{ steps.image-artifact.outputs.frontend_sha256 }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build the backend image to be deployed
         run: |
@@ -190,7 +190,7 @@ jobs:
       # Trivy scans both images and blocks HIGH/CRITICAL findings before export.
       # Demo focus: Show the blocking scan result and retained SARIF evidence.
       - name: Install pinned Trivy
-        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         with:
           version: v0.70.0
           cache: true
@@ -233,7 +233,7 @@ jobs:
 
       - name: Upload Trivy and image metadata reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container-security-reports
           path: |
@@ -245,7 +245,7 @@ jobs:
           retention-days: 30
 
       - name: Upload exact scanned images
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: scanned-images
           path: |
@@ -291,7 +291,7 @@ jobs:
       deployment_analysis_ready: ${{ steps.deployment-analysis-evidence-status.outputs.ready }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Deployment preconditions and artifact integrity.
       # Required repository variables and image checksums are verified before AWS access.
@@ -330,7 +330,7 @@ jobs:
         run: echo "DEPLOYMENT_STARTED_AT_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
 
       - name: Download the exact scanned images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: scanned-images
 
@@ -354,7 +354,7 @@ jobs:
       # GitHub assumes the deployment role temporarily, verifies identity, then pushes both images.
       # Demo focus: Highlight that no long-lived AWS access key is stored in GitHub.
       - name: Configure AWS credentials with OIDC
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
@@ -622,7 +622,7 @@ jobs:
         id: upload-deployment-analysis-evidence
         if: always() && steps.prepare-deployment-analysis.outputs.ready == 'true'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deployment-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: deployment-diagnostics.json
@@ -686,11 +686,11 @@ jobs:
     steps:
       - name: Check out analysis code
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
         continue-on-error: true
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -703,7 +703,7 @@ jobs:
         id: download-deployment-analysis-evidence
         if: needs.deploy.outputs.deployment_analysis_ready == 'true'
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: deployment-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
 
