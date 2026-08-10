@@ -14,7 +14,7 @@ RUN npm ci --omit=dev
 
 # Runtime stage removes package managers and shells, then runs as the distroless non-root user.
 # Demo focus: Point out the pinned digest and that build tooling never reaches production.
-FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:a2723a2817c5b01b8e7b98d567bc8b5a6b0e713e25bfb0a82b6ade4b9db06f50 AS runtime
+FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:939d6f1671529d230f50b563578e9b5d206af58f038b10ebd7e1233023d4e167 AS runtime
 
 WORKDIR /app
 
